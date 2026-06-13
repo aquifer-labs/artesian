@@ -37,7 +37,3 @@ pub fn reciprocal_rank_fusion(channels: &[Vec<SearchHit>], options: RrfOptions) 
     hits.truncate(options.limit);
     hits
 }
-
-#[cfg(test)]
-#[path = "rrf_tests.rs"]
-mod tests;

@@ -4,8 +4,9 @@ use std::collections::BTreeMap;
 
 use chrono::Utc;
 
-use super::*;
-use crate::{MemoryId, MemoryRecord, MemoryTier};
+use mimisbrunnr::{
+    reciprocal_rank_fusion, MemoryId, MemoryRecord, MemoryTier, RrfOptions, SearchHit,
+};
 
 fn record(id: &str, node_id: &str) -> MemoryRecord {
     MemoryRecord {

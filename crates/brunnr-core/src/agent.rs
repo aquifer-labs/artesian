@@ -81,7 +81,3 @@ pub enum AgentError {
     #[error("agent session failed: {0}")]
     Session(String),
 }
-
-#[cfg(test)]
-#[path = "agent_tests.rs"]
-mod tests;

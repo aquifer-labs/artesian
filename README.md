@@ -39,6 +39,7 @@ cargo run -p brunnr-cli -- spawn tyr gemini
 - `bifrost`: future TUI crate.
 - `brunnr-mcp`: MCP server for memory tools.
 - `brunnr-cli`: CLI entrypoint.
+- `brunnr-test-support`: shared helpers for crate-level integration tests.
 
 ## Modes
 
@@ -50,6 +51,11 @@ cargo run -p brunnr-cli -- spawn tyr gemini
 ## License
 
 Brunnr is licensed under Apache-2.0. Contributions must include a DCO sign-off.
+
+## Development
+
+Brunnr uses crate-level integration tests, shared test helpers, and repo-level tooling modeled on
+mature Rust workspaces. See [docs/development.md](docs/development.md).
 
 ## Acknowledgments
 

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-use super::*;
+use brunnr_core::{AgentBinding, BrunnrConfig, Role};
 
 #[test]
 fn config_round_trips_through_toml() {

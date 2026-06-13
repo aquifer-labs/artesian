@@ -305,7 +305,3 @@ fn point_id(memory_id: &str) -> String {
         &hex[20..32]
     )
 }
-
-#[cfg(test)]
-#[path = "qdrant_tests.rs"]
-mod tests;

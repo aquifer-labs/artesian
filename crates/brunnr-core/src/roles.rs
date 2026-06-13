@@ -115,7 +115,3 @@ pub struct Galdr {
     pub commit: Option<String>,
     pub completed_at: DateTime<Utc>,
 }
-
-#[cfg(test)]
-#[path = "roles_tests.rs"]
-mod tests;

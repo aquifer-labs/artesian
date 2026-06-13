@@ -9,6 +9,7 @@ members = [
     "crates/bifrost",
     "crates/brunnr-mcp",
     "crates/brunnr-cli",
+    "crates/brunnr-test-support",
 ]
 
 [workspace.package]
@@ -20,6 +21,7 @@ readme = "README.md"
 
 [workspace.dependencies]
 anyhow = "1.0"
+brunnr-test-support = { path = "crates/brunnr-test-support" }
 chrono = { version = "0.4", features = ["clock", "serde"] }
 clap = { version = "=4.5.23", features = ["derive", "env"] }
 fastembed = { version = "5.16.1", default-features = false, features = ["hf-hub-rustls-tls", "ort-download-binaries-rustls-tls"] }
@@ -36,3 +38,11 @@ tokio = { version = "1.48", features = ["fs", "io-std", "macros", "process", "rt
 toml = "0.8"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+derive_partial_eq_without_eq = "warn"
+large_futures = "warn"
+manual_let_else = "warn"

@@ -274,7 +274,3 @@ fn score_record(record: MemoryRecord, terms: &[String]) -> Option<SearchHit> {
         source: SearchSource::Keyword,
     })
 }
-
-#[cfg(test)]
-#[path = "files_tests.rs"]
-mod tests;

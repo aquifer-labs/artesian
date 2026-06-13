@@ -62,7 +62,3 @@ impl BrunnrConfig {
         toml::to_string_pretty(self)
     }
 }
-
-#[cfg(test)]
-#[path = "config_tests.rs"]
-mod tests;

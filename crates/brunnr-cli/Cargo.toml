@@ -19,3 +19,9 @@ toml.workspace = true
 [[bin]]
 name = "brunnr"
 path = "src/main.rs"
+
+[dev-dependencies]
+brunnr-test-support.workspace = true
+
+[lints]
+workspace = true

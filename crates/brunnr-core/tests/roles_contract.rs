@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-use super::*;
+use brunnr_core::{Erindi, ErindiStatus, Role, Thing};
 
 #[test]
 fn role_aliases_resolve_plain_english_and_norse_names() {

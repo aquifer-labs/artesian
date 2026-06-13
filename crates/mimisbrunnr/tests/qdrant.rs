@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
-use super::*;
+#![cfg(feature = "qdrant")]
+
+use mimisbrunnr::QdrantBackendConfig;
 
 #[test]
 fn qdrant_backend_pins_fastembed_model_and_dimensions() {

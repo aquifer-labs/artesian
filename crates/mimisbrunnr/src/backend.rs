@@ -35,7 +35,3 @@ pub trait MemoryBackend: Send + Sync {
 
     fn get_node(&self, node_id: &str) -> BoxFuture<'_, MemoryResult<Option<MemoryRecord>>>;
 }
-
-#[cfg(test)]
-#[path = "backend_tests.rs"]
-mod tests;

@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
-use super::*;
+use std::collections::BTreeMap;
+
+use brunnr_test_support::TempDir;
+use mimisbrunnr::{FilesBackend, MemoryBackend, MemoryQuery, MemoryTier, SearchHit, StoreMemory};
+use tokio::fs;
 
 #[tokio::test]
 async fn files_backend_stores_date_tagged_markdown_and_finds_it() {
@@ -19,7 +23,16 @@ async fn files_backend_stores_date_tagged_markdown_and_finds_it() {
         .expect("store should succeed");
 
     let date_tag = stored.created_at.format("%Y-%m-%d").to_string();
-    let path = backend.record_path(&date_tag, &stored.id);
+    let memory_dir = tempdir.join(["memory", &date_tag].iter().collect::<std::path::PathBuf>());
+    let path = std::fs::read_dir(memory_dir)
+        .expect("memory date dir should exist")
+        .map(|entry| entry.expect("record entry should be readable").path())
+        .find(|path| {
+            path.file_stem()
+                .and_then(|stem| stem.to_str())
+                .is_some_and(|stem| stem == stored.id.as_str())
+        })
+        .expect("record file should exist");
     let rendered = fs::read_to_string(path)
         .await
         .expect("record should be readable");
@@ -54,30 +67,4 @@ async fn files_backend_drills_down_by_node_id() {
             .expect("get_node should succeed"),
         Some(stored)
     );
-}
-
-struct TempDir {
-    path: std::path::PathBuf,
-}
-
-impl TempDir {
-    fn new(name: &str) -> Self {
-        let path = std::env::temp_dir().join(format!(
-            "brunnr-{name}-{}-{}",
-            std::process::id(),
-            chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()
-        ));
-        std::fs::create_dir_all(&path).expect("temp dir should be created");
-        Self { path }
-    }
-
-    fn path(&self) -> &std::path::Path {
-        &self.path
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.path);
-    }
 }

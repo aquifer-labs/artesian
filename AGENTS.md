@@ -19,7 +19,7 @@ All code, documentation, commit messages, plans, and handoff notes in this repos
 ## Rust
 
 - Use stable Rust pinned by CI.
-- Run `cargo fmt --all --check`, `cargo test --workspace`, and `cargo build --workspace` before marking work complete.
+- Run `just ci` before marking work complete. If `just` is unavailable, run the equivalent cargo commands in `docs/development.md`.
 - Prefer small modules and explicit public exports.
 - Newly added traits must document their contract.
 - Write tests for every implemented behavior.

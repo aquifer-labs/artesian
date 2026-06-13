@@ -4,8 +4,10 @@ use std::sync::{Arc, Mutex};
 
 use futures_util::{future::BoxFuture, FutureExt};
 
-use super::*;
-use crate::{MemoryId, MemoryTier, SearchSource};
+use mimisbrunnr::{
+    MemoryBackend, MemoryId, MemoryQuery, MemoryRecord, MemoryResult, MemoryTier, RrfOptions,
+    SearchHit, SearchSource, StoreMemory,
+};
 
 #[derive(Debug, Default)]
 struct MockMemoryBackend {

@@ -2,7 +2,10 @@
 
 use futures_util::{future::BoxFuture, stream, FutureExt, StreamExt};
 
-use super::*;
+use brunnr_core::{
+    Agent, AgentCapabilities, AgentEvent, AgentEventStream, AgentMessage, AgentResponse,
+    AgentResult, AgentSession, Role, SpawnRequest,
+};
 
 #[derive(Debug)]
 struct MockAgent;

@@ -234,6 +234,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "brunnr-core",
+ "brunnr-test-support",
  "clap",
  "mimisbrunnr",
  "serde",
@@ -259,6 +260,7 @@ name = "brunnr-mcp"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "brunnr-test-support",
  "clap",
  "mimisbrunnr",
  "rmcp",
@@ -267,6 +269,10 @@ dependencies = [
  "tokio",
  "tracing-subscriber",
 ]
+
+[[package]]
+name = "brunnr-test-support"
+version = "0.1.0"
 
 [[package]]
 name = "bumpalo"
@@ -1412,6 +1418,7 @@ checksum = "6877bb514081ee2a7ff5ef9de3281f14a4dd4bceac4c09388074a6b5df8a139a"
 name = "mimisbrunnr"
 version = "0.1.0"
 dependencies = [
+ "brunnr-test-support",
  "chrono",
  "fastembed",
  "futures-util",

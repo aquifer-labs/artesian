@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{path::Path, path::PathBuf, process::Command};
+use std::process::Command;
+
+use brunnr_test_support::TempDir;
 
 #[test]
 fn cli_memory_mode_round_trip_and_spawn_alias_work() {
@@ -52,33 +54,4 @@ fn stdout(output: &std::process::Output) -> String {
 
 fn stderr(output: &std::process::Output) -> String {
     String::from_utf8_lossy(&output.stderr).into_owned()
-}
-
-struct TempDir {
-    path: PathBuf,
-}
-
-impl TempDir {
-    fn new(name: &str) -> Self {
-        let path = std::env::temp_dir().join(format!(
-            "brunnr-{name}-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .expect("system time should be after unix epoch")
-                .as_nanos()
-        ));
-        std::fs::create_dir_all(&path).expect("temp dir should be created");
-        Self { path }
-    }
-
-    fn path(&self) -> &Path {
-        &self.path
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.path);
-    }
 }

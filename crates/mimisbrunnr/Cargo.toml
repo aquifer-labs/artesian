@@ -22,3 +22,9 @@ toml.workspace = true
 [features]
 default = []
 qdrant = ["dep:fastembed", "dep:qdrant-client"]
+
+[dev-dependencies]
+brunnr-test-support.workspace = true
+
+[lints]
+workspace = true

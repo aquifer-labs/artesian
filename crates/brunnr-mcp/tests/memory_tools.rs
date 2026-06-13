@@ -2,7 +2,8 @@
 
 use rmcp::handler::server::wrapper::Parameters;
 
-use super::*;
+use brunnr_mcp::{FindRequest, MemoryServer, StoreRequest};
+use brunnr_test_support::TempDir;
 
 #[tokio::test]
 async fn memory_tools_store_and_find_with_files_backend() {
@@ -33,33 +34,4 @@ async fn memory_tools_store_and_find_with_files_backend() {
     assert_eq!(found.hits.len(), 1);
     assert_eq!(found.hits[0].node_id, "node:mcp");
     assert_eq!(found.hits[0].content, "MCP memory tool round trip");
-}
-
-struct TempDir {
-    path: std::path::PathBuf,
-}
-
-impl TempDir {
-    fn new(name: &str) -> Self {
-        let path = std::env::temp_dir().join(format!(
-            "brunnr-{name}-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .expect("system time should be after unix epoch")
-                .as_nanos()
-        ));
-        std::fs::create_dir_all(&path).expect("temp dir should be created");
-        Self { path }
-    }
-
-    fn path(&self) -> &std::path::Path {
-        &self.path
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.path);
-    }
 }

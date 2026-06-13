@@ -8,6 +8,7 @@
 .idea/
 .vscode/
 *.log
+/junit.xml
 *.tmp
 *.swp
 *.swo

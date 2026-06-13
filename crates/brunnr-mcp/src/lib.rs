@@ -133,7 +133,3 @@ pub async fn run_stdio(root: impl Into<PathBuf>) -> anyhow::Result<()> {
     server.serve(stdio()).await?.waiting().await?;
     Ok(())
 }
-
-#[cfg(test)]
-#[path = "lib_tests.rs"]
-mod tests;
