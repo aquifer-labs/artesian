@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use std::{
+    cmp::Reverse,
     collections::BTreeMap,
     path::{Path, PathBuf},
 };
@@ -46,7 +47,7 @@ impl FilesBackend {
 
         let mut records = Vec::new();
         collect_records(&memory_dir, &mut records)?;
-        records.sort_by(|left, right| right.created_at.cmp(&left.created_at));
+        records.sort_by_key(|record| Reverse(record.created_at));
         Ok(records)
     }
 }
