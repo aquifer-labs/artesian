@@ -1,0 +1,38 @@
+# SPDX-License-Identifier: Apache-2.0
+
+[workspace]
+resolver = "2"
+members = [
+    "crates/brunnr-core",
+    "crates/mimisbrunnr",
+    "crates/hvergelmir",
+    "crates/bifrost",
+    "crates/brunnr-mcp",
+    "crates/brunnr-cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+license = "Apache-2.0"
+readme = "README.md"
+
+[workspace.dependencies]
+anyhow = "1.0"
+chrono = { version = "0.4", features = ["clock", "serde"] }
+clap = { version = "=4.5.23", features = ["derive", "env"] }
+fastembed = { version = "5.16.1", default-features = false, features = ["hf-hub-rustls-tls", "ort-download-binaries-rustls-tls"] }
+futures-core = "0.3"
+futures-util = "0.3"
+qdrant-client = { version = "1.18.0", default-features = false, features = ["serde"] }
+rmcp = "1.7.0"
+schemars = "1.1"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.10"
+thiserror = "2.0"
+tokio = { version = "1.48", features = ["fs", "io-std", "macros", "process", "rt-multi-thread", "signal"] }
+toml = "0.8"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

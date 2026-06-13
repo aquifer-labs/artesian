@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: Apache-2.0
+
+[package]
+name = "brunnr-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+brunnr-core = { path = "../brunnr-core" }
+clap.workspace = true
+mimisbrunnr = { path = "../mimisbrunnr" }
+serde.workspace = true
+tokio.workspace = true
+toml.workspace = true
+
+[[bin]]
+name = "brunnr"
+path = "src/main.rs"

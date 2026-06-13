@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: Apache-2.0
+
+/target/
+/.brunnr/
+/brunnr.toml
+**/*.rs.bk
+.DS_Store
+.idea/
+.vscode/
+*.log
+*.tmp
+*.swp
+*.swo
+*.env
+*.env.*
+!.env.example
