@@ -83,7 +83,7 @@ The public memory benchmark is in [benchmarks/README.md](benchmarks/README.md) a
 
 Brunnr stands on the shoulders of prior work and public ideas. Brunnr reuses ideas and APIs where appropriate, not third-party source code.
 
-- **Andrej Karpathy — LLM Knowledge Bases** — https://x.com/karpathy/status/2039805659525644595 (the md "LLM wiki" memory idea; informs the Files backend + capture discipline).
+- **Andrej Karpathy — the "LLM wiki" pattern** — https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f (announced at https://x.com/karpathy/status/2039805659525644595) — the LLM-maintained markdown knowledge base (`index.md` catalog + `log.md` + entity/concept pages; ingest/query/lint) that directly informs Brunnr's Files/OKF backend and its consolidation roadmap.
 - **Qdrant** — https://github.com/qdrant/qdrant (vector store; `QdrantBackend` via `QdrantVectorStore`).
 - **TencentDB Agent Memory** — https://github.com/TencentCloud/TencentDB-Agent-Memory (L0–L3 tiering, hybrid BM25+vector RRF, node_id drill-down, sqlite-vec local-first; `SqliteVecBackend` + `TencentDBBackend`).
 - **OpenAI — Codex Memories & Agent Loop** — https://developers.openai.com/codex/memories · https://openai.com/index/unrolling-the-codex-agent-loop/ (memory model + the agent loop).

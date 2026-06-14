@@ -33,3 +33,27 @@ TencentDB). Brunnr is for teams/operators who want a **non-intrusive, Rust, MCP-
 spans the whole agent loop** — memory you can reuse on its own *and* optional orchestration that
 shares the same store — across multiple agents, projects, and users, surviving its own upgrades.
 Use as little (just `memory` mode) or as much (`full`) as you want.
+
+## Adjacent / related projects
+
+- **[open-engram](https://github.com/Open-Nucleus/open-engram)** — a brain-inspired memory
+  *library* (TypeScript): sensory → working → episodic → semantic stores, a multi-stage
+  consolidation pipeline, and RFR-scored demotion. Memory-only, framework-SDK (Mastra/LangChain.js),
+  no MCP, no orchestration. Strongly validates the **consolidation** direction Brunnr is taking;
+  Brunnr differs by being Rust + MCP-first + pluggable backends + orchestration, not a single-runtime
+  library.
+- **[openrelay](https://github.com/romgX/openrelay)** — a model **quota aggregator / router** with
+  a web dashboard that bridges credentials and routes requests from any tool to any provider. This
+  is a **different layer** (model access), not memory or orchestration; it is *complementary* —
+  Brunnr could sit above an openrelay-style router. Its clean "connect any agent" UX is a good
+  presentation model to learn from.
+
+## Converging evidence shaping the roadmap
+
+Karpathy's [LLM-wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f),
+TencentDB's L0–L3, and open-engram's episodic→semantic consolidation all point the same way:
+**curated, consolidated memory (atomic facts + entity/concept/scenario pages + an `index.md`
+read-first catalog) beats flat record dumps** — for both retrieval precision and token cost. Below
+~50–100k tokens a curated wiki/index-first context can even beat vector RAG; vector retrieval wins
+at larger scale. Brunnr's plan is to do **both**: index-first + targeted `memory.find`, with
+consolidation populating the tiers — see the memory roadmap in [memory.md](memory.md).

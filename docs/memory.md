@@ -196,7 +196,10 @@ filters. Engine specifics (metric names, id types, index knobs) never leak above
 
 ### 4.1 On-disk format: Open Knowledge Format (OKF)
 
-The `FilesBackend` stores memory as a directory of markdown files — the "LLM-wiki" pattern. Brunnr
+The `FilesBackend` stores memory as a directory of markdown files — Karpathy's
+["LLM wiki" pattern](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f)
+(`index.md` catalog read first, `log.md` history, interlinked entity/concept pages, maintained by
+ingest/query/lint). Brunnr
 aligns this on-disk format with the **Open Knowledge Format (OKF)** (Google Cloud, Apache-2.0): a
 vendor-neutral spec that is *just markdown, just files, just YAML frontmatter*, git-friendly and
 readable with `cat`, with **no vector-DB dependency**. Adopting OKF makes Brunnr's file memory
