@@ -33,15 +33,3 @@ jobs:
         run: cargo build --workspace --all-features
       - name: Build default features
         run: cargo build --workspace
-      - name: Render hero diagrams
-        run: |
-          for source in docs/diagrams/*.mmd; do
-            output="${source%.mmd}.png"
-            npx -y @mermaid-js/mermaid-cli \
-              -i "$source" \
-              -o "$output" \
-              -c docs/diagrams/mermaid-config.json \
-              -b transparent \
-              -s 2
-          done
-          git diff --exit-code docs/diagrams/*.png

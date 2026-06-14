@@ -34,8 +34,10 @@ npx -y @mermaid-js/mermaid-cli \
 ```
 
 Or the repo target (added by tooling): `just diagrams` renders every `docs/diagrams/*.mmd` to a
-matching `*.png` with the shared config at scale 2. CI may verify the PNGs are up to date
-(re-render and `git diff --exit-code`), so a stale PNG fails the build.
+matching `*.png` with the shared config at scale 2. Re-render and commit PNGs **locally** after
+changing a `.mmd` (run `just diagrams`). CI does **not** re-render or byte-diff PNGs — cross-OS
+renders are not byte-reproducible, so that would fail spuriously; the `.mmd` source is
+authoritative and the committed PNG is a convenience artifact.
 
 ## Embedding
 
