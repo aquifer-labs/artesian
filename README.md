@@ -6,6 +6,11 @@ Brunnr is a Rust workspace for multi-agent context orchestration. It starts with
 
 [![System map](docs/diagrams/system-map.png)](docs/diagrams/system-map.mmd)
 
+**New here?** [docs/onboarding.md](docs/onboarding.md) has a human Quickstart **and** an idempotent
+AI-agent bring-up recipe (any agent — Codex, Claude Code, Gemini CLI, opencode — can deploy Brunnr
+per your config and connect a project, non-destructively). Why Brunnr vs other memory tools:
+[docs/positioning.md](docs/positioning.md).
+
 ## Status
 
 This repository is in bootstrap. The working path is `memory` mode with local Files or SqliteVec backends, optional Qdrant integration, and an MCP server exposing `memory.find` and `memory.store`.

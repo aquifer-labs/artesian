@@ -4,6 +4,17 @@
 
 These instructions apply to the entire repository.
 
+## Onboarding (humans and agents)
+
+To bring Brunnr up — deploy it and connect a project per the operator's requested config —
+follow [docs/onboarding.md](docs/onboarding.md). It has a human Quickstart and a deterministic,
+idempotent, non-destructive **AI-agent recipe** (collect mode/backend/qdrant/project, run
+`brunnr init`, backfill, verify, report) with hard guardrails: never delete or overwrite existing
+memory or unrelated config, keep secrets out of git, never switch an existing collection's
+embedding model in place (use `migrate`), and never push or take outward-facing actions without
+explicit operator approval. New here? read [docs/positioning.md](docs/positioning.md) and
+[docs/README.md](docs/README.md) first.
+
 ## Language
 
 All code, documentation, commit messages, plans, and handoff notes in this repository must be written in English.

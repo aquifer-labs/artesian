@@ -10,6 +10,8 @@ Start here, then read the topic you need:
 
 | Doc | What it covers |
 |---|---|
+| [onboarding.md](onboarding.md) | Bring Brunnr up: human Quickstart **and** an AI-agent recipe |
+| [positioning.md](positioning.md) | Why Brunnr; how it relates to TencentDB Agent Memory |
 | [architecture.md](architecture.md) | Top-level system architecture and crates |
 | [modes.md](modes.md) | Operating modes: `memory`, `orchestrate`, `full`, `advanced` |
 | [memory.md](memory.md) | Mímisbrunnr memory: short/long-term, retrieval math, tiers |
