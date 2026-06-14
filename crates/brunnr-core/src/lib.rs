@@ -14,7 +14,7 @@ pub use agent::{
 };
 pub use config::{
     AgentBinding, BrunnrConfig, CoordinationConfig, MemoryBackendKind, MemoryConfig, Mode,
-    ResourceQuotaConfig,
+    ResourceQuotaConfig, VerifierCommandConfig,
 };
 pub use coordination::{Barrier, ResourceQuota, TokenAccounting};
 pub use event::{EventEnvelope, EventSender, EventType};

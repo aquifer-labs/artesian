@@ -32,12 +32,13 @@ fn cli_memory_mode_round_trip_and_spawn_alias_work() {
     );
 
     let spawn = Command::new(binary)
-        .args(["spawn", "thor", "codex"])
+        .args(["spawn", "thor", "echo", "--arg", "brunnr-spawn"])
         .current_dir(tempdir.path())
         .output()
         .expect("spawn should run");
     assert!(spawn.status.success(), "{}", stderr(&spawn));
-    assert!(stdout(&spawn).contains("role=worker alias=thor agent=codex"));
+    assert!(stdout(&spawn).contains("role=worker alias=thor agent=echo"));
+    assert!(stdout(&spawn).contains("brunnr-spawn"));
 
     let store = Command::new(binary)
         .args([

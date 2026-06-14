@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: Apache-2.0
+
+[package]
+name = "brunnr-process-agent"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+brunnr-core = { path = "../brunnr-core" }
+futures-util.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+brunnr-test-support.workspace = true
+
+[lints]
+workspace = true

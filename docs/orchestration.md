@@ -10,7 +10,10 @@ agent workflow is unchanged. When enabled, Brunnr coordinates multiple agent inv
 **shared blackboard** (memory + task queue) rather than chatty direct messaging, which is the
 token-efficient MAS pattern.
 
-Status: **[planned]** — this is the design contract for the orchestrator phase.
+Status: **[implemented: core loop]** — Phase 2.5 ships the default blackboard loop: dispatch
+eligible task-DAG nodes, run isolated workers, store worker learnings, gate through verifiers and
+optional judge review, emit events/run-log token accounting, and transition to `done` only after
+the judge gate passes. Debate/router/Contract-Net/pipeline remain config-selectable seams.
 
 ## Roles
 
@@ -75,9 +78,9 @@ run log.
 **Coordination mechanisms** (the orchestrator is a centralized coordinator by default — simplest,
 one authority):
 
-- **Task allocation** — capability/role routing via the [Router](#router--agent-routing-and-tool-selection-token-saver)
-  by default; an optional **Contract-Net** mode (announce → workers bid → award) for capability
-  markets.
+- **Task allocation** — role bindings by default; optional capability routing via the
+  [Router](#router--agent-routing-and-tool-selection-token-saver); an optional **Contract-Net**
+  mode (announce → workers bid → award) for capability markets.
 - **Synchronization** — the task DAG encodes dependencies; a **barrier** (a synthesis task) waits
   for all parallel sub-tasks before proceeding; claim/complete are events.
 - **Resource management** — shared resources (model rate limits, API keys, DB connections) are
@@ -100,11 +103,20 @@ debuggable and the evaluator/judge has evidence to gate on.
 
 Brunnr supports the standard collaborative architectures; pick per project, compose freely:
 
-- **Hierarchical team** (default) — master decomposes → workers execute → master/judge synthesize.
+- **Hierarchical team** (default, core loop implemented) — task DAG → workers execute → judge gate
+  accepts/retries/blocks. Master decomposition remains a seam before dispatch.
 - **Debate / critique** — proposer + critic iterate to a quality bar (the judge loop generalized).
 - **Router / dispatcher** — a router classifies a task and routes it to the best **specialist
   agent** (mixture-of-experts). See below.
 - **Pipeline** — sequential stages, output→input.
+
+## Runtime entrypoints
+
+`brunnr run` / `brunnr orchestrate` runs the loop in the foreground. `brunnrd` runs the same loop as
+a daemon-style foreground process. Both are strictly gated to `orchestrate` or `full` mode; `memory`
+mode returns without orchestration side effects. `--dry-run` uses mock agents and still exercises
+task planning, dispatch, event emission, verifier gates, and memory writes without launching real
+agent CLIs.
 
 ## Router — agent routing and tool selection (token-saver)
 

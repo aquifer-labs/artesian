@@ -5,17 +5,18 @@ use std::{
     path::{Path, PathBuf},
     str::FromStr,
     sync::Arc,
+    time::Duration,
 };
 
 use anyhow::{bail, Context, Result};
 use brunnr_core::{
-    AgentBinding, BrunnrConfig, MemoryBackendKind, MemoryConfig, Mode, Role, SpawnRequest,
+    Agent, AgentBinding, BrunnrConfig, MemoryBackendKind, MemoryConfig, Mode, Role, SpawnRequest,
 };
+use brunnr_process_agent::{ProcessAgent, ProcessAgentConfig};
 use clap::{Parser, Subcommand, ValueEnum};
 use mimisbrunnr::{
-    backfill_directory, recover_after_compaction, FilesBackend, MemoryBackend, MemoryQuery,
-    MemoryScope, MemoryTier, MuninnAnchorStore, SessionAnchor, SqliteVecVectorStore,
-    SqliteVecVectorStoreConfig, StoreMemory, VectorMemoryBackend, VectorMemoryConfig,
+    backfill_directory, recover_after_compaction, MemoryBackend, MemoryQuery, MemoryScope,
+    MemoryTier, MuninnAnchorStore, SessionAnchor, StoreMemory,
 };
 use serde_json::{json, Value};
 use thingr::{
@@ -24,13 +25,13 @@ use thingr::{
 };
 use toml_edit::{value, Array, DocumentMut, Item, Table};
 
-#[cfg(feature = "qdrant")]
-use mimisbrunnr::{QdrantVectorStore, QdrantVectorStoreConfig};
-
 const DEFAULT_CONFIG: &str = "brunnr.toml";
 const MCP_SERVER_NAME: &str = "brunnr-memory";
 const MCP_TOOL_HINT: &str =
     "ALWAYS search the project memory before non-trivial work; store durable, reusable learnings.";
+
+mod runtime;
+use runtime::{build_orchestrator, load_config, open_memory_backend};
 
 #[derive(Debug, Parser)]
 #[command(name = "brunnr", about = "Multi-agent context orchestration")]
@@ -60,6 +61,30 @@ enum Command {
     Spawn {
         role: String,
         agent: String,
+        #[arg(long = "arg")]
+        args: Vec<String>,
+        #[arg(long, default_value_t = 30)]
+        timeout_seconds: u64,
+    },
+    Run {
+        #[arg(long, default_value = DEFAULT_CONFIG)]
+        config: PathBuf,
+        #[arg(long)]
+        root: Option<PathBuf>,
+        #[arg(long)]
+        dry_run: bool,
+        #[arg(long)]
+        once: bool,
+    },
+    Orchestrate {
+        #[arg(long, default_value = DEFAULT_CONFIG)]
+        config: PathBuf,
+        #[arg(long)]
+        root: Option<PathBuf>,
+        #[arg(long)]
+        dry_run: bool,
+        #[arg(long)]
+        once: bool,
     },
     Memory {
         #[command(subcommand)]
@@ -290,7 +315,24 @@ async fn main() -> Result<()> {
             non_interactive,
             register_mcp,
         ),
-        Command::Spawn { role, agent } => spawn(&role, &agent),
+        Command::Spawn {
+            role,
+            agent,
+            args,
+            timeout_seconds,
+        } => spawn(&role, &agent, args, timeout_seconds).await,
+        Command::Run {
+            config,
+            root,
+            dry_run,
+            once,
+        }
+        | Command::Orchestrate {
+            config,
+            root,
+            dry_run,
+            once,
+        } => run_orchestrator(config, root, dry_run, once).await,
         Command::Memory { command } => memory(command).await,
         Command::Task { command } => task(command).await,
         Command::Backfill {
@@ -419,23 +461,75 @@ fn init(
     Ok(())
 }
 
-fn spawn(role: &str, agent: &str) -> Result<()> {
+async fn spawn(role: &str, agent: &str, args: Vec<String>, timeout_seconds: u64) -> Result<()> {
     let role = Role::from_str(role)?;
+    let cwd = env::current_dir()?;
     let request = SpawnRequest {
         role,
         agent: agent.to_string(),
         model: None,
-        working_dir: env::current_dir()
-            .ok()
-            .map(|path| path.display().to_string()),
+        working_dir: Some(cwd.display().to_string()),
     };
+    let process = ProcessAgent::new(
+        ProcessAgentConfig::new(agent)
+            .with_args(args)
+            .with_working_dir(cwd)
+            .with_timeout(Duration::from_secs(timeout_seconds)),
+    );
+    let session = process.spawn(request.clone()).await?;
+    let response = process
+        .send(
+            &session,
+            brunnr_core::AgentMessage {
+                content: String::new(),
+            },
+        )
+        .await?;
     println!(
-        "spawn request accepted: role={} alias={} agent={} cwd={}",
+        "spawn completed: role={} alias={} agent={} cwd={}",
         request.role.canonical_alias(),
         request.role.norse_alias(),
         request.agent,
         request.working_dir.as_deref().unwrap_or(".")
     );
+    if !response.content.is_empty() {
+        print!("{}", response.content);
+    }
+    Ok(())
+}
+
+async fn run_orchestrator(
+    config_path: PathBuf,
+    root: Option<PathBuf>,
+    dry_run: bool,
+    once: bool,
+) -> Result<()> {
+    let config = load_config(&config_path)?;
+    if !matches!(config.mode, Mode::Orchestrate | Mode::Full) {
+        bail!(
+            "orchestration is disabled for mode {:?}; use orchestrate or full",
+            config.mode
+        );
+    }
+    let root = root.unwrap_or_else(|| PathBuf::from(&config.memory.root));
+    let repo_root = env::current_dir()?;
+    let mut orchestrator = build_orchestrator(config, root, repo_root, dry_run)?;
+    if once {
+        let report = orchestrator.run_once().await?;
+        println!(
+            "orchestrator tick: dispatched={} completed={} blocked={} idle={}",
+            report.dispatched, report.completed, report.blocked, report.idle
+        );
+    } else {
+        let report = orchestrator.run_until_idle(100).await?;
+        println!(
+            "orchestrator stopped: ticks={} completed={} blocked={} events={}",
+            report.ticks,
+            report.completed,
+            report.blocked,
+            orchestrator.run_log().events.len()
+        );
+    }
     Ok(())
 }
 
@@ -603,59 +697,6 @@ fn memory_config_for_command(
     Ok(config)
 }
 
-fn open_memory_backend(config: &MemoryConfig) -> Result<Arc<dyn MemoryBackend>> {
-    match config.backend {
-        MemoryBackendKind::Files => Ok(Arc::new(FilesBackend::new(&config.root))),
-        MemoryBackendKind::SqliteVec => {
-            let store = SqliteVecVectorStore::open(SqliteVecVectorStoreConfig::new(sqlite_path(
-                &config.root,
-            )))?;
-            Ok(Arc::new(VectorMemoryBackend::new(
-                store,
-                VectorMemoryConfig::new(&config.collection),
-            )?))
-        }
-        MemoryBackendKind::Qdrant => open_qdrant_backend(config),
-        MemoryBackendKind::TencentDb => bail!("TencentDB backend is not available yet"),
-    }
-}
-
-#[cfg(feature = "qdrant")]
-fn open_qdrant_backend(config: &MemoryConfig) -> Result<Arc<dyn MemoryBackend>> {
-    let url = config
-        .qdrant_url
-        .clone()
-        .or_else(|| env::var("QDRANT_URL").ok())
-        .context("Qdrant backend requires qdrant_url in config or QDRANT_URL")?;
-    let mut vector_config = QdrantVectorStoreConfig::new(url);
-    if let Some(env_name) = &config.qdrant_api_key_env {
-        vector_config.api_key = env::var(env_name).ok();
-    }
-    let store = QdrantVectorStore::connect(vector_config)?;
-    Ok(Arc::new(VectorMemoryBackend::new(
-        store,
-        VectorMemoryConfig::new(&config.collection),
-    )?))
-}
-
-#[cfg(not(feature = "qdrant"))]
-fn open_qdrant_backend(_config: &MemoryConfig) -> Result<Arc<dyn MemoryBackend>> {
-    bail!("Qdrant backend requires building brunnr-cli with the qdrant feature")
-}
-
-fn sqlite_path(root: &str) -> PathBuf {
-    let path = PathBuf::from(root);
-    if path
-        .extension()
-        .and_then(|extension| extension.to_str())
-        .is_some_and(|extension| matches!(extension, "db" | "sqlite" | "sqlite3"))
-    {
-        path
-    } else {
-        path.join("memory.sqlite3")
-    }
-}
-
 fn write_mcp_registrations(config_path: &Path) -> Result<()> {
     let config_path = config_path
         .canonicalize()
@@ -805,8 +846,11 @@ fn detect_agents() -> Vec<AgentBinding> {
     .filter_map(|(role, agent)| {
         agent.map(|agent| AgentBinding {
             role,
+            command: Some(agent.clone()),
             agent,
             model: None,
+            args: Vec::new(),
+            timeout_seconds: Some(120),
         })
     })
     .collect()

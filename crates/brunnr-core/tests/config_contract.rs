@@ -10,6 +10,9 @@ fn config_round_trips_through_toml() {
             role: Role::Master,
             agent: "claude-code".to_string(),
             model: Some("default".to_string()),
+            command: Some("claude".to_string()),
+            args: vec!["--print".to_string()],
+            timeout_seconds: Some(120),
         }],
     );
 

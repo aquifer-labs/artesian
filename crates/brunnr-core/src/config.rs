@@ -39,6 +39,12 @@ pub struct AgentBinding {
     pub role: Role,
     pub agent: String,
     pub model: Option<String>,
+    #[serde(default)]
+    pub command: Option<String>,
+    #[serde(default)]
+    pub args: Vec<String>,
+    #[serde(default)]
+    pub timeout_seconds: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -47,6 +53,16 @@ pub struct CoordinationConfig {
     pub router_enabled: bool,
     #[serde(default)]
     pub quotas: Vec<ResourceQuotaConfig>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub concurrency_limit: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_retries: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retry_backoff_millis: Option<u64>,
+    #[serde(default)]
+    pub verifiers: Vec<VerifierCommandConfig>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub topology: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -59,6 +75,14 @@ pub struct ResourceQuotaConfig {
     pub max_prompt_tokens: Option<u64>,
     #[serde(default)]
     pub max_requests_per_minute: Option<u32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct VerifierCommandConfig {
+    pub name: String,
+    pub command: String,
+    #[serde(default)]
+    pub args: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
