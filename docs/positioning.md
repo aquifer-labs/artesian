@@ -47,6 +47,14 @@ Use as little (just `memory` mode) or as much (`full`) as you want.
   is a **different layer** (model access), not memory or orchestration; it is *complementary* —
   Brunnr could sit above an openrelay-style router. Its clean "connect any agent" UX is a good
   presentation model to learn from.
+- **[h5i](https://github.com/h5i-dev/h5i)** — an **AI-aware Git sidecar** (Rust): per-commit agent
+  context/reasoning in dedicated `refs/h5i/*`, **Agent Radio** typed inter-agent messaging with
+  union-merge, output **token-reduction** (collapse tool output, keep recoverable raw), and
+  **progressive sandbox isolation** (workspace → process → supervised → container). A **different
+  layer** from Brunnr — provenance, comms, and confinement over Git, not semantic retrieval — and
+  **complementary**: they could compose. We borrow ideas, with credit: its typed agent-handoff
+  protocol informs Brunnr's orchestration handoffs, its isolation tiers inform `hvergelmir`, and its
+  "collapse but never discard, recover by id" mirrors Brunnr's L0–L3 + `node_id` drill-down.
 
 ## Converging evidence shaping the roadmap
 
