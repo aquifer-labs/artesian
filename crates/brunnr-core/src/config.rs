@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::Role;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum Mode {
     Memory,
@@ -13,7 +14,7 @@ pub enum Mode {
     Advanced,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum MemoryBackendKind {
     Files,
@@ -22,7 +23,7 @@ pub enum MemoryBackendKind {
     TencentDb,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct MemoryConfig {
     pub backend: MemoryBackendKind,
     pub root: String,
@@ -46,7 +47,7 @@ pub struct MemoryConfig {
     pub llm_consolidation_enabled: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct AgentBinding {
     pub role: Role,
     pub agent: String,
@@ -59,7 +60,7 @@ pub struct AgentBinding {
     pub timeout_seconds: Option<u64>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Default)]
 pub struct CoordinationConfig {
     #[serde(default)]
     pub router_enabled: bool,
@@ -85,7 +86,7 @@ pub struct CoordinationConfig {
     pub spawn_shutdown_grace_millis: Option<u64>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Default)]
 pub struct ResourceQuotaConfig {
     #[serde(default)]
     pub agent_id: Option<String>,
@@ -97,7 +98,7 @@ pub struct ResourceQuotaConfig {
     pub max_requests_per_minute: Option<u32>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Default)]
 pub struct VerifierCommandConfig {
     pub name: String,
     pub command: String,
@@ -105,7 +106,7 @@ pub struct VerifierCommandConfig {
     pub args: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct BrunnrConfig {
     pub mode: Mode,
     pub memory: MemoryConfig,

@@ -13,7 +13,10 @@ use anyhow::{bail, Context, Result};
 use brunnr_core::{
     Agent, AgentBinding, BrunnrConfig, MemoryBackendKind, MemoryConfig, Mode, Role, SpawnRequest,
 };
-use brunnr_process_agent::{ProcessAgent, ProcessAgentConfig, ProcessSupervisor};
+use brunnr_process_agent::{
+    fallback_agent_catalog, refresh_agent_catalog, ProcessAgent, ProcessAgentConfig,
+    ProcessSupervisor,
+};
 use clap::{Parser, Subcommand, ValueEnum};
 use mimisbrunnr::{
     default_migration_collection, export_okf_bundle, recover_after_compaction, verify_okf_bundle,
@@ -85,8 +88,14 @@ enum Command {
         agent: String,
         #[arg(long = "arg")]
         args: Vec<String>,
+        #[arg(long)]
+        model: Option<String>,
         #[arg(long, default_value_t = 30)]
         timeout_seconds: u64,
+    },
+    Agents {
+        #[command(subcommand)]
+        command: AgentsCommand,
     },
     Run {
         #[arg(long, default_value = DEFAULT_CONFIG)]
@@ -182,6 +191,16 @@ enum Command {
 enum OkfCommand {
     Verify { root: PathBuf },
     Export { source: PathBuf, target: PathBuf },
+}
+
+#[derive(Debug, Subcommand)]
+enum AgentsCommand {
+    Refresh {
+        #[arg(long, default_value = DEFAULT_CONFIG)]
+        config: PathBuf,
+        #[arg(long)]
+        cache: Option<PathBuf>,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -422,8 +441,10 @@ async fn main() -> Result<()> {
             role,
             agent,
             args,
+            model,
             timeout_seconds,
-        } => spawn(&role, &agent, args, timeout_seconds).await,
+        } => spawn(&role, &agent, args, model, timeout_seconds).await,
+        Command::Agents { command } => agents(command).await,
         Command::Run {
             config,
             root,
@@ -582,7 +603,8 @@ async fn init(options: InitOptions, _non_interactive: bool) -> Result<()> {
     if options.backend == BackendArg::Qdrant {
         preflight_qdrant_options(&options).await?;
     }
-    let agents = detect_agents();
+    let mut agents = detect_agents();
+    prefill_models_from_catalog(&mut agents);
     let config = BrunnrConfig {
         mode: brunnr_core::Mode::Memory,
         memory: MemoryConfig {
@@ -608,12 +630,40 @@ async fn init(options: InitOptions, _non_interactive: bool) -> Result<()> {
     if options.register_mcp {
         write_mcp_registrations(&env::current_dir()?.join(config_path))?;
     }
+    write_master_role_skill(&options.memory_root)?;
     println!(
         "initialized Brunnr memory mode at {} collection={} project={}",
         options.memory_root.display(),
         config.memory.collection,
         options.project.as_deref().unwrap_or("default")
     );
+    Ok(())
+}
+
+fn prefill_models_from_catalog(agents: &mut [AgentBinding]) {
+    let catalog = fallback_agent_catalog(agents);
+    for binding in agents {
+        if binding.model.is_some() {
+            continue;
+        }
+        binding.model = catalog
+            .agents
+            .iter()
+            .find(|entry| entry.agent == binding.agent)
+            .and_then(|entry| entry.models.iter().find(|model| model.reachable))
+            .map(|model| model.id.clone());
+    }
+}
+
+fn write_master_role_skill(memory_root: &Path) -> Result<()> {
+    let path = memory_root.join("master-role.md");
+    if path.exists() {
+        return Ok(());
+    }
+    fs::write(
+        path,
+        "<!-- SPDX-License-Identifier: Apache-2.0 -->\n\n# Brunnr Master Role Skill\n\nWhen Brunnr is running in `orchestrate` or `full` mode, inspect `agents.list` before delegation, use `memory.context` for compact project recall, delegate bounded subtasks with `orchestrate.delegate` to the configured worker role, and hand results to the judge/master path with `orchestrate.handoff` before accepting durable outcomes.\n",
+    )?;
     Ok(())
 }
 
@@ -646,7 +696,26 @@ fn sanitize_project_name(project: &str) -> String {
         .to_string()
 }
 
-async fn spawn(role: &str, agent: &str, args: Vec<String>, timeout_seconds: u64) -> Result<()> {
+async fn agents(command: AgentsCommand) -> Result<()> {
+    match command {
+        AgentsCommand::Refresh { config, cache } => {
+            let config = load_config(&config)?;
+            let cache =
+                cache.unwrap_or_else(|| PathBuf::from(&config.memory.root).join("agents.json"));
+            let catalog = refresh_agent_catalog(&config.agents, &cache).await?;
+            println!("{}", serde_json::to_string_pretty(&catalog)?);
+        }
+    }
+    Ok(())
+}
+
+async fn spawn(
+    role: &str,
+    agent: &str,
+    args: Vec<String>,
+    model: Option<String>,
+    timeout_seconds: u64,
+) -> Result<()> {
     let role = Role::from_str(role)?;
     let cwd = env::current_dir()?;
     let supervisor = ProcessSupervisor::default_for_current_dir();
@@ -660,11 +729,12 @@ async fn spawn(role: &str, agent: &str, args: Vec<String>, timeout_seconds: u64)
     let request = SpawnRequest {
         role,
         agent: agent.to_string(),
-        model: None,
+        model,
         working_dir: Some(cwd.display().to_string()),
     };
     let process = ProcessAgent::new(
         ProcessAgentConfig::new(agent)
+            .with_agent_id(agent)
             .with_args(args)
             .with_working_dir(cwd)
             .with_registry_dir(supervisor.registry_dir().to_path_buf())

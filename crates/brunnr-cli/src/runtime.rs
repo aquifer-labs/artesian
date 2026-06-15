@@ -168,6 +168,8 @@ fn process_agent_from_binding_value(
         .clone()
         .unwrap_or_else(|| binding.agent.clone());
     let process_config = ProcessAgentConfig::new(command)
+        .with_agent_id(binding.agent.clone())
+        .with_default_model(binding.model.clone())
         .with_args(binding.args.clone())
         .with_working_dir(repo_root)
         .with_timeout(Duration::from_secs(binding.timeout_seconds.unwrap_or(120)))

@@ -1,8 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 
-use std::sync::Arc;
+use std::{
+    fs,
+    process::{Command, Stdio},
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
-use brunnr_mcp::{AnchorSetRequest, FindRequest, MemoryServer, StoreRequest, ToolsFindRequest};
+use brunnr_core::{AgentBinding, AgentCatalog, AgentCatalogEntry, AgentModel, Mode, Role};
+use brunnr_mcp::{
+    AnchorSetRequest, BindRequest, DelegateRequest, FindRequest, MemoryServer, StoreRequest,
+    ToolsFindRequest,
+};
 use brunnr_test_support::TempDir;
 use mimisbrunnr::{
     MemoryResult, SqliteVecVectorStore, TextEmbedder, VectorMemoryBackend, VectorMemoryConfig,
@@ -110,6 +119,144 @@ async fn tools_find_is_opt_in_and_reports_token_delta() {
 }
 
 #[tokio::test]
+async fn orchestration_tools_are_mode_gated_and_agents_list_reflects_catalog() {
+    let tempdir = TempDir::new("mcp-orchestration-tools");
+    let memory = MemoryServer::new(tempdir.path());
+    let memory_tools = memory.visible_tool_names();
+    assert!(memory_tools.contains(&"memory.find".to_string()));
+    assert!(!memory_tools.contains(&"agents.list".to_string()));
+    assert!(!memory_tools.contains(&"orchestrate.delegate".to_string()));
+
+    let catalog = AgentCatalog {
+        generated_at: Some("test".to_string()),
+        agents: vec![AgentCatalogEntry {
+            agent: "codex".to_string(),
+            command: Some("sh".to_string()),
+            reachable: true,
+            models: vec![AgentModel {
+                id: "gpt-5.5".to_string(),
+                reachable: true,
+                source: "test".to_string(),
+            }],
+        }],
+    };
+    let orchestrate = MemoryServer::new(tempdir.path())
+        .with_mode(Mode::Orchestrate)
+        .with_catalog(catalog.clone());
+    let tools = orchestrate.visible_tool_names();
+    assert!(tools.contains(&"agents.list".to_string()));
+    assert!(tools.contains(&"orchestrate.delegate".to_string()));
+    let response = orchestrate
+        .agents_list()
+        .await
+        .expect("agents.list should run")
+        .0;
+    assert_eq!(response.catalog, catalog);
+}
+
+#[tokio::test]
+async fn orchestrate_bind_rejects_unavailable_model() {
+    let tempdir = TempDir::new("mcp-bind-unavailable");
+    let server = MemoryServer::new(tempdir.path()).with_mode(Mode::Orchestrate);
+
+    let result = server
+        .orchestrate_bind(Parameters(BindRequest {
+            role: "worker".to_string(),
+            agent: "codex".to_string(),
+            model: "not-a-codex-model".to_string(),
+            command: Some("sh".to_string()),
+            args: None,
+            timeout_seconds: None,
+        }))
+        .await;
+    let Err(error) = result else {
+        panic!("unknown model should fail early");
+    };
+
+    assert!(error.to_string().contains("not-a-codex-model"));
+}
+
+#[tokio::test]
+async fn orchestrate_bind_uses_cached_catalog_models() {
+    let tempdir = TempDir::new("mcp-bind-catalog");
+    let catalog = AgentCatalog {
+        generated_at: Some("test".to_string()),
+        agents: vec![AgentCatalogEntry {
+            agent: "custom-agent".to_string(),
+            command: Some("sh".to_string()),
+            reachable: true,
+            models: vec![AgentModel {
+                id: "provider-only-model".to_string(),
+                reachable: true,
+                source: "provider-api".to_string(),
+            }],
+        }],
+    };
+    let server = MemoryServer::new(tempdir.path())
+        .with_mode(Mode::Orchestrate)
+        .with_catalog(catalog);
+
+    let response = server
+        .orchestrate_bind(Parameters(BindRequest {
+            role: "worker".to_string(),
+            agent: "custom-agent".to_string(),
+            model: "provider-only-model".to_string(),
+            command: Some("sh".to_string()),
+            args: None,
+            timeout_seconds: None,
+        }))
+        .await
+        .expect("cached catalog model should bind")
+        .0;
+
+    assert_eq!(response.binding.agent, "custom-agent");
+    assert_eq!(
+        response.binding.model.as_deref(),
+        Some("provider-only-model")
+    );
+}
+
+#[tokio::test]
+#[cfg(unix)]
+async fn orchestrate_delegate_timeout_uses_supervised_cleanup() {
+    let tempdir = TempDir::new("mcp-delegate-timeout");
+    let parent_pid_file = tempdir.join("worker.pid");
+    let child_pid_file = tempdir.join("grandchild.pid");
+    let script = format!(
+        "echo $$ > \"{}\"; sleep 30 & echo $! > \"{}\"; wait",
+        parent_pid_file.display(),
+        child_pid_file.display()
+    );
+    let server = MemoryServer::new(tempdir.join("memory"))
+        .with_mode(Mode::Orchestrate)
+        .with_task_root(tempdir.join("tasks"))
+        .with_repo_root(tempdir.path())
+        .with_process_registry_dir(tempdir.join("spawns"))
+        .with_bindings(vec![AgentBinding {
+            role: Role::Worker,
+            agent: "codex".to_string(),
+            model: Some("gpt-5.5".to_string()),
+            command: Some("sh".to_string()),
+            args: vec!["-c".to_string(), script],
+            timeout_seconds: Some(1),
+        }]);
+
+    let result = server
+        .orchestrate_delegate(Parameters(DelegateRequest {
+            role: "worker".to_string(),
+            task: "Keep a child process alive until timeout".to_string(),
+        }))
+        .await;
+    let Err(error) = result else {
+        panic!("delegation should time out");
+    };
+
+    assert!(error.to_string().contains("timed out"));
+    assert_pid_gone(read_pid(&parent_pid_file));
+    assert_pid_gone(read_pid(&child_pid_file));
+}
+
+#[tokio::test]
 async fn memory_tools_store_and_find_with_sqlite_vec_backend() {
     let store = SqliteVecVectorStore::in_memory().expect("sqlite-vec should open");
     let backend = VectorMemoryBackend::with_embedder(
@@ -186,4 +333,48 @@ fn test_embedding(text: &str) -> Vec<f32> {
         }
     }
     vector
+}
+
+#[cfg(unix)]
+fn read_pid(path: &std::path::Path) -> u32 {
+    wait_for_file(path);
+    fs::read_to_string(path)
+        .unwrap_or_else(|error| panic!("read {}: {error}", path.display()))
+        .trim()
+        .parse()
+        .unwrap_or_else(|error| panic!("parse {}: {error}", path.display()))
+}
+
+#[cfg(unix)]
+fn wait_for_file(path: &std::path::Path) {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while Instant::now() < deadline {
+        if path.exists() {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    panic!("{} was not written", path.display());
+}
+
+#[cfg(unix)]
+fn assert_pid_gone(pid: u32) {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while Instant::now() < deadline {
+        if !pid_alive(pid) {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    panic!("pid {pid} survived delegated timeout cleanup");
+}
+
+#[cfg(unix)]
+fn pid_alive(pid: u32) -> bool {
+    Command::new("kill")
+        .arg("-0")
+        .arg(pid.to_string())
+        .stderr(Stdio::null())
+        .status()
+        .is_ok_and(|status| status.success())
 }

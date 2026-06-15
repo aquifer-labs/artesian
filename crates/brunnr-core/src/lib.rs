@@ -9,8 +9,9 @@ mod event;
 mod roles;
 
 pub use agent::{
-    Agent, AgentCapabilities, AgentError, AgentEvent, AgentEventStream, AgentMessage,
-    AgentResponse, AgentResult, AgentSession, SpawnRequest,
+    Agent, AgentCapabilities, AgentCatalog, AgentCatalogEntry, AgentError, AgentEvent,
+    AgentEventStream, AgentMessage, AgentModel, AgentResponse, AgentResult, AgentSession,
+    SpawnRequest,
 };
 pub use config::{
     AgentBinding, BrunnrConfig, CoordinationConfig, MemoryBackendKind, MemoryConfig, Mode,

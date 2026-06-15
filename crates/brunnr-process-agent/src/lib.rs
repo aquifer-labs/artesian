@@ -14,8 +14,9 @@ use std::{
 };
 
 use brunnr_core::{
-    Agent, AgentCapabilities, AgentError, AgentEvent, AgentEventStream, AgentMessage,
-    AgentResponse, AgentResult, AgentSession, Role, SpawnRequest,
+    Agent, AgentBinding, AgentCapabilities, AgentCatalog, AgentCatalogEntry, AgentError,
+    AgentEvent, AgentEventStream, AgentMessage, AgentModel, AgentResponse, AgentResult,
+    AgentSession, Role, SpawnRequest,
 };
 use futures_util::{future::BoxFuture, stream, FutureExt};
 use serde::{Deserialize, Serialize};
@@ -41,6 +42,7 @@ const REGISTRY_VERSION: u32 = 1;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProcessAgentConfig {
+    pub agent_id: String,
     pub command: String,
     pub args: Vec<String>,
     pub working_dir: Option<PathBuf>,
@@ -49,11 +51,14 @@ pub struct ProcessAgentConfig {
     pub termination_grace: Duration,
     pub registry_dir: PathBuf,
     pub max_concurrent_spawns: usize,
+    pub static_models: Vec<String>,
+    pub default_model: Option<String>,
 }
 
 impl ProcessAgentConfig {
     pub fn new(command: impl Into<String>) -> Self {
         Self {
+            agent_id: String::new(),
             command: command.into(),
             args: Vec::new(),
             working_dir: None,
@@ -62,7 +67,14 @@ impl ProcessAgentConfig {
             termination_grace: DEFAULT_TERMINATION_GRACE,
             registry_dir: default_registry_dir(),
             max_concurrent_spawns: DEFAULT_MAX_CONCURRENT_SPAWNS,
+            static_models: Vec::new(),
+            default_model: None,
         }
+    }
+
+    pub fn with_agent_id(mut self, agent_id: impl Into<String>) -> Self {
+        self.agent_id = agent_id.into();
+        self
     }
 
     pub fn with_args(mut self, args: Vec<String>) -> Self {
@@ -100,6 +112,16 @@ impl ProcessAgentConfig {
         self
     }
 
+    pub fn with_static_models(mut self, models: Vec<String>) -> Self {
+        self.static_models = models;
+        self
+    }
+
+    pub fn with_default_model(mut self, model: Option<String>) -> Self {
+        self.default_model = model;
+        self
+    }
+
     pub fn supervisor(&self) -> ProcessSupervisor {
         ProcessSupervisor::new(&self.registry_dir)
             .with_termination_grace(self.termination_grace)
@@ -123,6 +145,10 @@ impl ProcessAgent {
             next_session: Arc::new(AtomicU64::new(1)),
         }
     }
+
+    pub fn config(&self) -> &ProcessAgentConfig {
+        &self.config
+    }
 }
 
 impl Agent for ProcessAgent {
@@ -133,6 +159,11 @@ impl Agent for ProcessAgent {
                     "process agent command is empty".to_string(),
                 ));
             }
+            let model = request
+                .model
+                .clone()
+                .or_else(|| self.config.default_model.clone());
+            validate_model(&self.config, model.as_deref()).await?;
             let id = format!(
                 "{}-{}-{}",
                 request.role.canonical_alias(),
@@ -142,7 +173,7 @@ impl Agent for ProcessAgent {
             let context = SessionContext {
                 role: request.role,
                 agent: request.agent.clone(),
-                model: request.model.clone(),
+                model,
                 working_dir: request
                     .working_dir
                     .map(PathBuf::from)
@@ -204,6 +235,339 @@ impl Agent for ProcessAgent {
             mcp: false,
         }
     }
+
+    fn list_models(&self) -> BoxFuture<'_, AgentResult<Vec<AgentModel>>> {
+        async move { Ok(discover_models(&self.config).await) }.boxed()
+    }
+}
+
+pub async fn refresh_agent_catalog(
+    bindings: &[AgentBinding],
+    cache_path: impl AsRef<Path>,
+) -> AgentResult<AgentCatalog> {
+    let mut entries = Vec::new();
+    for binding in bindings {
+        let command = binding
+            .command
+            .clone()
+            .unwrap_or_else(|| binding.agent.clone());
+        let config = ProcessAgentConfig::new(command.clone()).with_agent_id(binding.agent.clone());
+        entries.push(AgentCatalogEntry {
+            agent: binding.agent.clone(),
+            command: Some(command),
+            reachable: command_reachable(&config.command),
+            models: discover_models(&config).await,
+        });
+    }
+    entries.sort_by(|left, right| {
+        left.agent
+            .cmp(&right.agent)
+            .then_with(|| left.command.cmp(&right.command))
+    });
+    entries.dedup_by(|left, right| left.agent == right.agent && left.command == right.command);
+    let catalog = AgentCatalog {
+        generated_at: Some(now_unix_ms().to_string()),
+        agents: entries,
+    };
+    write_catalog(cache_path, &catalog)?;
+    Ok(catalog)
+}
+
+pub fn fallback_agent_catalog(bindings: &[AgentBinding]) -> AgentCatalog {
+    let mut entries = bindings
+        .iter()
+        .map(|binding| {
+            let command = binding
+                .command
+                .clone()
+                .unwrap_or_else(|| binding.agent.clone());
+            let reachable = command_reachable(&command);
+            let models = curated_static_models(&binding.agent)
+                .iter()
+                .map(|model| AgentModel {
+                    id: model.to_string(),
+                    reachable,
+                    source: "static-fallback".to_string(),
+                })
+                .collect();
+            AgentCatalogEntry {
+                agent: binding.agent.clone(),
+                command: Some(command),
+                reachable,
+                models,
+            }
+        })
+        .collect::<Vec<_>>();
+    entries.sort_by(|left, right| {
+        left.agent
+            .cmp(&right.agent)
+            .then_with(|| left.command.cmp(&right.command))
+    });
+    entries.dedup_by(|left, right| left.agent == right.agent && left.command == right.command);
+    AgentCatalog {
+        generated_at: Some(now_unix_ms().to_string()),
+        agents: entries,
+    }
+}
+
+pub fn load_agent_catalog(cache_path: impl AsRef<Path>) -> AgentResult<AgentCatalog> {
+    let text = fs::read_to_string(cache_path.as_ref())
+        .map_err(|error| AgentError::Unavailable(error.to_string()))?;
+    serde_json::from_str(&text).map_err(|error| AgentError::Unavailable(error.to_string()))
+}
+
+pub async fn load_or_refresh_agent_catalog(
+    bindings: &[AgentBinding],
+    cache_path: impl AsRef<Path>,
+    refresh: bool,
+) -> AgentResult<AgentCatalog> {
+    let cache_path = cache_path.as_ref();
+    if !refresh {
+        if let Ok(catalog) = load_agent_catalog(cache_path) {
+            return Ok(catalog);
+        }
+    }
+    refresh_agent_catalog(bindings, cache_path).await
+}
+
+pub fn validate_binding_model(binding: &AgentBinding, catalog: &AgentCatalog) -> AgentResult<()> {
+    let Some(model) = binding.model.as_deref() else {
+        return Ok(());
+    };
+    let Some(entry) = catalog
+        .agents
+        .iter()
+        .find(|entry| entry.agent == binding.agent)
+    else {
+        return Err(AgentError::Unavailable(format!(
+            "agent '{}' is not in the model catalog; run `brunnr agents refresh`",
+            binding.agent
+        )));
+    };
+    if entry
+        .models
+        .iter()
+        .any(|candidate| candidate.id == model && candidate.reachable)
+    {
+        return Ok(());
+    }
+    let available = entry
+        .models
+        .iter()
+        .filter(|model| model.reachable)
+        .map(|model| model.id.as_str())
+        .collect::<Vec<_>>()
+        .join(", ");
+    Err(AgentError::Unavailable(format!(
+        "model '{model}' is unavailable for agent '{}'; available models: {}",
+        binding.agent,
+        if available.is_empty() {
+            "<none>; run `brunnr agents refresh` or configure a supported model"
+        } else {
+            available.as_str()
+        }
+    )))
+}
+
+fn write_catalog(cache_path: impl AsRef<Path>, catalog: &AgentCatalog) -> AgentResult<()> {
+    let cache_path = cache_path.as_ref();
+    if let Some(parent) = cache_path.parent() {
+        fs::create_dir_all(parent).map_err(|error| AgentError::Unavailable(error.to_string()))?;
+    }
+    fs::write(
+        cache_path,
+        serde_json::to_vec_pretty(catalog)
+            .map_err(|error| AgentError::Unavailable(error.to_string()))?,
+    )
+    .map_err(|error| AgentError::Unavailable(error.to_string()))
+}
+
+async fn validate_model(config: &ProcessAgentConfig, model: Option<&str>) -> AgentResult<()> {
+    let Some(model) = model else {
+        return Ok(());
+    };
+    let models = discover_models(config).await;
+    if models
+        .iter()
+        .any(|candidate| candidate.id == model && candidate.reachable)
+    {
+        return Ok(());
+    }
+    let available = models
+        .iter()
+        .filter(|model| model.reachable)
+        .map(|model| model.id.as_str())
+        .collect::<Vec<_>>()
+        .join(", ");
+    Err(AgentError::Unavailable(format!(
+        "model '{model}' is unavailable for agent '{}'; available models: {}",
+        logical_agent_id(config),
+        if available.is_empty() {
+            "<none>; run `brunnr agents refresh` or choose a configured model"
+        } else {
+            available.as_str()
+        }
+    )))
+}
+
+async fn discover_models(config: &ProcessAgentConfig) -> Vec<AgentModel> {
+    let reachable = command_reachable(&config.command);
+    let mut models = Vec::new();
+    models.extend(config.static_models.iter().map(|model| AgentModel {
+        id: model.clone(),
+        reachable,
+        source: "config".to_string(),
+    }));
+    if models.is_empty() {
+        if let Some(cli_models) = discover_models_from_env_command(config).await {
+            models.extend(cli_models.into_iter().map(|model| AgentModel {
+                id: model,
+                reachable,
+                source: "cli-list-models".to_string(),
+            }));
+        }
+    }
+    if models.is_empty() {
+        if let Some(provider_models) = discover_provider_models(config).await {
+            models.extend(provider_models.into_iter().map(|model| AgentModel {
+                id: model,
+                reachable,
+                source: "provider-api".to_string(),
+            }));
+        }
+    }
+    for model in curated_static_models(logical_agent_id(config)) {
+        if models.iter().any(|existing| existing.id == *model) {
+            continue;
+        }
+        models.push(AgentModel {
+            id: model.to_string(),
+            reachable,
+            source: "static-fallback".to_string(),
+        });
+    }
+    models.sort_by(|left, right| left.id.cmp(&right.id));
+    models.dedup_by(|left, right| left.id == right.id);
+    models
+}
+
+async fn discover_models_from_env_command(config: &ProcessAgentConfig) -> Option<Vec<String>> {
+    let env_name = format!(
+        "BRUNNR_{}_MODELS_CMD",
+        sanitize_env_token(logical_agent_id(config))
+    );
+    let command = std::env::var(env_name).ok()?;
+    let output = time::timeout(Duration::from_secs(2), async {
+        Command::new("sh").arg("-c").arg(command).output().await
+    })
+    .await
+    .ok()?
+    .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let text = String::from_utf8_lossy(&output.stdout);
+    Some(parse_model_list(&text))
+}
+
+async fn discover_provider_models(config: &ProcessAgentConfig) -> Option<Vec<String>> {
+    let agent = normalize_agent_id(logical_agent_id(config));
+    if !matches!(agent.as_str(), "codex" | "openai") {
+        return None;
+    }
+    let api_key = std::env::var("OPENAI_API_KEY").ok()?;
+    let response = reqwest::Client::builder()
+        .timeout(Duration::from_secs(2))
+        .build()
+        .ok()?
+        .get("https://api.openai.com/v1/models")
+        .bearer_auth(api_key)
+        .send()
+        .await
+        .ok()?;
+    if !response.status().is_success() {
+        return None;
+    }
+    let payload = response.json::<OpenAiModels>().await.ok()?;
+    let mut models = payload
+        .data
+        .into_iter()
+        .map(|model| model.id)
+        .collect::<Vec<_>>();
+    models.sort();
+    models.dedup();
+    Some(models)
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenAiModels {
+    data: Vec<OpenAiModel>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenAiModel {
+    id: String,
+}
+
+fn parse_model_list(text: &str) -> Vec<String> {
+    if let Ok(models) = serde_json::from_str::<Vec<String>>(text) {
+        return models;
+    }
+    text.lines()
+        .flat_map(|line| line.split(','))
+        .map(str::trim)
+        .filter(|model| !model.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+fn curated_static_models(agent_id: &str) -> &'static [&'static str] {
+    match normalize_agent_id(agent_id).as_str() {
+        "claude" | "claude-code" => &["claude-haiku", "claude-opus", "claude-sonnet"],
+        "codex" => &["gpt-5", "gpt-5.5", "gpt-5-mini"],
+        "gemini" => &["gemini-flash", "gemini-pro"],
+        "ollama" => &["llama3.2", "mistral", "qwen2.5-coder"],
+        "opencode" => &["opencode-default"],
+        _ => &[],
+    }
+}
+
+fn logical_agent_id(config: &ProcessAgentConfig) -> &str {
+    if config.agent_id.trim().is_empty() {
+        &config.command
+    } else {
+        &config.agent_id
+    }
+}
+
+fn normalize_agent_id(agent_id: &str) -> String {
+    agent_id
+        .trim()
+        .to_ascii_lowercase()
+        .replace(['_', ' '], "-")
+}
+
+fn sanitize_env_token(agent_id: &str) -> String {
+    agent_id
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() {
+                character.to_ascii_uppercase()
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}
+
+fn command_reachable(command: &str) -> bool {
+    let path = Path::new(command);
+    if path.components().count() > 1 {
+        return path.exists();
+    }
+    std::env::var_os("PATH").is_some_and(|paths| {
+        std::env::split_paths(&paths).any(|directory| directory.join(command).exists())
+    })
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -801,6 +1165,154 @@ mod tests {
             .expect("echo should launch");
 
         assert_eq!(response.content.trim(), "brunnr");
+    }
+
+    #[tokio::test]
+    async fn role_bindings_render_distinct_models_for_same_cli() {
+        let tempdir = TempDir::new("process-agent-model-render");
+        let agent = ProcessAgent::new(
+            ProcessAgentConfig::new("echo")
+                .with_agent_id("claude")
+                .with_args(vec!["{role}:{model}".into()])
+                .with_static_models(vec!["claude-opus".into(), "claude-sonnet".into()])
+                .with_registry_dir(tempdir.join("spawns"))
+                .with_termination_grace(Duration::from_millis(10)),
+        );
+
+        let master = agent
+            .spawn(SpawnRequest {
+                role: Role::Master,
+                agent: "claude".to_string(),
+                model: Some("claude-opus".to_string()),
+                working_dir: None,
+            })
+            .await
+            .expect("master model should be available");
+        let worker = agent
+            .spawn(SpawnRequest {
+                role: Role::Worker,
+                agent: "claude".to_string(),
+                model: Some("claude-sonnet".to_string()),
+                working_dir: None,
+            })
+            .await
+            .expect("worker model should be available");
+
+        let master_response = agent
+            .send(
+                &master,
+                AgentMessage {
+                    content: String::new(),
+                },
+            )
+            .await
+            .expect("master command should run");
+        let worker_response = agent
+            .send(
+                &worker,
+                AgentMessage {
+                    content: String::new(),
+                },
+            )
+            .await
+            .expect("worker command should run");
+
+        assert_eq!(master_response.content.trim(), "master:claude-opus");
+        assert_eq!(worker_response.content.trim(), "worker:claude-sonnet");
+    }
+
+    #[tokio::test]
+    async fn role_binding_default_model_renders_when_spawn_omits_model() {
+        let tempdir = TempDir::new("process-agent-default-model");
+        let master = ProcessAgent::new(
+            ProcessAgentConfig::new("echo")
+                .with_agent_id("claude")
+                .with_args(vec!["{role}:{model}".into()])
+                .with_static_models(vec!["claude-opus".into(), "claude-sonnet".into()])
+                .with_default_model(Some("claude-opus".to_string()))
+                .with_registry_dir(tempdir.join("master-spawns"))
+                .with_termination_grace(Duration::from_millis(10)),
+        );
+        let worker = ProcessAgent::new(
+            ProcessAgentConfig::new("echo")
+                .with_agent_id("claude")
+                .with_args(vec!["{role}:{model}".into()])
+                .with_static_models(vec!["claude-opus".into(), "claude-sonnet".into()])
+                .with_default_model(Some("claude-sonnet".to_string()))
+                .with_registry_dir(tempdir.join("worker-spawns"))
+                .with_termination_grace(Duration::from_millis(10)),
+        );
+
+        let master_session = master
+            .spawn(SpawnRequest {
+                role: Role::Master,
+                agent: "claude".to_string(),
+                model: None,
+                working_dir: None,
+            })
+            .await
+            .expect("master default model should be available");
+        let worker_session = worker
+            .spawn(SpawnRequest {
+                role: Role::Worker,
+                agent: "claude".to_string(),
+                model: None,
+                working_dir: None,
+            })
+            .await
+            .expect("worker default model should be available");
+
+        let master_response = master
+            .send(
+                &master_session,
+                AgentMessage {
+                    content: String::new(),
+                },
+            )
+            .await
+            .expect("master command should run");
+        let worker_response = worker
+            .send(
+                &worker_session,
+                AgentMessage {
+                    content: String::new(),
+                },
+            )
+            .await
+            .expect("worker command should run");
+
+        assert_eq!(master_response.content.trim(), "master:claude-opus");
+        assert_eq!(worker_response.content.trim(), "worker:claude-sonnet");
+    }
+
+    #[tokio::test]
+    async fn unavailable_model_fails_before_process_spawn() {
+        let tempdir = TempDir::new("process-agent-model-missing");
+        let agent = ProcessAgent::new(
+            ProcessAgentConfig::new("echo")
+                .with_agent_id("codex")
+                .with_static_models(vec!["gpt-5".into()])
+                .with_registry_dir(tempdir.join("spawns")),
+        );
+
+        let error = agent
+            .spawn(SpawnRequest {
+                role: Role::Worker,
+                agent: "codex".to_string(),
+                model: Some("missing-model".to_string()),
+                working_dir: None,
+            })
+            .await
+            .expect_err("unavailable model should fail");
+
+        assert!(error.to_string().contains("missing-model"));
+        assert!(
+            ProcessSupervisor::new(tempdir.join("spawns"))
+                .entries()
+                .expect("registry should read")
+                .is_empty(),
+            "failed validation must not spawn a process"
+        );
     }
 
     #[test]

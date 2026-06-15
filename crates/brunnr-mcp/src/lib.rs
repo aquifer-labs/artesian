@@ -1,11 +1,24 @@
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{path::PathBuf, sync::Arc};
+use std::{
+    collections::HashMap,
+    path::PathBuf,
+    str::FromStr,
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 
 #[cfg(feature = "qdrant")]
 use std::env;
 
-use brunnr_core::{MemoryBackendKind, MemoryConfig};
+use brunnr_core::{
+    Agent, AgentBinding, AgentCatalog, AgentMessage, BrunnrConfig, MemoryBackendKind, MemoryConfig,
+    Mode, Role, SpawnRequest,
+};
+use brunnr_process_agent::{
+    fallback_agent_catalog, load_or_refresh_agent_catalog, validate_binding_model, ProcessAgent,
+    ProcessAgentConfig,
+};
 use mimisbrunnr::{
     FilesBackend, MemoryBackend, MemoryQuery, MemoryScope, MemoryTier, MuninnAnchorStore,
     SessionAnchor, SqliteVecVectorStore, SqliteVecVectorStoreConfig, StoreMemory,
@@ -22,12 +35,21 @@ use rmcp::{
     ErrorData, ServerHandler, ServiceExt,
 };
 use serde::{Deserialize, Serialize};
+use thingr::{ClaimRequest, FilesTaskStore, NewTask, TaskStatus, TaskStore, TransitionTask};
 
 #[cfg(feature = "qdrant")]
 use mimisbrunnr::{QdrantVectorStore, QdrantVectorStoreConfig};
 
 const TOOL_INSTRUCTIONS: &str =
     "ALWAYS search the project memory before non-trivial work; store durable, reusable learnings.";
+const MASTER_ROLE_SKILL: &str = "In orchestrate/full mode, first call agents.list to inspect reachable role models. Use memory.context for compact project recall, delegate bounded subtasks with orchestrate.delegate(worker), and hand results to judge/master with orchestrate.handoff before accepting durable outcomes.";
+const ORCHESTRATION_TOOLS: &[&str] = &[
+    "agents.list",
+    "orchestrate.bind",
+    "orchestrate.delegate",
+    "orchestrate.status",
+    "orchestrate.handoff",
+];
 
 #[derive(Clone)]
 pub struct MemoryServer {
@@ -35,6 +57,13 @@ pub struct MemoryServer {
     anchor_store: Option<MuninnAnchorStore>,
     okf_root: Option<PathBuf>,
     router_enabled: bool,
+    mode: Mode,
+    bindings: Arc<Mutex<Vec<AgentBinding>>>,
+    catalog: Arc<Mutex<AgentCatalog>>,
+    delegate_results: Arc<Mutex<HashMap<String, DelegateRecord>>>,
+    task_root: PathBuf,
+    repo_root: PathBuf,
+    process_defaults: ProcessDefaults,
     tool_router: ToolRouter<Self>,
 }
 
@@ -61,7 +90,14 @@ impl MemoryServer {
             anchor_store,
             okf_root: None,
             router_enabled: false,
-            tool_router: Self::tool_router(),
+            mode: Mode::Memory,
+            bindings: Arc::new(Mutex::new(Vec::new())),
+            catalog: Arc::new(Mutex::new(AgentCatalog::default())),
+            delegate_results: Arc::new(Mutex::new(HashMap::new())),
+            task_root: PathBuf::from(".brunnr").join("tasks"),
+            repo_root: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+            process_defaults: ProcessDefaults::default(),
+            tool_router: Self::mode_tool_router(Mode::Memory),
         }
     }
 
@@ -75,12 +111,143 @@ impl MemoryServer {
         self
     }
 
+    pub fn with_runtime_config(mut self, config: &BrunnrConfig) -> Self {
+        self.mode = config.mode;
+        self.bindings = Arc::new(Mutex::new(config.agents.clone()));
+        self.catalog = Arc::new(Mutex::new(fallback_agent_catalog(&config.agents)));
+        self.task_root = PathBuf::from(&config.memory.root).join("tasks");
+        self.repo_root = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        self.process_defaults = ProcessDefaults::from_config(config);
+        self.tool_router = Self::mode_tool_router(config.mode);
+        self
+    }
+
+    pub fn with_catalog(mut self, catalog: AgentCatalog) -> Self {
+        self.catalog = Arc::new(Mutex::new(catalog));
+        self
+    }
+
+    pub fn with_bindings(mut self, bindings: Vec<AgentBinding>) -> Self {
+        self.catalog = Arc::new(Mutex::new(fallback_agent_catalog(&bindings)));
+        self.bindings = Arc::new(Mutex::new(bindings));
+        self
+    }
+
+    pub fn with_mode(mut self, mode: Mode) -> Self {
+        self.mode = mode;
+        self.tool_router = Self::mode_tool_router(mode);
+        self
+    }
+
+    pub fn with_task_root(mut self, task_root: impl Into<PathBuf>) -> Self {
+        self.task_root = task_root.into();
+        self
+    }
+
+    pub fn with_repo_root(mut self, repo_root: impl Into<PathBuf>) -> Self {
+        self.repo_root = repo_root.into();
+        self
+    }
+
+    pub fn with_process_registry_dir(mut self, registry_dir: impl Into<PathBuf>) -> Self {
+        self.process_defaults.registry_dir = registry_dir.into();
+        self
+    }
+
+    pub fn visible_tool_names(&self) -> Vec<String> {
+        self.tool_router
+            .list_all()
+            .into_iter()
+            .map(|tool| tool.name.to_string())
+            .collect()
+    }
+
     pub fn from_config(config: &MemoryConfig) -> anyhow::Result<Self> {
         Ok(Self::with_backend_and_anchor(
             open_memory_backend(config)?,
             Some(MuninnAnchorStore::new(&config.root)),
         )
         .with_okf_root(Some(PathBuf::from(&config.root))))
+    }
+
+    pub async fn from_brunnr_config(config: &BrunnrConfig) -> anyhow::Result<Self> {
+        let mut server = Self::from_config(&config.memory)?.with_runtime_config(config);
+        if matches!(config.mode, Mode::Orchestrate | Mode::Full) {
+            let cache_path = PathBuf::from(&config.memory.root).join("agents.json");
+            let catalog = load_or_refresh_agent_catalog(&config.agents, &cache_path, false)
+                .await
+                .unwrap_or_else(|_| fallback_agent_catalog(&config.agents));
+            server = server.with_catalog(catalog);
+        }
+        Ok(server)
+    }
+
+    fn mode_tool_router(mode: Mode) -> ToolRouter<Self> {
+        let mut router = Self::tool_router();
+        if !matches!(mode, Mode::Orchestrate | Mode::Full) {
+            for tool in ORCHESTRATION_TOOLS {
+                router.disable_route(*tool);
+            }
+        }
+        router
+    }
+
+    fn ensure_orchestration_enabled(&self) -> Result<(), ErrorData> {
+        if matches!(self.mode, Mode::Orchestrate | Mode::Full) {
+            Ok(())
+        } else {
+            Err(ErrorData::internal_error(
+                "orchestration tools require mode orchestrate or full".to_string(),
+                None,
+            ))
+        }
+    }
+
+    fn binding_for_role(&self, role: Role) -> Result<AgentBinding, ErrorData> {
+        self.bindings
+            .lock()
+            .map_err(|error| ErrorData::internal_error(error.to_string(), None))?
+            .iter()
+            .find(|binding| binding.role == role)
+            .cloned()
+            .ok_or_else(|| {
+                ErrorData::invalid_params(
+                    format!("no binding configured for role {}", role.canonical_alias()),
+                    None,
+                )
+            })
+    }
+
+    fn process_agent_for_binding(&self, binding: &AgentBinding) -> ProcessAgent {
+        let command = binding
+            .command
+            .clone()
+            .unwrap_or_else(|| binding.agent.clone());
+        ProcessAgent::new(
+            ProcessAgentConfig::new(command)
+                .with_agent_id(binding.agent.clone())
+                .with_default_model(binding.model.clone())
+                .with_args(binding.args.clone())
+                .with_working_dir(&self.repo_root)
+                .with_timeout(Duration::from_secs(binding.timeout_seconds.unwrap_or(120)))
+                .with_registry_dir(self.process_defaults.registry_dir.clone())
+                .with_max_concurrent_spawns(self.process_defaults.max_concurrent_spawns)
+                .with_max_lifetime(self.process_defaults.max_lifetime)
+                .with_termination_grace(self.process_defaults.termination_grace),
+        )
+    }
+
+    fn record_delegate(
+        &self,
+        task_id: String,
+        status: String,
+        result: Option<String>,
+    ) -> Result<(), ErrorData> {
+        self.delegate_results
+            .lock()
+            .map_err(|error| ErrorData::internal_error(error.to_string(), None))?
+            .insert(task_id, DelegateRecord { status, result });
+        Ok(())
     }
 }
 
@@ -207,6 +374,131 @@ pub struct ToolMatch {
     pub name: String,
     pub description: String,
     pub score: f32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ProcessDefaults {
+    registry_dir: PathBuf,
+    max_concurrent_spawns: usize,
+    max_lifetime: Duration,
+    termination_grace: Duration,
+}
+
+impl Default for ProcessDefaults {
+    fn default() -> Self {
+        Self {
+            registry_dir: PathBuf::from(".brunnr").join("spawns"),
+            max_concurrent_spawns: 32,
+            max_lifetime: Duration::from_secs(30 * 60),
+            termination_grace: Duration::from_secs(2),
+        }
+    }
+}
+
+impl ProcessDefaults {
+    fn from_config(config: &BrunnrConfig) -> Self {
+        let repo_root = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        let registry_dir = config
+            .coordination
+            .spawn_registry_path
+            .as_deref()
+            .map(PathBuf::from)
+            .map(|path| {
+                if path.is_absolute() {
+                    path
+                } else {
+                    repo_root.join(path)
+                }
+            })
+            .unwrap_or_else(|| repo_root.join(".brunnr").join("spawns"));
+        Self {
+            registry_dir,
+            max_concurrent_spawns: config
+                .coordination
+                .max_concurrent_spawns
+                .unwrap_or(32)
+                .max(1),
+            max_lifetime: Duration::from_secs(
+                config
+                    .coordination
+                    .spawn_max_lifetime_seconds
+                    .unwrap_or(30 * 60),
+            ),
+            termination_grace: Duration::from_millis(
+                config
+                    .coordination
+                    .spawn_shutdown_grace_millis
+                    .unwrap_or(2_000),
+            ),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, schemars::JsonSchema)]
+pub struct AgentsListResponse {
+    pub catalog: AgentCatalog,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct BindRequest {
+    pub role: String,
+    pub agent: String,
+    pub model: String,
+    pub command: Option<String>,
+    pub args: Option<Vec<String>>,
+    pub timeout_seconds: Option<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, schemars::JsonSchema)]
+pub struct BindResponse {
+    pub binding: AgentBinding,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct DelegateRequest {
+    pub role: String,
+    pub task: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, schemars::JsonSchema)]
+pub struct DelegateResponse {
+    pub task_id: String,
+    pub status: String,
+    pub role: String,
+    pub agent: String,
+    pub model: Option<String>,
+    pub result: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct StatusRequest {
+    pub task_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, schemars::JsonSchema)]
+pub struct StatusResponse {
+    pub task_id: String,
+    pub status: String,
+    pub result: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct HandoffRequest {
+    pub to: String,
+    pub task_id: Option<String>,
+    pub content: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, schemars::JsonSchema)]
+pub struct HandoffResponse {
+    pub accepted: bool,
+    pub to: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct DelegateRecord {
+    status: String,
+    result: Option<String>,
 }
 
 #[tool_router]
@@ -402,16 +694,252 @@ impl MemoryServer {
             prompt_tokens_delta: prompt_tokens_before as isize - prompt_tokens_after as isize,
         }))
     }
+
+    #[tool(
+        name = "agents.list",
+        description = "List reachable configured agent CLIs and their available models."
+    )]
+    pub async fn agents_list(&self) -> Result<Json<AgentsListResponse>, ErrorData> {
+        self.ensure_orchestration_enabled()?;
+        let catalog = self
+            .catalog
+            .lock()
+            .map_err(|error| ErrorData::internal_error(error.to_string(), None))?
+            .clone();
+        Ok(Json(AgentsListResponse { catalog }))
+    }
+
+    #[tool(
+        name = "orchestrate.bind",
+        description = "Bind a role to a reachable agent/model for this MCP session."
+    )]
+    pub async fn orchestrate_bind(
+        &self,
+        Parameters(request): Parameters<BindRequest>,
+    ) -> Result<Json<BindResponse>, ErrorData> {
+        self.ensure_orchestration_enabled()?;
+        let role = Role::from_str(&request.role)
+            .map_err(|error| ErrorData::invalid_params(error.to_string(), None))?;
+        let binding = AgentBinding {
+            role,
+            agent: request.agent,
+            model: Some(request.model),
+            command: request.command,
+            args: request.args.unwrap_or_default(),
+            timeout_seconds: request.timeout_seconds,
+        };
+        let mut bindings = self
+            .bindings
+            .lock()
+            .map_err(|error| ErrorData::internal_error(error.to_string(), None))?;
+        let mut next_bindings = bindings.clone();
+        next_bindings.retain(|existing| existing.role != role);
+        next_bindings.push(binding.clone());
+        let mut catalog = self
+            .catalog
+            .lock()
+            .map_err(|error| ErrorData::internal_error(error.to_string(), None))?
+            .clone();
+        if !catalog
+            .agents
+            .iter()
+            .any(|entry| entry.agent == binding.agent)
+        {
+            catalog
+                .agents
+                .extend(fallback_agent_catalog(std::slice::from_ref(&binding)).agents);
+        }
+        validate_binding_model(&binding, &catalog)
+            .map_err(|error| ErrorData::invalid_params(error.to_string(), None))?;
+        *bindings = next_bindings;
+        *self
+            .catalog
+            .lock()
+            .map_err(|error| ErrorData::internal_error(error.to_string(), None))? = catalog;
+        Ok(Json(BindResponse { binding }))
+    }
+
+    #[tool(
+        name = "orchestrate.delegate",
+        description = "Enqueue and dispatch one bounded task through the supervised role agent."
+    )]
+    pub async fn orchestrate_delegate(
+        &self,
+        Parameters(request): Parameters<DelegateRequest>,
+    ) -> Result<Json<DelegateResponse>, ErrorData> {
+        self.ensure_orchestration_enabled()?;
+        let role = Role::from_str(&request.role)
+            .map_err(|error| ErrorData::invalid_params(error.to_string(), None))?;
+        let binding = self.binding_for_role(role)?;
+        let catalog = self
+            .catalog
+            .lock()
+            .map_err(|error| ErrorData::internal_error(error.to_string(), None))?
+            .clone();
+        validate_binding_model(&binding, &catalog)
+            .map_err(|error| ErrorData::invalid_params(error.to_string(), None))?;
+        let task_id = format!("mcp-{}-{}", role.canonical_alias(), now_id());
+        let task_store = FilesTaskStore::new(&self.task_root);
+        let mut task = NewTask::primitive(first_line_or_default(&request.task));
+        task.id = Some(task_id.clone());
+        task.role = role;
+        task.description = request.task.clone();
+        let _task = task_store
+            .create(task)
+            .await
+            .map_err(|error| ErrorData::internal_error(error.to_string(), None))?;
+        let _claimed = task_store
+            .claim(ClaimRequest {
+                task_id: Some(task_id.clone()),
+                claimant: format!("mcp-{}", role.canonical_alias()),
+            })
+            .await
+            .map_err(|error| ErrorData::internal_error(error.to_string(), None))?
+            .ok_or_else(|| ErrorData::internal_error("task was not claimable".to_string(), None))?;
+        let process = self.process_agent_for_binding(&binding);
+        let session = process
+            .spawn(SpawnRequest {
+                role,
+                agent: binding.agent.clone(),
+                model: binding.model.clone(),
+                working_dir: Some(self.repo_root.display().to_string()),
+            })
+            .await
+            .map_err(|error| ErrorData::internal_error(error.to_string(), None))?;
+        let response = process
+            .send(
+                &session,
+                AgentMessage {
+                    content: format!(
+                        "Task ID: {task_id}\nRole: {}\n\n{}",
+                        role.canonical_alias(),
+                        request.task
+                    ),
+                },
+            )
+            .await;
+        match response {
+            Ok(response) => {
+                task_store
+                    .transition(TransitionTask {
+                        id: task_id.clone(),
+                        status: TaskStatus::Done,
+                    })
+                    .await
+                    .map_err(|error| ErrorData::internal_error(error.to_string(), None))?;
+                self.record_delegate(
+                    task_id.clone(),
+                    "done".to_string(),
+                    Some(response.content.clone()),
+                )?;
+                Ok(Json(DelegateResponse {
+                    task_id,
+                    status: "done".to_string(),
+                    role: role.canonical_alias().to_string(),
+                    agent: binding.agent,
+                    model: binding.model,
+                    result: Some(response.content),
+                }))
+            }
+            Err(error) => {
+                task_store
+                    .transition(TransitionTask {
+                        id: task_id.clone(),
+                        status: TaskStatus::Blocked,
+                    })
+                    .await
+                    .map_err(|task_error| {
+                        ErrorData::internal_error(task_error.to_string(), None)
+                    })?;
+                self.record_delegate(task_id, "blocked".to_string(), None)?;
+                Err(ErrorData::internal_error(error.to_string(), None))
+            }
+        }
+    }
+
+    #[tool(
+        name = "orchestrate.status",
+        description = "Return status for a delegated MCP orchestration task."
+    )]
+    pub async fn orchestrate_status(
+        &self,
+        Parameters(request): Parameters<StatusRequest>,
+    ) -> Result<Json<StatusResponse>, ErrorData> {
+        self.ensure_orchestration_enabled()?;
+        let records = self
+            .delegate_results
+            .lock()
+            .map_err(|error| ErrorData::internal_error(error.to_string(), None))?;
+        let record = records
+            .get(&request.task_id)
+            .cloned()
+            .unwrap_or(DelegateRecord {
+                status: "unknown".to_string(),
+                result: None,
+            });
+        Ok(Json(StatusResponse {
+            task_id: request.task_id,
+            status: record.status,
+            result: record.result,
+        }))
+    }
+
+    #[tool(
+        name = "orchestrate.handoff",
+        description = "Record a handoff to judge or master for follow-up orchestration."
+    )]
+    pub async fn orchestrate_handoff(
+        &self,
+        Parameters(request): Parameters<HandoffRequest>,
+    ) -> Result<Json<HandoffResponse>, ErrorData> {
+        self.ensure_orchestration_enabled()?;
+        let to = Role::from_str(&request.to)
+            .map_err(|error| ErrorData::invalid_params(error.to_string(), None))?;
+        if !matches!(to, Role::Judge | Role::Master) {
+            return Err(ErrorData::invalid_params(
+                "handoff target must be judge or master".to_string(),
+                None,
+            ));
+        }
+        let _ = self
+            .backend
+            .store(StoreMemory {
+                content: request.content,
+                tags: vec!["orchestration".to_string(), "handoff".to_string()],
+                metadata: Default::default(),
+                tier: MemoryTier::L1Atom,
+                node_id: request
+                    .task_id
+                    .map(|task_id| format!("task:{task_id}:handoff:{}", to.canonical_alias())),
+                created_at: None,
+                scope: Some(MemoryScope::Task),
+                agent_id: Some(to.canonical_alias().to_string()),
+                session_id: None,
+                task_id: None,
+                user_id: None,
+            })
+            .await;
+        Ok(Json(HandoffResponse {
+            accepted: true,
+            to: to.canonical_alias().to_string(),
+        }))
+    }
 }
 
 #[tool_handler(router = self.tool_router)]
 impl ServerHandler for MemoryServer {
     fn get_info(&self) -> ServerInfo {
-        ServerInfo::new(ServerCapabilities::builder().enable_tools().build()).with_instructions(
+        let instructions = if matches!(self.mode, Mode::Orchestrate | Mode::Full) {
+            format!(
+                "Brunnr memory and orchestration server. {TOOL_INSTRUCTIONS} {MASTER_ROLE_SKILL}"
+            )
+        } else {
             format!(
                 "Brunnr memory server exposing memory.find and memory.store. {TOOL_INSTRUCTIONS}"
-            ),
-        )
+            )
+        };
+        ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
+            .with_instructions(instructions)
     }
 }
 
@@ -444,6 +972,15 @@ pub async fn run_stdio_with_config_and_router(
     router_enabled: bool,
 ) -> anyhow::Result<()> {
     let server = MemoryServer::from_config(config)?.with_router_enabled(router_enabled);
+    server.serve(stdio()).await?.waiting().await?;
+    Ok(())
+}
+
+pub async fn run_stdio_with_brunnr_config(config: BrunnrConfig) -> anyhow::Result<()> {
+    let router_enabled = config.coordination.router_enabled;
+    let server = MemoryServer::from_brunnr_config(&config)
+        .await?
+        .with_router_enabled(router_enabled);
     server.serve(stdio()).await?.waiting().await?;
     Ok(())
 }
@@ -534,6 +1071,26 @@ fn tool_registry() -> &'static [RegisteredTool] {
             description:
                 "Write current task, plan pointer, decisions, and next step to OKF log.md.",
         },
+        RegisteredTool {
+            name: "agents.list",
+            description: "List reachable configured agent CLIs and available models.",
+        },
+        RegisteredTool {
+            name: "orchestrate.delegate",
+            description: "Delegate a bounded subtask to a configured supervised role agent.",
+        },
+        RegisteredTool {
+            name: "orchestrate.bind",
+            description: "Bind an orchestration role to a reachable agent model for this session.",
+        },
+        RegisteredTool {
+            name: "orchestrate.status",
+            description: "Check the status and result of a delegated orchestration task.",
+        },
+        RegisteredTool {
+            name: "orchestrate.handoff",
+            description: "Hand results to judge or master for orchestration follow-up.",
+        },
     ]
 }
 
@@ -563,4 +1120,19 @@ fn terms(input: &str) -> Vec<String> {
 
 fn estimate_tokens(text: &str) -> usize {
     text.split_whitespace().count().max(1)
+}
+
+fn now_id() -> u128 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_millis())
+}
+
+fn first_line_or_default(input: &str) -> String {
+    input
+        .lines()
+        .next()
+        .filter(|line| !line.trim().is_empty())
+        .unwrap_or("Delegated task")
+        .to_string()
 }

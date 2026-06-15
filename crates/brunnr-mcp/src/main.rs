@@ -50,47 +50,44 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     let config = load_runtime_config(&args)?;
-    brunnr_mcp::run_stdio_with_config_and_router(&config.memory, config.router_enabled).await
+    brunnr_mcp::run_stdio_with_brunnr_config(config.config).await
 }
 
 struct RuntimeConfig {
-    memory: MemoryConfig,
-    router_enabled: bool,
+    config: BrunnrConfig,
 }
 
 fn load_runtime_config(args: &Args) -> anyhow::Result<RuntimeConfig> {
     if let Some(path) = &args.config {
         let text = fs::read_to_string(path)?;
         let config = BrunnrConfig::from_toml(&text)?;
-        if config.mode != Mode::Memory {
-            anyhow::bail!("brunnr-mcp requires mode = memory");
-        }
-        return Ok(RuntimeConfig {
-            memory: config.memory,
-            router_enabled: config.coordination.router_enabled,
-        });
+        return Ok(RuntimeConfig { config });
     }
 
     Ok(RuntimeConfig {
-        memory: MemoryConfig {
-            backend: args.backend.into(),
-            root: args.root.display().to_string(),
-            collection: args.collection.clone(),
-            qdrant_url: args
-                .qdrant_url
-                .clone()
-                .or_else(|| env::var("QDRANT_URL").ok()),
-            qdrant_rest_url: args
-                .qdrant_rest_url
-                .clone()
-                .or_else(|| env::var("QDRANT_REST_URL").ok()),
-            qdrant_api_key_env: Some(args.qdrant_api_key_env.clone()),
-            local_rerank_enabled: true,
-            hyde_enabled: false,
-            multi_query_enabled: false,
-            debate_enabled: false,
-            llm_consolidation_enabled: false,
+        config: BrunnrConfig {
+            mode: Mode::Memory,
+            memory: MemoryConfig {
+                backend: args.backend.into(),
+                root: args.root.display().to_string(),
+                collection: args.collection.clone(),
+                qdrant_url: args
+                    .qdrant_url
+                    .clone()
+                    .or_else(|| env::var("QDRANT_URL").ok()),
+                qdrant_rest_url: args
+                    .qdrant_rest_url
+                    .clone()
+                    .or_else(|| env::var("QDRANT_REST_URL").ok()),
+                qdrant_api_key_env: Some(args.qdrant_api_key_env.clone()),
+                local_rerank_enabled: true,
+                hyde_enabled: false,
+                multi_query_enabled: false,
+                debate_enabled: false,
+                llm_consolidation_enabled: false,
+            },
+            agents: Vec::new(),
+            coordination: Default::default(),
         },
-        router_enabled: false,
     })
 }

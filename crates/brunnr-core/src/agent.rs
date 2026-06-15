@@ -3,7 +3,8 @@
 use std::pin::Pin;
 
 use futures_core::Stream;
-use futures_util::future::BoxFuture;
+use futures_util::{future::BoxFuture, FutureExt};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -21,7 +22,7 @@ pub type AgentEventStream = Pin<Box<dyn Stream<Item = AgentResult<AgentEvent>> +
 /// # use futures_util::{future::BoxFuture, FutureExt, stream};
 /// # use brunnr_core::{
 /// #     Agent, AgentCapabilities, AgentEvent, AgentEventStream, AgentMessage, AgentResponse,
-/// #     AgentResult, AgentSession, Role, SpawnRequest,
+/// #     AgentModel, AgentResult, AgentSession, Role, SpawnRequest,
 /// # };
 /// struct EchoAgent;
 ///
@@ -66,6 +67,17 @@ pub type AgentEventStream = Pin<Box<dyn Stream<Item = AgentResult<AgentEvent>> +
 ///             mcp: true,
 ///         }
 ///     }
+///
+///     fn list_models(&self) -> BoxFuture<'_, AgentResult<Vec<AgentModel>>> {
+///         async move {
+///             Ok(vec![AgentModel {
+///                 id: "echo-small".to_string(),
+///                 reachable: true,
+///                 source: "static".to_string(),
+///             }])
+///         }
+///         .boxed()
+///     }
 /// }
 ///
 /// let agent = EchoAgent;
@@ -87,9 +99,13 @@ pub trait Agent: Send + Sync {
     ) -> BoxFuture<'_, AgentResult<AgentEventStream>>;
 
     fn capabilities(&self) -> AgentCapabilities;
+
+    fn list_models(&self) -> BoxFuture<'_, AgentResult<Vec<AgentModel>>> {
+        async move { Ok(Vec::new()) }.boxed()
+    }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct SpawnRequest {
     pub role: Role,
     pub agent: String,
@@ -97,24 +113,24 @@ pub struct SpawnRequest {
     pub working_dir: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct AgentSession {
     pub id: String,
     pub role: Role,
     pub agent: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct AgentMessage {
     pub content: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct AgentResponse {
     pub content: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "type", content = "payload", rename_all = "kebab-case")]
 pub enum AgentEvent {
     Text(String),
@@ -122,11 +138,32 @@ pub enum AgentEvent {
     Done,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct AgentCapabilities {
     pub streaming: bool,
     pub tools: bool,
     pub mcp: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct AgentModel {
+    pub id: String,
+    pub reachable: bool,
+    pub source: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct AgentCatalogEntry {
+    pub agent: String,
+    pub command: Option<String>,
+    pub reachable: bool,
+    pub models: Vec<AgentModel>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Default)]
+pub struct AgentCatalog {
+    pub generated_at: Option<String>,
+    pub agents: Vec<AgentCatalogEntry>,
 }
 
 #[derive(Debug, Error)]

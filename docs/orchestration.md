@@ -141,6 +141,104 @@ by the process adapter; new subprocesses are refused once the cap is reached.
 `spawn_max_lifetime_seconds` is a global per-spawn watchdog and is applied in addition to each agent
 binding's `timeout_seconds`.
 
+## Agent/model bindings
+
+Each role binds to an agent CLI and may also bind to a concrete model:
+
+```toml
+[[agents]]
+role = "master"
+agent = "claude"
+model = "claude-opus"
+command = "claude"
+args = ["--model", "{model}", "--print", "{prompt}"]
+
+[[agents]]
+role = "worker"
+agent = "claude"
+model = "claude-sonnet"
+command = "claude"
+args = ["--model", "{model}", "--print", "{prompt}"]
+
+[[agents]]
+role = "judge"
+agent = "codex"
+model = "gpt-5.5"
+command = "codex"
+args = ["exec", "--model", "{model}", "{prompt}"]
+```
+
+The same binary can therefore back multiple roles with different models. `{role}`, `{alias}`,
+`{agent}`, `{model}`, and `{prompt}` are rendered by `brunnr-process-agent` immediately before the
+supervised subprocess launch. If `model` is set, Brunnr validates it against the agent catalog
+before spawning; unavailable models fail early and do not create a process-tree registry entry.
+
+`brunnr agents refresh` probes configured agents and writes the cached catalog to
+`<memory.root>/agents.json`:
+
+```json
+{
+  "generated_at": "1781540000000",
+  "agents": [
+    {
+      "agent": "codex",
+      "command": "codex",
+      "reachable": true,
+      "models": [
+        { "id": "gpt-5.5", "reachable": true, "source": "static-fallback" }
+      ]
+    }
+  ]
+}
+```
+
+Discovery order is: an optional agent-specific CLI list command (`BRUNNR_<AGENT>_MODELS_CMD`),
+provider-specific discovery hooks where credentials exist, curated static fallbacks for known
+agents, and a cheap reachability probe for the configured command. Credentials are never logged.
+
+## MCP orchestration tools
+
+When `brunnr-mcp` is started from a config in `orchestrate` or `full` mode, it exposes orchestration
+tools in addition to memory tools. In `memory` mode these routes are disabled and do not appear in
+`tools/list`.
+
+- `agents.list() -> { catalog }`
+- `orchestrate.bind({ role, agent, model, command?, args?, timeout_seconds? }) -> { binding }`
+- `orchestrate.delegate({ role, task }) -> { task_id, status, role, agent, model, result? }`
+- `orchestrate.status({ task_id }) -> { task_id, status, result? }`
+- `orchestrate.handoff({ to, task_id?, content }) -> { accepted, to }`
+
+Delegation always uses the configured `ProcessAgent` path, so process-group cleanup, registry
+reaping, spawn caps, per-spawn timeouts, and max-lifetime watchdogs are inherited from the normal
+orchestration runtime.
+
+`brunnr init` writes a short master role prompt under the memory root. The prompt tells an
+in-session master to call `agents.list`, recall with `memory.context`, delegate bounded subtasks via
+`orchestrate.delegate(worker)`, and hand results through `orchestrate.handoff` before accepting
+durable outcomes.
+
+## Cheap/local coordinator pattern
+
+The master/coordinator role can be bound to a cheap or local model, for example an Ollama small
+model, because coordination can be mostly routing, queue management, and synthesis of already
+retrieved context. This is an opt-in binding pattern, not a default recommendation: keep verifier
+gates and judge roles strong enough for the project risk, and validate quality empirically before
+standardizing on a cheap coordinator.
+
+## Agent adapter extension point
+
+Adding a new agent such as OpenClaw or `pi` should not require core changes. Implement the
+`Agent` trait: `spawn`, `send`, `stream`, `capabilities`, and `list_models`. Brunnr supports two
+integration modes:
+
+- Brunnr spawns the adapter as a role agent through supervised orchestration.
+- The agent consumes Brunnr's MCP memory/orchestration tools as a peer and keeps its own process
+  lifecycle.
+
+The default `ProcessAgent` adapter is enough for CLIs that accept prompt/model arguments. Native
+adapters are only needed when a CLI has richer session semantics, streaming events, or model
+discovery APIs that are worth exposing directly.
+
 ## Router — agent routing and tool selection (token-saver)
 
 Two routing problems, one embedding-backed mechanism (reuses Mímisbrunnr's embedder):
