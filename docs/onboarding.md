@@ -13,20 +13,21 @@ backend or orchestration only when you want them. Sensible defaults everywhere.
 
 ## A. Human path (Quickstart)
 
-```shell
-cargo build --workspace
+Install the `brunnr` CLI (see the [README](../README.md#install)), or run from source by prefixing
+any command with `cargo run -p brunnr-cli -- ` instead of `brunnr`.
 
+```shell
 # memory mode, zero-infra Files (OKF) backend — the default
-cargo run -p brunnr-cli -- init
-cargo run -p brunnr-cli -- memory store "Brunnr keeps durable context" --tag bootstrap
-cargo run -p brunnr-cli -- memory find durable
+brunnr init
+brunnr memory store "Brunnr keeps durable context" --tag bootstrap
+brunnr memory find durable
 ```
 
 Pick a backend (config choice, not a code change):
 
 ```shell
-cargo run -p brunnr-cli -- init --backend sqlite-vec          # local hybrid, zero infra
-cargo run -p brunnr-cli -- init --backend qdrant \            # shared / multi-user
+brunnr init --backend sqlite-vec          # local hybrid, zero infra
+brunnr init --backend qdrant \            # shared / multi-user
   --project my-project --qdrant-url http://HOST:6333
 ```
 
@@ -42,8 +43,8 @@ descriptions. Then drive your agent exactly as before — it now has `memory.fin
 Backfill existing notes (idempotent), and explore modes:
 
 ```shell
-cargo run -p brunnr-cli -- backfill ./memory-export   # md/json + task md -> OKF/Thingr
-cargo run -p brunnr-cli -- memory context "what matters now"
+brunnr backfill ./memory-export   # md/json + task md -> OKF/Thingr
+brunnr memory context "what matters now"
 ```
 
 `backfill` is robust: a bad file is skipped and reported, not fatal. Markdown is section-chunked
@@ -54,7 +55,7 @@ After import it prints the next opt-in step, `brunnr consolidate`, for LLM seman
 For a non-expert second project/user on the same Qdrant, use the wrapper:
 
 ```shell
-cargo run -p brunnr-cli -- onboard my-project ./memory-export \
+brunnr onboard my-project ./memory-export \
   --qdrant-url http://HOST:6333 --user-id user-a
 ```
 
