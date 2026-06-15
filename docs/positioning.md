@@ -9,7 +9,7 @@ and `node_id` drill-down for context offloading. That project is excellent and w
 why does Brunnr exist?
 
 **Brunnr is not a memory provider — it is a multi-agent context orchestration system.** Memory is
-one module. The honest differences, and where Brunnr aims to be strong:
+one module. The key differences, and where Brunnr aims to be strong:
 
 | | TencentDB Agent Memory | Brunnr |
 |---|---|---|

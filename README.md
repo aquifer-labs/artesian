@@ -12,11 +12,10 @@ top. MCP-first, with pluggable agents and pluggable memory backends.
 
 [![System map](docs/diagrams/system-map.png)](docs/diagrams/system-map.mmd)
 
-On our [honest retrieval benchmark](benchmarks/README.md), targeted recall cuts per-query context
-tokens by **53% → 93%** as memory grows (13 → 180 docs) versus replaying the whole context — because
-full replay scales with the corpus while Brunnr sends a bounded index slice plus a top-k slice
-(~900 tokens). The numbers are measured, not extrapolated, and the harness can fail (weak strategies
-miss). Tables and methodology: [benchmarks/](benchmarks/README.md).
+On our [retrieval benchmark](benchmarks/README.md), targeted recall cuts per-query context tokens by
+**53% → 93%** as memory grows (13 → 180 documents) versus replaying the whole context: full replay
+scales with the corpus while Brunnr sends a bounded index slice plus a top-k slice (~900 tokens).
+See the [tables and methodology](benchmarks/README.md).
 
 **What you get**
 
