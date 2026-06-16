@@ -4,8 +4,12 @@ A-full-replay-cold-session              2991.25 ################################
 B-default-brunnr                        1076.31 ###########################################
 B-default-brunnr-cold-session           1080.06 ###########################################
 B-plus-debate                           1112.88 #############################################
+B-plus-entity-overlap                   1076.31 ###########################################
+B-plus-episode-context                  1076.31 ###########################################
 B-plus-hyde                             2019.56 #################################################################################
 B-plus-multi-query                      1645.09 ##################################################################
+B-plus-supersession                     1076.31 ###########################################
+B-plus-temporal-decay                   1078.81 ###########################################
 B-reflection-consolidated               1114.26 #############################################
 C-built-in-agent-memory                  160.33 ######
 D-no-memory                                0.00 #
@@ -24,6 +28,14 @@ B-plus-debate access-token-ttl recall=0 relevant=["memory/auth-token-ttl.md"] re
 B-plus-debate backup-rpo recall=0 relevant=["memory/backup-policy.md"] retrieved=["memory/datastore-choice.md", "memory/incident-march-postmortem.md", "memory/tenancy-model.md"]
 B-plus-debate canary-hold-time recall=0 relevant=["memory/deploy-strategy.md"] retrieved=["distractors/deployment-checklist.md", "distractors/glossary.md", "memory/incident-march-postmortem.md"]
 B-plus-debate max-upload-size recall=0 relevant=["memory/upload-limits.md"] retrieved=["distractors/storage-overview.md", "memory/incident-march-postmortem.md", "memory/slo-policy.md"]
+B-plus-entity-overlap access-token-ttl recall=0 relevant=["memory/auth-token-ttl.md"] retrieved=["distractors/security-overview.md", "memory/api-versioning.md", "memory/datastore-choice.md"]
+B-plus-entity-overlap backup-rpo recall=0 relevant=["memory/backup-policy.md"] retrieved=["memory/datastore-choice.md", "memory/incident-march-postmortem.md", "memory/tenancy-model.md"]
+B-plus-entity-overlap canary-hold-time recall=0 relevant=["memory/deploy-strategy.md"] retrieved=["distractors/deployment-checklist.md", "distractors/glossary.md", "memory/incident-march-postmortem.md"]
+B-plus-entity-overlap max-upload-size recall=0 relevant=["memory/upload-limits.md"] retrieved=["distractors/storage-overview.md", "memory/incident-march-postmortem.md", "memory/slo-policy.md"]
+B-plus-episode-context access-token-ttl recall=0 relevant=["memory/auth-token-ttl.md"] retrieved=["distractors/security-overview.md", "memory/api-versioning.md", "memory/datastore-choice.md"]
+B-plus-episode-context backup-rpo recall=0 relevant=["memory/backup-policy.md"] retrieved=["memory/datastore-choice.md", "memory/incident-march-postmortem.md", "memory/tenancy-model.md"]
+B-plus-episode-context canary-hold-time recall=0 relevant=["memory/deploy-strategy.md"] retrieved=["distractors/deployment-checklist.md", "distractors/glossary.md", "memory/incident-march-postmortem.md"]
+B-plus-episode-context max-upload-size recall=0 relevant=["memory/upload-limits.md"] retrieved=["distractors/storage-overview.md", "memory/incident-march-postmortem.md", "memory/slo-policy.md"]
 B-plus-hyde access-token-ttl recall=0 relevant=["memory/auth-token-ttl.md"] retrieved=["distractors/glossary.md", "distractors/security-overview.md", "distractors/storage-overview.md"]
 B-plus-hyde backup-rpo recall=0 relevant=["memory/backup-policy.md"] retrieved=["memory/datastore-choice.md", "memory/incident-march-postmortem.md", "memory/tenancy-model.md"]
 B-plus-hyde cache-ttl recall=0 relevant=["memory/caching-policy.md"] retrieved=["distractors/caching-faq.md", "distractors/glossary.md", "distractors/storage-overview.md"]
@@ -44,6 +56,14 @@ B-plus-multi-query max-upload-size recall=0 relevant=["memory/upload-limits.md"]
 B-plus-multi-query password-hash-algorithm recall=0 relevant=["memory/password-hashing.md"] retrieved=["distractors/security-overview.md", "memory/auth-token-ttl.md", "memory/datastore-choice.md"]
 B-plus-multi-query session-idle-timeout recall=0 relevant=["memory/session-policy.md"] retrieved=["distractors/glossary.md", "memory/datastore-choice.md", "memory/deploy-regions.md"]
 B-plus-multi-query webhook-retry-window recall=0 relevant=["memory/webhook-policy.md"] retrieved=["memory/api-versioning.md", "memory/cdn-policy.md", "memory/log-retention.md"]
+B-plus-supersession access-token-ttl recall=0 relevant=["memory/auth-token-ttl.md"] retrieved=["distractors/security-overview.md", "memory/api-versioning.md", "memory/datastore-choice.md"]
+B-plus-supersession backup-rpo recall=0 relevant=["memory/backup-policy.md"] retrieved=["memory/datastore-choice.md", "memory/incident-march-postmortem.md", "memory/tenancy-model.md"]
+B-plus-supersession canary-hold-time recall=0 relevant=["memory/deploy-strategy.md"] retrieved=["distractors/deployment-checklist.md", "distractors/glossary.md", "memory/incident-march-postmortem.md"]
+B-plus-supersession max-upload-size recall=0 relevant=["memory/upload-limits.md"] retrieved=["distractors/storage-overview.md", "memory/incident-march-postmortem.md", "memory/slo-policy.md"]
+B-plus-temporal-decay access-token-ttl recall=0 relevant=["memory/auth-token-ttl.md"] retrieved=["distractors/security-overview.md", "memory/api-versioning.md", "memory/datastore-choice.md"]
+B-plus-temporal-decay backup-rpo recall=0 relevant=["memory/backup-policy.md"] retrieved=["memory/datastore-choice.md", "memory/incident-march-postmortem.md", "memory/tenancy-model.md"]
+B-plus-temporal-decay canary-hold-time recall=0 relevant=["memory/deploy-strategy.md"] retrieved=["distractors/deployment-checklist.md", "distractors/glossary.md", "memory/incident-march-postmortem.md"]
+B-plus-temporal-decay max-upload-size recall=0 relevant=["memory/upload-limits.md"] retrieved=["distractors/storage-overview.md", "memory/incident-march-postmortem.md", "memory/slo-policy.md"]
 B-reflection-consolidated oncall-ack-sla recall=0 relevant=["memory/oncall-policy.md"] retrieved=["memory/deploy-strategy.md", "memory/feature-flags.md", "memory/incident-severity.md"]
 C-built-in-agent-memory access-token-ttl recall=0 relevant=["memory/auth-token-ttl.md"] retrieved=["memory/session-policy.md"]
 C-built-in-agent-memory cache-ttl recall=0 relevant=["memory/caching-policy.md"] retrieved=["distractors/glossary.md"]
@@ -77,6 +97,16 @@ E-md-okf-index-first max-upload-size recall=0 relevant=["memory/upload-limits.md
 
 Opt-in marginal verdicts
 B-plus-debate: delta_tokens=Some(36.5625) delta_success=0 delta_precision=0 delta_recall=0 skip by default; no measured quality gain over B-default in this sample
+B-plus-entity-overlap: delta_tokens=Some(0.0) delta_success=0 delta_precision=0 delta_recall=0 skip by default; no measured quality gain over B-default in this sample
+B-plus-episode-context: delta_tokens=Some(0.0) delta_success=0 delta_precision=0 delta_recall=0 skip by default; no measured quality gain over B-default in this sample
 B-plus-hyde: delta_tokens=Some(943.243056) delta_success=-0.35 delta_precision=-0.116666 delta_recall=-0.35 skip by default; no measured quality gain over B-default in this sample
 B-plus-multi-query: delta_tokens=Some(568.778409) delta_success=-0.25 delta_precision=-0.083333 delta_recall=-0.25 skip by default; no measured quality gain over B-default in this sample
+B-plus-supersession: delta_tokens=Some(0.0) delta_success=0 delta_precision=0 delta_recall=0 skip by default; no measured quality gain over B-default in this sample
+B-plus-temporal-decay: delta_tokens=Some(2.5) delta_success=0 delta_precision=0 delta_recall=0 skip by default; no measured quality gain over B-default in this sample
 B-reflection-consolidated: delta_tokens=Some(37.950658) delta_success=0.15 delta_precision=0.05 delta_recall=0.15 recommend for the task classes where the measured recall gain appears
+
+Signal arm focused evaluation (ability-tagged tasks only)
+B-plus-entity-overlap [entity-disambiguation] n=0 delta_recall=+0.000 delta_precision=+0.000 → no ability-tagged tasks in this corpus; keeping OFF
+B-plus-episode-context [multi-session-synthesis] n=0 delta_recall=+0.000 delta_precision=+0.000 → no ability-tagged tasks in this corpus; keeping OFF
+B-plus-supersession [knowledge-update] n=0 delta_recall=+0.000 delta_precision=+0.000 → no ability-tagged tasks in this corpus; keeping OFF
+B-plus-temporal-decay [temporal-ordering] n=0 delta_recall=+0.000 delta_precision=+0.000 → no ability-tagged tasks in this corpus; keeping OFF

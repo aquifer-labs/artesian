@@ -5,350 +5,518 @@
   "backend": "SqliteVecVectorStore via VectorMemoryBackend",
   "aggregate": {
     "A-full-replay": {
-      "runs": 16,
+      "runs": 28,
       "success_rate": 1.0,
       "success_rate_ci95": 0.0,
-      "mean_total_tokens": 1093.0,
-      "total_tokens_variance": 5.066667,
-      "tokens_per_success": 1093.0,
-      "mean_retrieval_precision": 0.071429,
+      "mean_total_tokens": 2378.071429,
+      "total_tokens_variance": 8.957672,
+      "tokens_per_success": 2378.071429,
+      "mean_retrieval_precision": 0.039682,
       "mean_retrieval_recall": 1.0,
       "by_difficulty": {
         "easy": {
           "runs": 4,
           "success_rate": 1.0,
           "success_rate_ci95": 0.0,
-          "mean_total_tokens": 1092.0,
+          "mean_total_tokens": 2376.0,
           "total_tokens_variance": 5.333333,
-          "tokens_per_success": 1092.0,
-          "mean_retrieval_precision": 0.071429,
+          "tokens_per_success": 2376.0,
+          "mean_retrieval_precision": 0.037037,
           "mean_retrieval_recall": 1.0
         },
         "hard": {
-          "runs": 6,
+          "runs": 12,
           "success_rate": 1.0,
           "success_rate_ci95": 0.0,
-          "mean_total_tokens": 1093.666667,
-          "total_tokens_variance": 7.466667,
-          "tokens_per_success": 1093.666667,
-          "mean_retrieval_precision": 0.071429,
+          "mean_total_tokens": 2379.0,
+          "total_tokens_variance": 10.545455,
+          "tokens_per_success": 2379.0,
+          "mean_retrieval_precision": 0.04321,
           "mean_retrieval_recall": 1.0
         },
         "medium": {
-          "runs": 6,
+          "runs": 12,
           "success_rate": 1.0,
           "success_rate_ci95": 0.0,
-          "mean_total_tokens": 1093.0,
-          "total_tokens_variance": 3.2,
-          "tokens_per_success": 1093.0,
-          "mean_retrieval_precision": 0.071429,
+          "mean_total_tokens": 2377.833333,
+          "total_tokens_variance": 7.424242,
+          "tokens_per_success": 2377.833333,
+          "mean_retrieval_precision": 0.037037,
           "mean_retrieval_recall": 1.0
         }
       }
     },
     "A-full-replay-cold-session": {
-      "runs": 16,
+      "runs": 28,
       "success_rate": 1.0,
       "success_rate_ci95": 0.0,
-      "mean_total_tokens": 1096.0,
-      "total_tokens_variance": 5.066667,
-      "tokens_per_success": 1096.0,
-      "mean_retrieval_precision": 0.071429,
+      "mean_total_tokens": 2381.071429,
+      "total_tokens_variance": 8.957672,
+      "tokens_per_success": 2381.071429,
+      "mean_retrieval_precision": 0.039682,
       "mean_retrieval_recall": 1.0,
       "by_difficulty": {
         "easy": {
           "runs": 4,
           "success_rate": 1.0,
           "success_rate_ci95": 0.0,
-          "mean_total_tokens": 1095.0,
+          "mean_total_tokens": 2379.0,
           "total_tokens_variance": 5.333333,
-          "tokens_per_success": 1095.0,
-          "mean_retrieval_precision": 0.071429,
+          "tokens_per_success": 2379.0,
+          "mean_retrieval_precision": 0.037037,
           "mean_retrieval_recall": 1.0
         },
         "hard": {
-          "runs": 6,
+          "runs": 12,
           "success_rate": 1.0,
           "success_rate_ci95": 0.0,
-          "mean_total_tokens": 1096.666667,
-          "total_tokens_variance": 7.466667,
-          "tokens_per_success": 1096.666667,
-          "mean_retrieval_precision": 0.071429,
+          "mean_total_tokens": 2382.0,
+          "total_tokens_variance": 10.545455,
+          "tokens_per_success": 2382.0,
+          "mean_retrieval_precision": 0.04321,
           "mean_retrieval_recall": 1.0
         },
         "medium": {
-          "runs": 6,
+          "runs": 12,
           "success_rate": 1.0,
           "success_rate_ci95": 0.0,
-          "mean_total_tokens": 1096.0,
-          "total_tokens_variance": 3.2,
-          "tokens_per_success": 1096.0,
-          "mean_retrieval_precision": 0.071429,
+          "mean_total_tokens": 2380.833333,
+          "total_tokens_variance": 7.424242,
+          "tokens_per_success": 2380.833333,
+          "mean_retrieval_precision": 0.037037,
           "mean_retrieval_recall": 1.0
         }
       }
     },
     "B-default-brunnr": {
-      "runs": 16,
-      "success_rate": 0.875,
-      "success_rate_ci95": 0.167367,
-      "mean_total_tokens": 514.125,
-      "total_tokens_variance": 65.183333,
-      "tokens_per_success": 587.571429,
-      "mean_retrieval_precision": 0.291666,
-      "mean_retrieval_recall": 0.875,
+      "runs": 28,
+      "success_rate": 0.785714,
+      "success_rate_ci95": 0.154776,
+      "mean_total_tokens": 807.857143,
+      "total_tokens_variance": 728.275132,
+      "tokens_per_success": 1028.181818,
+      "mean_retrieval_precision": 0.285714,
+      "mean_retrieval_recall": 0.785714,
       "by_difficulty": {
         "easy": {
           "runs": 4,
           "success_rate": 0.5,
           "success_rate_ci95": 0.565803,
-          "mean_total_tokens": 509.0,
-          "total_tokens_variance": 5.333333,
-          "tokens_per_success": 1018.0,
+          "mean_total_tokens": 787.5,
+          "total_tokens_variance": 1875.0,
+          "tokens_per_success": 1575.0,
           "mean_retrieval_precision": 0.166667,
           "mean_retrieval_recall": 0.5
         },
         "hard": {
-          "runs": 6,
-          "success_rate": 1.0,
-          "success_rate_ci95": 0.0,
-          "mean_total_tokens": 521.333333,
-          "total_tokens_variance": 84.266667,
-          "tokens_per_success": 521.333333,
+          "runs": 12,
+          "success_rate": 0.833333,
+          "success_rate_ci95": 0.220239,
+          "mean_total_tokens": 814.666667,
+          "total_tokens_variance": 808.969697,
+          "tokens_per_success": 977.6,
           "mean_retrieval_precision": 0.333333,
-          "mean_retrieval_recall": 1.0
+          "mean_retrieval_recall": 0.833333
         },
         "medium": {
-          "runs": 6,
-          "success_rate": 1.0,
-          "success_rate_ci95": 0.0,
-          "mean_total_tokens": 510.333333,
-          "total_tokens_variance": 7.466667,
-          "tokens_per_success": 510.333333,
-          "mean_retrieval_precision": 0.333333,
-          "mean_retrieval_recall": 1.0
+          "runs": 12,
+          "success_rate": 0.833333,
+          "success_rate_ci95": 0.220239,
+          "mean_total_tokens": 807.833333,
+          "total_tokens_variance": 265.969697,
+          "tokens_per_success": 969.4,
+          "mean_retrieval_precision": 0.277778,
+          "mean_retrieval_recall": 0.833333
         }
       }
     },
     "B-default-brunnr-cold-session": {
-      "runs": 16,
-      "success_rate": 0.875,
-      "success_rate_ci95": 0.167367,
-      "mean_total_tokens": 517.125,
-      "total_tokens_variance": 65.183333,
-      "tokens_per_success": 591.0,
-      "mean_retrieval_precision": 0.291666,
-      "mean_retrieval_recall": 0.875,
+      "runs": 28,
+      "success_rate": 0.785714,
+      "success_rate_ci95": 0.154776,
+      "mean_total_tokens": 810.857143,
+      "total_tokens_variance": 728.275132,
+      "tokens_per_success": 1032.0,
+      "mean_retrieval_precision": 0.285714,
+      "mean_retrieval_recall": 0.785714,
       "by_difficulty": {
         "easy": {
           "runs": 4,
           "success_rate": 0.5,
           "success_rate_ci95": 0.565803,
-          "mean_total_tokens": 512.0,
-          "total_tokens_variance": 5.333333,
-          "tokens_per_success": 1024.0,
+          "mean_total_tokens": 790.5,
+          "total_tokens_variance": 1875.0,
+          "tokens_per_success": 1581.0,
           "mean_retrieval_precision": 0.166667,
           "mean_retrieval_recall": 0.5
         },
         "hard": {
-          "runs": 6,
-          "success_rate": 1.0,
-          "success_rate_ci95": 0.0,
-          "mean_total_tokens": 524.333333,
-          "total_tokens_variance": 84.266667,
-          "tokens_per_success": 524.333333,
+          "runs": 12,
+          "success_rate": 0.833333,
+          "success_rate_ci95": 0.220239,
+          "mean_total_tokens": 817.666667,
+          "total_tokens_variance": 808.969697,
+          "tokens_per_success": 981.2,
           "mean_retrieval_precision": 0.333333,
-          "mean_retrieval_recall": 1.0
+          "mean_retrieval_recall": 0.833333
         },
         "medium": {
-          "runs": 6,
-          "success_rate": 1.0,
-          "success_rate_ci95": 0.0,
-          "mean_total_tokens": 513.333333,
-          "total_tokens_variance": 7.466667,
-          "tokens_per_success": 513.333333,
-          "mean_retrieval_precision": 0.333333,
-          "mean_retrieval_recall": 1.0
+          "runs": 12,
+          "success_rate": 0.833333,
+          "success_rate_ci95": 0.220239,
+          "mean_total_tokens": 810.833333,
+          "total_tokens_variance": 265.969697,
+          "tokens_per_success": 973.0,
+          "mean_retrieval_precision": 0.277778,
+          "mean_retrieval_recall": 0.833333
         }
       }
     },
     "B-plus-debate": {
-      "runs": 16,
-      "success_rate": 0.875,
-      "success_rate_ci95": 0.167367,
-      "mean_total_tokens": 543.125,
-      "total_tokens_variance": 85.716667,
-      "tokens_per_success": 620.714286,
-      "mean_retrieval_precision": 0.291666,
-      "mean_retrieval_recall": 0.875,
+      "runs": 28,
+      "success_rate": 0.785714,
+      "success_rate_ci95": 0.154776,
+      "mean_total_tokens": 837.928571,
+      "total_tokens_variance": 705.253968,
+      "tokens_per_success": 1066.454545,
+      "mean_retrieval_precision": 0.285714,
+      "mean_retrieval_recall": 0.785714,
       "by_difficulty": {
         "easy": {
           "runs": 4,
           "success_rate": 0.5,
           "success_rate_ci95": 0.565803,
-          "mean_total_tokens": 537.0,
-          "total_tokens_variance": 0.0,
-          "tokens_per_success": 1074.0,
+          "mean_total_tokens": 815.5,
+          "total_tokens_variance": 1680.333333,
+          "tokens_per_success": 1631.0,
           "mean_retrieval_precision": 0.166667,
           "mean_retrieval_recall": 0.5
         },
         "hard": {
-          "runs": 6,
-          "success_rate": 1.0,
-          "success_rate_ci95": 0.0,
-          "mean_total_tokens": 551.0,
-          "total_tokens_variance": 118.4,
-          "tokens_per_success": 551.0,
+          "runs": 12,
+          "success_rate": 0.833333,
+          "success_rate_ci95": 0.220239,
+          "mean_total_tokens": 845.666667,
+          "total_tokens_variance": 749.69697,
+          "tokens_per_success": 1014.8,
           "mean_retrieval_precision": 0.333333,
-          "mean_retrieval_recall": 1.0
+          "mean_retrieval_recall": 0.833333
         },
         "medium": {
-          "runs": 6,
-          "success_rate": 1.0,
-          "success_rate_ci95": 0.0,
-          "mean_total_tokens": 539.333333,
-          "total_tokens_variance": 17.066667,
-          "tokens_per_success": 539.333333,
+          "runs": 12,
+          "success_rate": 0.833333,
+          "success_rate_ci95": 0.220239,
+          "mean_total_tokens": 837.666667,
+          "total_tokens_variance": 274.787879,
+          "tokens_per_success": 1005.2,
+          "mean_retrieval_precision": 0.277778,
+          "mean_retrieval_recall": 0.833333
+        }
+      }
+    },
+    "B-plus-entity-overlap": {
+      "runs": 28,
+      "success_rate": 0.785714,
+      "success_rate_ci95": 0.154776,
+      "mean_total_tokens": 807.857143,
+      "total_tokens_variance": 728.275132,
+      "tokens_per_success": 1028.181818,
+      "mean_retrieval_precision": 0.285714,
+      "mean_retrieval_recall": 0.785714,
+      "by_difficulty": {
+        "easy": {
+          "runs": 4,
+          "success_rate": 0.5,
+          "success_rate_ci95": 0.565803,
+          "mean_total_tokens": 787.5,
+          "total_tokens_variance": 1875.0,
+          "tokens_per_success": 1575.0,
+          "mean_retrieval_precision": 0.166667,
+          "mean_retrieval_recall": 0.5
+        },
+        "hard": {
+          "runs": 12,
+          "success_rate": 0.833333,
+          "success_rate_ci95": 0.220239,
+          "mean_total_tokens": 814.666667,
+          "total_tokens_variance": 808.969697,
+          "tokens_per_success": 977.6,
           "mean_retrieval_precision": 0.333333,
-          "mean_retrieval_recall": 1.0
+          "mean_retrieval_recall": 0.833333
+        },
+        "medium": {
+          "runs": 12,
+          "success_rate": 0.833333,
+          "success_rate_ci95": 0.220239,
+          "mean_total_tokens": 807.833333,
+          "total_tokens_variance": 265.969697,
+          "tokens_per_success": 969.4,
+          "mean_retrieval_precision": 0.277778,
+          "mean_retrieval_recall": 0.833333
+        }
+      }
+    },
+    "B-plus-episode-context": {
+      "runs": 28,
+      "success_rate": 0.785714,
+      "success_rate_ci95": 0.154776,
+      "mean_total_tokens": 807.857143,
+      "total_tokens_variance": 728.275132,
+      "tokens_per_success": 1028.181818,
+      "mean_retrieval_precision": 0.285714,
+      "mean_retrieval_recall": 0.785714,
+      "by_difficulty": {
+        "easy": {
+          "runs": 4,
+          "success_rate": 0.5,
+          "success_rate_ci95": 0.565803,
+          "mean_total_tokens": 787.5,
+          "total_tokens_variance": 1875.0,
+          "tokens_per_success": 1575.0,
+          "mean_retrieval_precision": 0.166667,
+          "mean_retrieval_recall": 0.5
+        },
+        "hard": {
+          "runs": 12,
+          "success_rate": 0.833333,
+          "success_rate_ci95": 0.220239,
+          "mean_total_tokens": 814.666667,
+          "total_tokens_variance": 808.969697,
+          "tokens_per_success": 977.6,
+          "mean_retrieval_precision": 0.333333,
+          "mean_retrieval_recall": 0.833333
+        },
+        "medium": {
+          "runs": 12,
+          "success_rate": 0.833333,
+          "success_rate_ci95": 0.220239,
+          "mean_total_tokens": 807.833333,
+          "total_tokens_variance": 265.969697,
+          "tokens_per_success": 969.4,
+          "mean_retrieval_precision": 0.277778,
+          "mean_retrieval_recall": 0.833333
         }
       }
     },
     "B-plus-hyde": {
-      "runs": 16,
-      "success_rate": 0.375,
-      "success_rate_ci95": 0.245,
-      "mean_total_tokens": 556.875,
-      "total_tokens_variance": 393.983333,
-      "tokens_per_success": 1485.0,
-      "mean_retrieval_precision": 0.125,
-      "mean_retrieval_recall": 0.375,
+      "runs": 28,
+      "success_rate": 0.428571,
+      "success_rate_ci95": 0.186667,
+      "mean_total_tokens": 861.785714,
+      "total_tokens_variance": 546.248677,
+      "tokens_per_success": 2010.833333,
+      "mean_retrieval_precision": 0.166667,
+      "mean_retrieval_recall": 0.464286,
       "by_difficulty": {
         "easy": {
           "runs": 4,
           "success_rate": 0.0,
           "success_rate_ci95": 0.0,
-          "mean_total_tokens": 552.5,
-          "total_tokens_variance": 560.333333,
+          "mean_total_tokens": 848.5,
+          "total_tokens_variance": 0.333333,
           "tokens_per_success": null,
           "mean_retrieval_precision": 0.0,
           "mean_retrieval_recall": 0.0
         },
         "hard": {
-          "runs": 6,
-          "success_rate": 0.666667,
-          "success_rate_ci95": 0.413205,
-          "mean_total_tokens": 556.0,
-          "total_tokens_variance": 280.8,
-          "tokens_per_success": 834.0,
-          "mean_retrieval_precision": 0.222222,
-          "mean_retrieval_recall": 0.666667
+          "runs": 12,
+          "success_rate": 0.333333,
+          "success_rate_ci95": 0.278582,
+          "mean_total_tokens": 867.166667,
+          "total_tokens_variance": 664.515152,
+          "tokens_per_success": 2601.5,
+          "mean_retrieval_precision": 0.166667,
+          "mean_retrieval_recall": 0.416667
         },
         "medium": {
-          "runs": 6,
-          "success_rate": 0.333333,
-          "success_rate_ci95": 0.413205,
-          "mean_total_tokens": 560.666667,
-          "total_tokens_variance": 531.466667,
-          "tokens_per_success": 1682.0,
-          "mean_retrieval_precision": 0.111111,
-          "mean_retrieval_recall": 0.333333
+          "runs": 12,
+          "success_rate": 0.666667,
+          "success_rate_ci95": 0.278582,
+          "mean_total_tokens": 860.833333,
+          "total_tokens_variance": 579.424242,
+          "tokens_per_success": 1291.25,
+          "mean_retrieval_precision": 0.222222,
+          "mean_retrieval_recall": 0.666667
         }
       }
     },
     "B-plus-multi-query": {
-      "runs": 16,
-      "success_rate": 0.875,
-      "success_rate_ci95": 0.167367,
-      "mean_total_tokens": 551.5,
-      "total_tokens_variance": 97.6,
-      "tokens_per_success": 630.285714,
-      "mean_retrieval_precision": 0.291666,
-      "mean_retrieval_recall": 0.875,
+      "runs": 28,
+      "success_rate": 0.571429,
+      "success_rate_ci95": 0.186667,
+      "mean_total_tokens": 867.857143,
+      "total_tokens_variance": 545.756614,
+      "tokens_per_success": 1518.75,
+      "mean_retrieval_precision": 0.214286,
+      "mean_retrieval_recall": 0.571429,
+      "by_difficulty": {
+        "easy": {
+          "runs": 4,
+          "success_rate": 0.0,
+          "success_rate_ci95": 0.0,
+          "mean_total_tokens": 866.5,
+          "total_tokens_variance": 456.333333,
+          "tokens_per_success": null,
+          "mean_retrieval_precision": 0.0,
+          "mean_retrieval_recall": 0.0
+        },
+        "hard": {
+          "runs": 12,
+          "success_rate": 0.666667,
+          "success_rate_ci95": 0.278582,
+          "mean_total_tokens": 870.666667,
+          "total_tokens_variance": 518.787879,
+          "tokens_per_success": 1306.0,
+          "mean_retrieval_precision": 0.277778,
+          "mean_retrieval_recall": 0.666667
+        },
+        "medium": {
+          "runs": 12,
+          "success_rate": 0.666667,
+          "success_rate_ci95": 0.278582,
+          "mean_total_tokens": 865.5,
+          "total_tokens_variance": 681.0,
+          "tokens_per_success": 1298.25,
+          "mean_retrieval_precision": 0.222222,
+          "mean_retrieval_recall": 0.666667
+        }
+      }
+    },
+    "B-plus-supersession": {
+      "runs": 28,
+      "success_rate": 0.785714,
+      "success_rate_ci95": 0.154776,
+      "mean_total_tokens": 807.857143,
+      "total_tokens_variance": 728.275132,
+      "tokens_per_success": 1028.181818,
+      "mean_retrieval_precision": 0.285714,
+      "mean_retrieval_recall": 0.785714,
       "by_difficulty": {
         "easy": {
           "runs": 4,
           "success_rate": 0.5,
           "success_rate_ci95": 0.565803,
-          "mean_total_tokens": 544.0,
-          "total_tokens_variance": 33.333333,
-          "tokens_per_success": 1088.0,
+          "mean_total_tokens": 787.5,
+          "total_tokens_variance": 1875.0,
+          "tokens_per_success": 1575.0,
           "mean_retrieval_precision": 0.166667,
           "mean_retrieval_recall": 0.5
         },
         "hard": {
-          "runs": 6,
-          "success_rate": 1.0,
-          "success_rate_ci95": 0.0,
-          "mean_total_tokens": 560.333333,
-          "total_tokens_variance": 61.066667,
-          "tokens_per_success": 560.333333,
+          "runs": 12,
+          "success_rate": 0.833333,
+          "success_rate_ci95": 0.220239,
+          "mean_total_tokens": 814.666667,
+          "total_tokens_variance": 808.969697,
+          "tokens_per_success": 977.6,
           "mean_retrieval_precision": 0.333333,
-          "mean_retrieval_recall": 1.0
+          "mean_retrieval_recall": 0.833333
         },
         "medium": {
-          "runs": 6,
-          "success_rate": 1.0,
-          "success_rate_ci95": 0.0,
-          "mean_total_tokens": 547.666667,
-          "total_tokens_variance": 55.466667,
-          "tokens_per_success": 547.666667,
+          "runs": 12,
+          "success_rate": 0.833333,
+          "success_rate_ci95": 0.220239,
+          "mean_total_tokens": 807.833333,
+          "total_tokens_variance": 265.969697,
+          "tokens_per_success": 969.4,
+          "mean_retrieval_precision": 0.277778,
+          "mean_retrieval_recall": 0.833333
+        }
+      }
+    },
+    "B-plus-temporal-decay": {
+      "runs": 28,
+      "success_rate": 0.785714,
+      "success_rate_ci95": 0.154776,
+      "mean_total_tokens": 809.857143,
+      "total_tokens_variance": 728.275132,
+      "tokens_per_success": 1030.727273,
+      "mean_retrieval_precision": 0.285714,
+      "mean_retrieval_recall": 0.785714,
+      "by_difficulty": {
+        "easy": {
+          "runs": 4,
+          "success_rate": 0.5,
+          "success_rate_ci95": 0.565803,
+          "mean_total_tokens": 789.5,
+          "total_tokens_variance": 1875.0,
+          "tokens_per_success": 1579.0,
+          "mean_retrieval_precision": 0.166667,
+          "mean_retrieval_recall": 0.5
+        },
+        "hard": {
+          "runs": 12,
+          "success_rate": 0.833333,
+          "success_rate_ci95": 0.220239,
+          "mean_total_tokens": 816.666667,
+          "total_tokens_variance": 808.969697,
+          "tokens_per_success": 980.0,
           "mean_retrieval_precision": 0.333333,
-          "mean_retrieval_recall": 1.0
+          "mean_retrieval_recall": 0.833333
+        },
+        "medium": {
+          "runs": 12,
+          "success_rate": 0.833333,
+          "success_rate_ci95": 0.220239,
+          "mean_total_tokens": 809.833333,
+          "total_tokens_variance": 265.969697,
+          "tokens_per_success": 971.8,
+          "mean_retrieval_precision": 0.277778,
+          "mean_retrieval_recall": 0.833333
         }
       }
     },
     "B-reflection-consolidated": {
-      "runs": 16,
-      "success_rate": 0.875,
-      "success_rate_ci95": 0.167367,
-      "mean_total_tokens": 694.0,
-      "total_tokens_variance": 81.066667,
-      "tokens_per_success": 793.142857,
-      "mean_retrieval_precision": 0.291666,
-      "mean_retrieval_recall": 0.875,
+      "runs": 28,
+      "success_rate": 0.928571,
+      "success_rate_ci95": 0.097144,
+      "mean_total_tokens": 1008.214286,
+      "total_tokens_variance": 116.915344,
+      "tokens_per_success": 1085.769231,
+      "mean_retrieval_precision": 0.333333,
+      "mean_retrieval_recall": 0.928571,
       "by_difficulty": {
         "easy": {
           "runs": 4,
           "success_rate": 0.5,
           "success_rate_ci95": 0.565803,
-          "mean_total_tokens": 688.5,
-          "total_tokens_variance": 147.0,
-          "tokens_per_success": 1377.0,
+          "mean_total_tokens": 1008.5,
+          "total_tokens_variance": 96.333333,
+          "tokens_per_success": 2017.0,
           "mean_retrieval_precision": 0.166667,
           "mean_retrieval_recall": 0.5
         },
         "hard": {
-          "runs": 6,
+          "runs": 12,
           "success_rate": 1.0,
           "success_rate_ci95": 0.0,
-          "mean_total_tokens": 698.666667,
-          "total_tokens_variance": 29.066667,
-          "tokens_per_success": 698.666667,
-          "mean_retrieval_precision": 0.333333,
+          "mean_total_tokens": 1009.5,
+          "total_tokens_variance": 134.818182,
+          "tokens_per_success": 1009.5,
+          "mean_retrieval_precision": 0.388889,
           "mean_retrieval_recall": 1.0
         },
         "medium": {
-          "runs": 6,
+          "runs": 12,
           "success_rate": 1.0,
           "success_rate_ci95": 0.0,
-          "mean_total_tokens": 693.0,
-          "total_tokens_variance": 74.4,
-          "tokens_per_success": 693.0,
+          "mean_total_tokens": 1006.833333,
+          "total_tokens_variance": 121.969697,
+          "tokens_per_success": 1006.833333,
           "mean_retrieval_precision": 0.333333,
           "mean_retrieval_recall": 1.0
         }
       }
     },
     "C-built-in-agent-memory": {
-      "runs": 16,
-      "success_rate": 0.625,
-      "success_rate_ci95": 0.245,
-      "mean_total_tokens": 129.0,
-      "total_tokens_variance": 167.466667,
-      "tokens_per_success": 206.4,
-      "mean_retrieval_precision": 0.625,
-      "mean_retrieval_recall": 0.625,
+      "runs": 28,
+      "success_rate": 0.285714,
+      "success_rate_ci95": 0.170402,
+      "mean_total_tokens": 140.928571,
+      "total_tokens_variance": 257.10582,
+      "tokens_per_success": 493.25,
+      "mean_retrieval_precision": 0.357143,
+      "mean_retrieval_recall": 0.321429,
       "by_difficulty": {
         "easy": {
           "runs": 4,
@@ -361,33 +529,33 @@
           "mean_retrieval_recall": 0.0
         },
         "hard": {
-          "runs": 6,
-          "success_rate": 0.666667,
-          "success_rate_ci95": 0.413205,
-          "mean_total_tokens": 129.333333,
-          "total_tokens_variance": 216.266667,
-          "tokens_per_success": 194.0,
-          "mean_retrieval_precision": 0.666667,
-          "mean_retrieval_recall": 0.666667
+          "runs": 12,
+          "success_rate": 0.333333,
+          "success_rate_ci95": 0.278582,
+          "mean_total_tokens": 141.5,
+          "total_tokens_variance": 339.909091,
+          "tokens_per_success": 424.5,
+          "mean_retrieval_precision": 0.5,
+          "mean_retrieval_recall": 0.416667
         },
         "medium": {
-          "runs": 6,
-          "success_rate": 1.0,
-          "success_rate_ci95": 0.0,
-          "mean_total_tokens": 119.333333,
-          "total_tokens_variance": 13.866667,
-          "tokens_per_success": 119.333333,
-          "mean_retrieval_precision": 1.0,
-          "mean_retrieval_recall": 1.0
+          "runs": 12,
+          "success_rate": 0.333333,
+          "success_rate_ci95": 0.278582,
+          "mean_total_tokens": 139.666667,
+          "total_tokens_variance": 286.060606,
+          "tokens_per_success": 419.0,
+          "mean_retrieval_precision": 0.333333,
+          "mean_retrieval_recall": 0.333333
         }
       }
     },
     "D-no-memory": {
-      "runs": 16,
+      "runs": 28,
       "success_rate": 0.0,
       "success_rate_ci95": 0.0,
-      "mean_total_tokens": 52.0,
-      "total_tokens_variance": 5.066667,
+      "mean_total_tokens": 53.071429,
+      "total_tokens_variance": 8.957672,
       "tokens_per_success": null,
       "mean_retrieval_precision": 0.0,
       "mean_retrieval_recall": 0.0,
@@ -403,21 +571,21 @@
           "mean_retrieval_recall": 0.0
         },
         "hard": {
-          "runs": 6,
+          "runs": 12,
           "success_rate": 0.0,
           "success_rate_ci95": 0.0,
-          "mean_total_tokens": 52.666667,
-          "total_tokens_variance": 7.466667,
+          "mean_total_tokens": 54.0,
+          "total_tokens_variance": 10.545455,
           "tokens_per_success": null,
           "mean_retrieval_precision": 0.0,
           "mean_retrieval_recall": 0.0
         },
         "medium": {
-          "runs": 6,
+          "runs": 12,
           "success_rate": 0.0,
           "success_rate_ci95": 0.0,
-          "mean_total_tokens": 52.0,
-          "total_tokens_variance": 3.2,
+          "mean_total_tokens": 52.833333,
+          "total_tokens_variance": 7.424242,
           "tokens_per_success": null,
           "mean_retrieval_precision": 0.0,
           "mean_retrieval_recall": 0.0
@@ -425,44 +593,44 @@
       }
     },
     "E-md-okf-index-first": {
-      "runs": 16,
-      "success_rate": 0.875,
-      "success_rate_ci95": 0.167367,
-      "mean_total_tokens": 515.125,
-      "total_tokens_variance": 65.183333,
-      "tokens_per_success": 588.714286,
-      "mean_retrieval_precision": 0.291666,
-      "mean_retrieval_recall": 0.875,
+      "runs": 28,
+      "success_rate": 0.785714,
+      "success_rate_ci95": 0.154776,
+      "mean_total_tokens": 808.857143,
+      "total_tokens_variance": 728.275132,
+      "tokens_per_success": 1029.454545,
+      "mean_retrieval_precision": 0.285714,
+      "mean_retrieval_recall": 0.785714,
       "by_difficulty": {
         "easy": {
           "runs": 4,
           "success_rate": 0.5,
           "success_rate_ci95": 0.565803,
-          "mean_total_tokens": 510.0,
-          "total_tokens_variance": 5.333333,
-          "tokens_per_success": 1020.0,
+          "mean_total_tokens": 788.5,
+          "total_tokens_variance": 1875.0,
+          "tokens_per_success": 1577.0,
           "mean_retrieval_precision": 0.166667,
           "mean_retrieval_recall": 0.5
         },
         "hard": {
-          "runs": 6,
-          "success_rate": 1.0,
-          "success_rate_ci95": 0.0,
-          "mean_total_tokens": 522.333333,
-          "total_tokens_variance": 84.266667,
-          "tokens_per_success": 522.333333,
+          "runs": 12,
+          "success_rate": 0.833333,
+          "success_rate_ci95": 0.220239,
+          "mean_total_tokens": 815.666667,
+          "total_tokens_variance": 808.969697,
+          "tokens_per_success": 978.8,
           "mean_retrieval_precision": 0.333333,
-          "mean_retrieval_recall": 1.0
+          "mean_retrieval_recall": 0.833333
         },
         "medium": {
-          "runs": 6,
-          "success_rate": 1.0,
-          "success_rate_ci95": 0.0,
-          "mean_total_tokens": 511.333333,
-          "total_tokens_variance": 7.466667,
-          "tokens_per_success": 511.333333,
-          "mean_retrieval_precision": 0.333333,
-          "mean_retrieval_recall": 1.0
+          "runs": 12,
+          "success_rate": 0.833333,
+          "success_rate_ci95": 0.220239,
+          "mean_total_tokens": 808.833333,
+          "total_tokens_variance": 265.969697,
+          "tokens_per_success": 970.6,
+          "mean_retrieval_precision": 0.277778,
+          "mean_retrieval_recall": 0.833333
         }
       }
     }
@@ -477,8 +645,38 @@
       ],
       "retrieved_docs": [
         "distractors/march-outage-briefing.md",
-        "memory/deploy-regions.md",
-        "memory/rate-limits.md"
+        "distractors/rate-limit-v1.md",
+        "memory/pg-pool-config.md"
+      ],
+      "recall": 0.0,
+      "runs": 2
+    },
+    {
+      "arm": "B-default-brunnr",
+      "task_id": "march-outage-root-cause",
+      "difficulty": "hard",
+      "relevant_docs": [
+        "memory/incident-march-postmortem.md"
+      ],
+      "retrieved_docs": [
+        "distractors/march-outage-briefing.md",
+        "memory/background-job-retry.md",
+        "memory/deploy-strategy-v2.md"
+      ],
+      "recall": 0.0,
+      "runs": 2
+    },
+    {
+      "arm": "B-default-brunnr",
+      "task_id": "retry-max-attempts",
+      "difficulty": "medium",
+      "relevant_docs": [
+        "memory/retry-policy.md"
+      ],
+      "retrieved_docs": [
+        "distractors/march-outage-briefing.md",
+        "distractors/rate-limit-v1.md",
+        "memory/background-job-retry.md"
       ],
       "recall": 0.0,
       "runs": 2
@@ -492,8 +690,38 @@
       ],
       "retrieved_docs": [
         "distractors/march-outage-briefing.md",
-        "memory/deploy-regions.md",
-        "memory/rate-limits.md"
+        "distractors/rate-limit-v1.md",
+        "memory/pg-pool-config.md"
+      ],
+      "recall": 0.0,
+      "runs": 2
+    },
+    {
+      "arm": "B-default-brunnr-cold-session",
+      "task_id": "march-outage-root-cause",
+      "difficulty": "hard",
+      "relevant_docs": [
+        "memory/incident-march-postmortem.md"
+      ],
+      "retrieved_docs": [
+        "distractors/march-outage-briefing.md",
+        "memory/background-job-retry.md",
+        "memory/deploy-strategy-v2.md"
+      ],
+      "recall": 0.0,
+      "runs": 2
+    },
+    {
+      "arm": "B-default-brunnr-cold-session",
+      "task_id": "retry-max-attempts",
+      "difficulty": "medium",
+      "relevant_docs": [
+        "memory/retry-policy.md"
+      ],
+      "retrieved_docs": [
+        "distractors/march-outage-briefing.md",
+        "distractors/rate-limit-v1.md",
+        "memory/background-job-retry.md"
       ],
       "recall": 0.0,
       "runs": 2
@@ -507,8 +735,128 @@
       ],
       "retrieved_docs": [
         "distractors/march-outage-briefing.md",
-        "memory/deploy-regions.md",
-        "memory/rate-limits.md"
+        "distractors/rate-limit-v1.md",
+        "memory/pg-pool-config.md"
+      ],
+      "recall": 0.0,
+      "runs": 2
+    },
+    {
+      "arm": "B-plus-debate",
+      "task_id": "march-outage-root-cause",
+      "difficulty": "hard",
+      "relevant_docs": [
+        "memory/incident-march-postmortem.md"
+      ],
+      "retrieved_docs": [
+        "distractors/march-outage-briefing.md",
+        "memory/background-job-retry.md",
+        "memory/deploy-strategy-v2.md"
+      ],
+      "recall": 0.0,
+      "runs": 2
+    },
+    {
+      "arm": "B-plus-debate",
+      "task_id": "retry-max-attempts",
+      "difficulty": "medium",
+      "relevant_docs": [
+        "memory/retry-policy.md"
+      ],
+      "retrieved_docs": [
+        "distractors/march-outage-briefing.md",
+        "distractors/rate-limit-v1.md",
+        "memory/background-job-retry.md"
+      ],
+      "recall": 0.0,
+      "runs": 2
+    },
+    {
+      "arm": "B-plus-entity-overlap",
+      "task_id": "access-token-ttl",
+      "difficulty": "easy",
+      "relevant_docs": [
+        "memory/auth-token-ttl.md"
+      ],
+      "retrieved_docs": [
+        "distractors/march-outage-briefing.md",
+        "distractors/rate-limit-v1.md",
+        "memory/pg-pool-config.md"
+      ],
+      "recall": 0.0,
+      "runs": 2
+    },
+    {
+      "arm": "B-plus-entity-overlap",
+      "task_id": "march-outage-root-cause",
+      "difficulty": "hard",
+      "relevant_docs": [
+        "memory/incident-march-postmortem.md"
+      ],
+      "retrieved_docs": [
+        "distractors/march-outage-briefing.md",
+        "memory/background-job-retry.md",
+        "memory/deploy-strategy-v2.md"
+      ],
+      "recall": 0.0,
+      "runs": 2
+    },
+    {
+      "arm": "B-plus-entity-overlap",
+      "task_id": "retry-max-attempts",
+      "difficulty": "medium",
+      "relevant_docs": [
+        "memory/retry-policy.md"
+      ],
+      "retrieved_docs": [
+        "distractors/march-outage-briefing.md",
+        "distractors/rate-limit-v1.md",
+        "memory/background-job-retry.md"
+      ],
+      "recall": 0.0,
+      "runs": 2
+    },
+    {
+      "arm": "B-plus-episode-context",
+      "task_id": "access-token-ttl",
+      "difficulty": "easy",
+      "relevant_docs": [
+        "memory/auth-token-ttl.md"
+      ],
+      "retrieved_docs": [
+        "distractors/march-outage-briefing.md",
+        "distractors/rate-limit-v1.md",
+        "memory/pg-pool-config.md"
+      ],
+      "recall": 0.0,
+      "runs": 2
+    },
+    {
+      "arm": "B-plus-episode-context",
+      "task_id": "march-outage-root-cause",
+      "difficulty": "hard",
+      "relevant_docs": [
+        "memory/incident-march-postmortem.md"
+      ],
+      "retrieved_docs": [
+        "distractors/march-outage-briefing.md",
+        "memory/background-job-retry.md",
+        "memory/deploy-strategy-v2.md"
+      ],
+      "recall": 0.0,
+      "runs": 2
+    },
+    {
+      "arm": "B-plus-episode-context",
+      "task_id": "retry-max-attempts",
+      "difficulty": "medium",
+      "relevant_docs": [
+        "memory/retry-policy.md"
+      ],
+      "retrieved_docs": [
+        "distractors/march-outage-briefing.md",
+        "distractors/rate-limit-v1.md",
+        "memory/background-job-retry.md"
       ],
       "recall": 0.0,
       "runs": 2
@@ -521,9 +869,9 @@
         "memory/auth-token-ttl.md"
       ],
       "retrieved_docs": [
-        "distractors/db-migration-notes.md",
         "distractors/march-outage-briefing.md",
-        "memory/datastore-choice.md"
+        "distractors/pg-scaling.md",
+        "distractors/rate-limit-v1.md"
       ],
       "recall": 0.0,
       "runs": 2
@@ -536,9 +884,9 @@
         "memory/rate-limits.md"
       ],
       "retrieved_docs": [
-        "distractors/glossary.md",
         "distractors/march-outage-briefing.md",
-        "memory/incident-march-postmortem.md"
+        "distractors/rate-limit-v1.md",
+        "memory/rate-limit-v2.md"
       ],
       "recall": 0.0,
       "runs": 2
@@ -551,9 +899,9 @@
         "memory/caching-policy.md"
       ],
       "retrieved_docs": [
-        "distractors/caching-faq.md",
         "distractors/glossary.md",
-        "distractors/march-outage-briefing.md"
+        "distractors/march-outage-briefing.md",
+        "distractors/rate-limit-v1.md"
       ],
       "recall": 0.0,
       "runs": 2
@@ -566,11 +914,57 @@
         "memory/deploy-regions.md"
       ],
       "retrieved_docs": [
-        "distractors/db-migration-notes.md",
         "distractors/march-outage-briefing.md",
-        "memory/datastore-choice.md"
+        "memory/datastore-choice.md",
+        "memory/deploy-strategy-v2.md"
       ],
       "recall": 0.0,
+      "runs": 2
+    },
+    {
+      "arm": "B-plus-hyde",
+      "task_id": "flag-default-on-config-outage",
+      "difficulty": "hard",
+      "relevant_docs": [
+        "memory/feature-flags.md"
+      ],
+      "retrieved_docs": [
+        "distractors/march-outage-briefing.md",
+        "distractors/pg-scaling.md",
+        "memory/deploy-strategy-v2.md"
+      ],
+      "recall": 0.0,
+      "runs": 2
+    },
+    {
+      "arm": "B-plus-hyde",
+      "task_id": "march-outage-root-cause",
+      "difficulty": "hard",
+      "relevant_docs": [
+        "memory/incident-march-postmortem.md"
+      ],
+      "retrieved_docs": [
+        "distractors/march-outage-briefing.md",
+        "memory/background-job-retry.md",
+        "memory/deploy-strategy-v2.md"
+      ],
+      "recall": 0.0,
+      "runs": 2
+    },
+    {
+      "arm": "B-plus-hyde",
+      "task_id": "payment-requirements",
+      "difficulty": "hard",
+      "relevant_docs": [
+        "memory/payment-timeout.md",
+        "memory/payment-idempotency.md"
+      ],
+      "retrieved_docs": [
+        "distractors/march-outage-briefing.md",
+        "distractors/rate-limit-v1.md",
+        "memory/payment-timeout.md"
+      ],
+      "recall": 0.5,
       "runs": 2
     },
     {
@@ -581,9 +975,9 @@
         "memory/retry-policy.md"
       ],
       "retrieved_docs": [
-        "distractors/db-migration-notes.md",
         "distractors/march-outage-briefing.md",
-        "memory/incident-march-postmortem.md"
+        "distractors/rate-limit-v1.md",
+        "memory/background-job-retry.md"
       ],
       "recall": 0.0,
       "runs": 2
@@ -596,9 +990,174 @@
         "memory/auth-token-ttl.md"
       ],
       "retrieved_docs": [
+        "distractors/rate-limit-v1.md",
+        "memory/background-job-retry.md",
+        "memory/db-pool-size-v2.md"
+      ],
+      "recall": 0.0,
+      "runs": 2
+    },
+    {
+      "arm": "B-plus-multi-query",
+      "task_id": "cache-ttl",
+      "difficulty": "easy",
+      "relevant_docs": [
+        "memory/caching-policy.md"
+      ],
+      "retrieved_docs": [
         "distractors/caching-faq.md",
         "distractors/march-outage-briefing.md",
+        "memory/db-pool-size-v2.md"
+      ],
+      "recall": 0.0,
+      "runs": 2
+    },
+    {
+      "arm": "B-plus-multi-query",
+      "task_id": "failover-primary-region",
+      "difficulty": "hard",
+      "relevant_docs": [
+        "memory/deploy-regions.md"
+      ],
+      "retrieved_docs": [
+        "distractors/rate-limit-v1.md",
+        "memory/background-job-retry.md",
+        "memory/db-pool-size-v2.md"
+      ],
+      "recall": 0.0,
+      "runs": 2
+    },
+    {
+      "arm": "B-plus-multi-query",
+      "task_id": "march-outage-root-cause",
+      "difficulty": "hard",
+      "relevant_docs": [
+        "memory/incident-march-postmortem.md"
+      ],
+      "retrieved_docs": [
+        "distractors/march-outage-briefing.md",
+        "distractors/rate-limit-v1.md",
+        "memory/background-job-retry.md"
+      ],
+      "recall": 0.0,
+      "runs": 2
+    },
+    {
+      "arm": "B-plus-multi-query",
+      "task_id": "primary-datastore",
+      "difficulty": "medium",
+      "relevant_docs": [
         "memory/datastore-choice.md"
+      ],
+      "retrieved_docs": [
+        "distractors/rate-limit-v1.md",
+        "memory/background-job-retry.md",
+        "memory/db-pool-size-v2.md"
+      ],
+      "recall": 0.0,
+      "runs": 2
+    },
+    {
+      "arm": "B-plus-multi-query",
+      "task_id": "retry-max-attempts",
+      "difficulty": "medium",
+      "relevant_docs": [
+        "memory/retry-policy.md"
+      ],
+      "retrieved_docs": [
+        "distractors/rate-limit-v1.md",
+        "memory/background-job-retry.md",
+        "memory/db-pool-size-v2.md"
+      ],
+      "recall": 0.0,
+      "runs": 2
+    },
+    {
+      "arm": "B-plus-supersession",
+      "task_id": "access-token-ttl",
+      "difficulty": "easy",
+      "relevant_docs": [
+        "memory/auth-token-ttl.md"
+      ],
+      "retrieved_docs": [
+        "distractors/march-outage-briefing.md",
+        "distractors/rate-limit-v1.md",
+        "memory/pg-pool-config.md"
+      ],
+      "recall": 0.0,
+      "runs": 2
+    },
+    {
+      "arm": "B-plus-supersession",
+      "task_id": "march-outage-root-cause",
+      "difficulty": "hard",
+      "relevant_docs": [
+        "memory/incident-march-postmortem.md"
+      ],
+      "retrieved_docs": [
+        "distractors/march-outage-briefing.md",
+        "memory/background-job-retry.md",
+        "memory/deploy-strategy-v2.md"
+      ],
+      "recall": 0.0,
+      "runs": 2
+    },
+    {
+      "arm": "B-plus-supersession",
+      "task_id": "retry-max-attempts",
+      "difficulty": "medium",
+      "relevant_docs": [
+        "memory/retry-policy.md"
+      ],
+      "retrieved_docs": [
+        "distractors/march-outage-briefing.md",
+        "distractors/rate-limit-v1.md",
+        "memory/background-job-retry.md"
+      ],
+      "recall": 0.0,
+      "runs": 2
+    },
+    {
+      "arm": "B-plus-temporal-decay",
+      "task_id": "access-token-ttl",
+      "difficulty": "easy",
+      "relevant_docs": [
+        "memory/auth-token-ttl.md"
+      ],
+      "retrieved_docs": [
+        "distractors/march-outage-briefing.md",
+        "distractors/rate-limit-v1.md",
+        "memory/pg-pool-config.md"
+      ],
+      "recall": 0.0,
+      "runs": 2
+    },
+    {
+      "arm": "B-plus-temporal-decay",
+      "task_id": "march-outage-root-cause",
+      "difficulty": "hard",
+      "relevant_docs": [
+        "memory/incident-march-postmortem.md"
+      ],
+      "retrieved_docs": [
+        "distractors/march-outage-briefing.md",
+        "memory/background-job-retry.md",
+        "memory/deploy-strategy-v2.md"
+      ],
+      "recall": 0.0,
+      "runs": 2
+    },
+    {
+      "arm": "B-plus-temporal-decay",
+      "task_id": "retry-max-attempts",
+      "difficulty": "medium",
+      "relevant_docs": [
+        "memory/retry-policy.md"
+      ],
+      "retrieved_docs": [
+        "distractors/march-outage-briefing.md",
+        "distractors/rate-limit-v1.md",
+        "memory/background-job-retry.md"
       ],
       "recall": 0.0,
       "runs": 2
@@ -612,7 +1171,7 @@
       ],
       "retrieved_docs": [
         "distractors/march-outage-briefing.md",
-        "memory/deploy-regions.md",
+        "memory/rate-limit-v2.md",
         "memory/rate-limits.md"
       ],
       "recall": 0.0,
@@ -627,6 +1186,32 @@
       ],
       "retrieved_docs": [
         "distractors/march-outage-briefing.md"
+      ],
+      "recall": 0.0,
+      "runs": 2
+    },
+    {
+      "arm": "C-built-in-agent-memory",
+      "task_id": "api-rate-limit",
+      "difficulty": "medium",
+      "relevant_docs": [
+        "memory/rate-limits.md"
+      ],
+      "retrieved_docs": [
+        "distractors/rate-limit-v1.md"
+      ],
+      "recall": 0.0,
+      "runs": 2
+    },
+    {
+      "arm": "C-built-in-agent-memory",
+      "task_id": "background-job-retry",
+      "difficulty": "medium",
+      "relevant_docs": [
+        "memory/background-job-retry.md"
+      ],
+      "retrieved_docs": [
+        "distractors/job-worker-general.md"
       ],
       "recall": 0.0,
       "runs": 2
@@ -646,6 +1231,32 @@
     },
     {
       "arm": "C-built-in-agent-memory",
+      "task_id": "current-deploy-strategy",
+      "difficulty": "medium",
+      "relevant_docs": [
+        "memory/deploy-strategy-v2.md"
+      ],
+      "retrieved_docs": [
+        "distractors/deploy-strategy-v1.md"
+      ],
+      "recall": 0.0,
+      "runs": 2
+    },
+    {
+      "arm": "C-built-in-agent-memory",
+      "task_id": "db-pool-size-current",
+      "difficulty": "hard",
+      "relevant_docs": [
+        "memory/db-pool-size-v2.md"
+      ],
+      "retrieved_docs": [
+        "distractors/db-pool-size-v1.md"
+      ],
+      "recall": 0.0,
+      "runs": 2
+    },
+    {
+      "arm": "C-built-in-agent-memory",
       "task_id": "march-outage-root-cause",
       "difficulty": "hard",
       "relevant_docs": [
@@ -653,6 +1264,46 @@
       ],
       "retrieved_docs": [
         "distractors/march-outage-briefing.md"
+      ],
+      "recall": 0.0,
+      "runs": 2
+    },
+    {
+      "arm": "C-built-in-agent-memory",
+      "task_id": "payment-requirements",
+      "difficulty": "hard",
+      "relevant_docs": [
+        "memory/payment-timeout.md",
+        "memory/payment-idempotency.md"
+      ],
+      "retrieved_docs": [
+        "memory/payment-idempotency.md"
+      ],
+      "recall": 0.5,
+      "runs": 2
+    },
+    {
+      "arm": "C-built-in-agent-memory",
+      "task_id": "pg-pool-config",
+      "difficulty": "hard",
+      "relevant_docs": [
+        "memory/pg-pool-config.md"
+      ],
+      "retrieved_docs": [
+        "memory/db-pool-size-v2.md"
+      ],
+      "recall": 0.0,
+      "runs": 2
+    },
+    {
+      "arm": "C-built-in-agent-memory",
+      "task_id": "rate-limit-update",
+      "difficulty": "medium",
+      "relevant_docs": [
+        "memory/rate-limit-v2.md"
+      ],
+      "retrieved_docs": [
+        "distractors/rate-limit-v1.md"
       ],
       "recall": 0.0,
       "runs": 2
@@ -681,10 +1332,43 @@
     },
     {
       "arm": "D-no-memory",
+      "task_id": "background-job-retry",
+      "difficulty": "medium",
+      "relevant_docs": [
+        "memory/background-job-retry.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 2
+    },
+    {
+      "arm": "D-no-memory",
       "task_id": "cache-ttl",
       "difficulty": "easy",
       "relevant_docs": [
         "memory/caching-policy.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 2
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "current-deploy-strategy",
+      "difficulty": "medium",
+      "relevant_docs": [
+        "memory/deploy-strategy-v2.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 2
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "db-pool-size-current",
+      "difficulty": "hard",
+      "relevant_docs": [
+        "memory/db-pool-size-v2.md"
       ],
       "retrieved_docs": [],
       "recall": 0.0,
@@ -725,10 +1409,44 @@
     },
     {
       "arm": "D-no-memory",
+      "task_id": "payment-requirements",
+      "difficulty": "hard",
+      "relevant_docs": [
+        "memory/payment-timeout.md",
+        "memory/payment-idempotency.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 2
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "pg-pool-config",
+      "difficulty": "hard",
+      "relevant_docs": [
+        "memory/pg-pool-config.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 2
+    },
+    {
+      "arm": "D-no-memory",
       "task_id": "primary-datastore",
       "difficulty": "medium",
       "relevant_docs": [
         "memory/datastore-choice.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 2
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "rate-limit-update",
+      "difficulty": "medium",
+      "relevant_docs": [
+        "memory/rate-limit-v2.md"
       ],
       "retrieved_docs": [],
       "recall": 0.0,
@@ -754,8 +1472,38 @@
       ],
       "retrieved_docs": [
         "distractors/march-outage-briefing.md",
-        "memory/deploy-regions.md",
-        "memory/rate-limits.md"
+        "distractors/rate-limit-v1.md",
+        "memory/pg-pool-config.md"
+      ],
+      "recall": 0.0,
+      "runs": 2
+    },
+    {
+      "arm": "E-md-okf-index-first",
+      "task_id": "march-outage-root-cause",
+      "difficulty": "hard",
+      "relevant_docs": [
+        "memory/incident-march-postmortem.md"
+      ],
+      "retrieved_docs": [
+        "distractors/march-outage-briefing.md",
+        "memory/background-job-retry.md",
+        "memory/deploy-strategy-v2.md"
+      ],
+      "recall": 0.0,
+      "runs": 2
+    },
+    {
+      "arm": "E-md-okf-index-first",
+      "task_id": "retry-max-attempts",
+      "difficulty": "medium",
+      "relevant_docs": [
+        "memory/retry-policy.md"
+      ],
+      "retrieved_docs": [
+        "distractors/march-outage-briefing.md",
+        "distractors/rate-limit-v1.md",
+        "memory/background-job-retry.md"
       ],
       "recall": 0.0,
       "runs": 2
@@ -763,32 +1511,90 @@
   ],
   "marginal_verdicts": {
     "B-plus-debate": {
-      "tokens_per_success_delta_vs_b": 33.142857,
+      "tokens_per_success_delta_vs_b": 38.272727,
+      "success_rate_delta_vs_b": 0.0,
+      "precision_delta_vs_b": 0.0,
+      "recall_delta_vs_b": 0.0,
+      "verdict": "skip by default; no measured quality gain over B-default in this sample"
+    },
+    "B-plus-entity-overlap": {
+      "tokens_per_success_delta_vs_b": 0.0,
+      "success_rate_delta_vs_b": 0.0,
+      "precision_delta_vs_b": 0.0,
+      "recall_delta_vs_b": 0.0,
+      "verdict": "skip by default; no measured quality gain over B-default in this sample"
+    },
+    "B-plus-episode-context": {
+      "tokens_per_success_delta_vs_b": 0.0,
       "success_rate_delta_vs_b": 0.0,
       "precision_delta_vs_b": 0.0,
       "recall_delta_vs_b": 0.0,
       "verdict": "skip by default; no measured quality gain over B-default in this sample"
     },
     "B-plus-hyde": {
-      "tokens_per_success_delta_vs_b": 897.428571,
-      "success_rate_delta_vs_b": -0.5,
-      "precision_delta_vs_b": -0.166666,
-      "recall_delta_vs_b": -0.5,
+      "tokens_per_success_delta_vs_b": 982.651515,
+      "success_rate_delta_vs_b": -0.357143,
+      "precision_delta_vs_b": -0.119047,
+      "recall_delta_vs_b": -0.321428,
       "verdict": "skip by default; no measured quality gain over B-default in this sample"
     },
     "B-plus-multi-query": {
-      "tokens_per_success_delta_vs_b": 42.714285,
+      "tokens_per_success_delta_vs_b": 490.568182,
+      "success_rate_delta_vs_b": -0.214285,
+      "precision_delta_vs_b": -0.071428,
+      "recall_delta_vs_b": -0.214285,
+      "verdict": "skip by default; no measured quality gain over B-default in this sample"
+    },
+    "B-plus-supersession": {
+      "tokens_per_success_delta_vs_b": 0.0,
+      "success_rate_delta_vs_b": 0.0,
+      "precision_delta_vs_b": 0.0,
+      "recall_delta_vs_b": 0.0,
+      "verdict": "skip by default; no measured quality gain over B-default in this sample"
+    },
+    "B-plus-temporal-decay": {
+      "tokens_per_success_delta_vs_b": 2.545455,
       "success_rate_delta_vs_b": 0.0,
       "precision_delta_vs_b": 0.0,
       "recall_delta_vs_b": 0.0,
       "verdict": "skip by default; no measured quality gain over B-default in this sample"
     },
     "B-reflection-consolidated": {
-      "tokens_per_success_delta_vs_b": 205.571428,
-      "success_rate_delta_vs_b": 0.0,
-      "precision_delta_vs_b": 0.0,
-      "recall_delta_vs_b": 0.0,
-      "verdict": "skip by default; no measured quality gain over B-default in this sample"
+      "tokens_per_success_delta_vs_b": 57.587413,
+      "success_rate_delta_vs_b": 0.142857,
+      "precision_delta_vs_b": 0.047619,
+      "recall_delta_vs_b": 0.142857,
+      "verdict": "recommend for the task classes where the measured recall gain appears"
+    }
+  },
+  "focused_signal_verdicts": {
+    "B-plus-entity-overlap": {
+      "ability": "entity-disambiguation",
+      "targeted_task_count": 4,
+      "recall_delta": 0.0,
+      "precision_delta": 0.0,
+      "default_decision": "keep OFF (delta recall=+0.00 precision=+0.00 on entity-disambiguation tasks)"
+    },
+    "B-plus-episode-context": {
+      "ability": "multi-session-synthesis",
+      "targeted_task_count": 2,
+      "recall_delta": 0.0,
+      "precision_delta": 0.0,
+      "default_decision": "keep OFF (delta recall=+0.00 precision=+0.00 on multi-session-synthesis tasks)"
+    },
+    "B-plus-supersession": {
+      "ability": "knowledge-update",
+      "targeted_task_count": 4,
+      "recall_delta": 0.0,
+      "precision_delta": 0.0,
+      "default_decision": "keep OFF (delta recall=+0.00 precision=+0.00 on knowledge-update tasks)"
+    },
+    "B-plus-temporal-decay": {
+      "ability": "temporal-ordering",
+      "targeted_task_count": 2,
+      "recall_delta": 0.0,
+      "precision_delta": 0.0,
+      "default_decision": "keep OFF (delta recall=+0.00 precision=+0.00 on temporal-ordering tasks)"
     }
   }
 }

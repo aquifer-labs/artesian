@@ -214,6 +214,90 @@
         }
       }
     },
+    "B-plus-entity-overlap": {
+      "runs": 40,
+      "success_rate": 0.8,
+      "success_rate_ci95": 0.125541,
+      "mean_total_tokens": 861.05,
+      "total_tokens_variance": 145.074359,
+      "tokens_per_success": 1076.3125,
+      "mean_retrieval_precision": 0.266666,
+      "mean_retrieval_recall": 0.8,
+      "by_difficulty": {
+        "easy": {
+          "runs": 6,
+          "success_rate": 0.333333,
+          "success_rate_ci95": 0.413205,
+          "mean_total_tokens": 866.666667,
+          "total_tokens_variance": 57.866667,
+          "tokens_per_success": 2600.0,
+          "mean_retrieval_precision": 0.111111,
+          "mean_retrieval_recall": 0.333333
+        },
+        "hard": {
+          "runs": 14,
+          "success_rate": 0.857143,
+          "success_rate_ci95": 0.190222,
+          "mean_total_tokens": 863.714286,
+          "total_tokens_variance": 267.912088,
+          "tokens_per_success": 1007.666667,
+          "mean_retrieval_precision": 0.285714,
+          "mean_retrieval_recall": 0.857143
+        },
+        "medium": {
+          "runs": 20,
+          "success_rate": 0.9,
+          "success_rate_ci95": 0.134897,
+          "mean_total_tokens": 857.5,
+          "total_tokens_variance": 70.789474,
+          "tokens_per_success": 952.777778,
+          "mean_retrieval_precision": 0.3,
+          "mean_retrieval_recall": 0.9
+        }
+      }
+    },
+    "B-plus-episode-context": {
+      "runs": 40,
+      "success_rate": 0.8,
+      "success_rate_ci95": 0.125541,
+      "mean_total_tokens": 861.05,
+      "total_tokens_variance": 145.074359,
+      "tokens_per_success": 1076.3125,
+      "mean_retrieval_precision": 0.266666,
+      "mean_retrieval_recall": 0.8,
+      "by_difficulty": {
+        "easy": {
+          "runs": 6,
+          "success_rate": 0.333333,
+          "success_rate_ci95": 0.413205,
+          "mean_total_tokens": 866.666667,
+          "total_tokens_variance": 57.866667,
+          "tokens_per_success": 2600.0,
+          "mean_retrieval_precision": 0.111111,
+          "mean_retrieval_recall": 0.333333
+        },
+        "hard": {
+          "runs": 14,
+          "success_rate": 0.857143,
+          "success_rate_ci95": 0.190222,
+          "mean_total_tokens": 863.714286,
+          "total_tokens_variance": 267.912088,
+          "tokens_per_success": 1007.666667,
+          "mean_retrieval_precision": 0.285714,
+          "mean_retrieval_recall": 0.857143
+        },
+        "medium": {
+          "runs": 20,
+          "success_rate": 0.9,
+          "success_rate_ci95": 0.134897,
+          "mean_total_tokens": 857.5,
+          "total_tokens_variance": 70.789474,
+          "tokens_per_success": 952.777778,
+          "mean_retrieval_precision": 0.3,
+          "mean_retrieval_recall": 0.9
+        }
+      }
+    },
     "B-plus-hyde": {
       "runs": 40,
       "success_rate": 0.45,
@@ -295,6 +379,90 @@
           "tokens_per_success": 1501.5,
           "mean_retrieval_precision": 0.2,
           "mean_retrieval_recall": 0.6
+        }
+      }
+    },
+    "B-plus-supersession": {
+      "runs": 40,
+      "success_rate": 0.8,
+      "success_rate_ci95": 0.125541,
+      "mean_total_tokens": 861.05,
+      "total_tokens_variance": 145.074359,
+      "tokens_per_success": 1076.3125,
+      "mean_retrieval_precision": 0.266666,
+      "mean_retrieval_recall": 0.8,
+      "by_difficulty": {
+        "easy": {
+          "runs": 6,
+          "success_rate": 0.333333,
+          "success_rate_ci95": 0.413205,
+          "mean_total_tokens": 866.666667,
+          "total_tokens_variance": 57.866667,
+          "tokens_per_success": 2600.0,
+          "mean_retrieval_precision": 0.111111,
+          "mean_retrieval_recall": 0.333333
+        },
+        "hard": {
+          "runs": 14,
+          "success_rate": 0.857143,
+          "success_rate_ci95": 0.190222,
+          "mean_total_tokens": 863.714286,
+          "total_tokens_variance": 267.912088,
+          "tokens_per_success": 1007.666667,
+          "mean_retrieval_precision": 0.285714,
+          "mean_retrieval_recall": 0.857143
+        },
+        "medium": {
+          "runs": 20,
+          "success_rate": 0.9,
+          "success_rate_ci95": 0.134897,
+          "mean_total_tokens": 857.5,
+          "total_tokens_variance": 70.789474,
+          "tokens_per_success": 952.777778,
+          "mean_retrieval_precision": 0.3,
+          "mean_retrieval_recall": 0.9
+        }
+      }
+    },
+    "B-plus-temporal-decay": {
+      "runs": 40,
+      "success_rate": 0.8,
+      "success_rate_ci95": 0.125541,
+      "mean_total_tokens": 863.05,
+      "total_tokens_variance": 145.074359,
+      "tokens_per_success": 1078.8125,
+      "mean_retrieval_precision": 0.266666,
+      "mean_retrieval_recall": 0.8,
+      "by_difficulty": {
+        "easy": {
+          "runs": 6,
+          "success_rate": 0.333333,
+          "success_rate_ci95": 0.413205,
+          "mean_total_tokens": 868.666667,
+          "total_tokens_variance": 57.866667,
+          "tokens_per_success": 2606.0,
+          "mean_retrieval_precision": 0.111111,
+          "mean_retrieval_recall": 0.333333
+        },
+        "hard": {
+          "runs": 14,
+          "success_rate": 0.857143,
+          "success_rate_ci95": 0.190222,
+          "mean_total_tokens": 865.714286,
+          "total_tokens_variance": 267.912088,
+          "tokens_per_success": 1010.0,
+          "mean_retrieval_precision": 0.285714,
+          "mean_retrieval_recall": 0.857143
+        },
+        "medium": {
+          "runs": 20,
+          "success_rate": 0.9,
+          "success_rate_ci95": 0.134897,
+          "mean_total_tokens": 859.5,
+          "total_tokens_variance": 70.789474,
+          "tokens_per_success": 955.0,
+          "mean_retrieval_precision": 0.3,
+          "mean_retrieval_recall": 0.9
         }
       }
     },
@@ -649,6 +817,126 @@
       "runs": 2
     },
     {
+      "arm": "B-plus-entity-overlap",
+      "task_id": "access-token-ttl",
+      "difficulty": "easy",
+      "relevant_docs": [
+        "memory/auth-token-ttl.md"
+      ],
+      "retrieved_docs": [
+        "distractors/security-overview.md",
+        "memory/api-versioning.md",
+        "memory/datastore-choice.md"
+      ],
+      "recall": 0.0,
+      "runs": 2
+    },
+    {
+      "arm": "B-plus-entity-overlap",
+      "task_id": "backup-rpo",
+      "difficulty": "medium",
+      "relevant_docs": [
+        "memory/backup-policy.md"
+      ],
+      "retrieved_docs": [
+        "memory/datastore-choice.md",
+        "memory/incident-march-postmortem.md",
+        "memory/tenancy-model.md"
+      ],
+      "recall": 0.0,
+      "runs": 2
+    },
+    {
+      "arm": "B-plus-entity-overlap",
+      "task_id": "canary-hold-time",
+      "difficulty": "hard",
+      "relevant_docs": [
+        "memory/deploy-strategy.md"
+      ],
+      "retrieved_docs": [
+        "distractors/deployment-checklist.md",
+        "distractors/glossary.md",
+        "memory/incident-march-postmortem.md"
+      ],
+      "recall": 0.0,
+      "runs": 2
+    },
+    {
+      "arm": "B-plus-entity-overlap",
+      "task_id": "max-upload-size",
+      "difficulty": "easy",
+      "relevant_docs": [
+        "memory/upload-limits.md"
+      ],
+      "retrieved_docs": [
+        "distractors/storage-overview.md",
+        "memory/incident-march-postmortem.md",
+        "memory/slo-policy.md"
+      ],
+      "recall": 0.0,
+      "runs": 2
+    },
+    {
+      "arm": "B-plus-episode-context",
+      "task_id": "access-token-ttl",
+      "difficulty": "easy",
+      "relevant_docs": [
+        "memory/auth-token-ttl.md"
+      ],
+      "retrieved_docs": [
+        "distractors/security-overview.md",
+        "memory/api-versioning.md",
+        "memory/datastore-choice.md"
+      ],
+      "recall": 0.0,
+      "runs": 2
+    },
+    {
+      "arm": "B-plus-episode-context",
+      "task_id": "backup-rpo",
+      "difficulty": "medium",
+      "relevant_docs": [
+        "memory/backup-policy.md"
+      ],
+      "retrieved_docs": [
+        "memory/datastore-choice.md",
+        "memory/incident-march-postmortem.md",
+        "memory/tenancy-model.md"
+      ],
+      "recall": 0.0,
+      "runs": 2
+    },
+    {
+      "arm": "B-plus-episode-context",
+      "task_id": "canary-hold-time",
+      "difficulty": "hard",
+      "relevant_docs": [
+        "memory/deploy-strategy.md"
+      ],
+      "retrieved_docs": [
+        "distractors/deployment-checklist.md",
+        "distractors/glossary.md",
+        "memory/incident-march-postmortem.md"
+      ],
+      "recall": 0.0,
+      "runs": 2
+    },
+    {
+      "arm": "B-plus-episode-context",
+      "task_id": "max-upload-size",
+      "difficulty": "easy",
+      "relevant_docs": [
+        "memory/upload-limits.md"
+      ],
+      "retrieved_docs": [
+        "distractors/storage-overview.md",
+        "memory/incident-march-postmortem.md",
+        "memory/slo-policy.md"
+      ],
+      "recall": 0.0,
+      "runs": 2
+    },
+    {
       "arm": "B-plus-hyde",
       "task_id": "access-token-ttl",
       "difficulty": "easy",
@@ -944,6 +1232,126 @@
         "memory/api-versioning.md",
         "memory/cdn-policy.md",
         "memory/log-retention.md"
+      ],
+      "recall": 0.0,
+      "runs": 2
+    },
+    {
+      "arm": "B-plus-supersession",
+      "task_id": "access-token-ttl",
+      "difficulty": "easy",
+      "relevant_docs": [
+        "memory/auth-token-ttl.md"
+      ],
+      "retrieved_docs": [
+        "distractors/security-overview.md",
+        "memory/api-versioning.md",
+        "memory/datastore-choice.md"
+      ],
+      "recall": 0.0,
+      "runs": 2
+    },
+    {
+      "arm": "B-plus-supersession",
+      "task_id": "backup-rpo",
+      "difficulty": "medium",
+      "relevant_docs": [
+        "memory/backup-policy.md"
+      ],
+      "retrieved_docs": [
+        "memory/datastore-choice.md",
+        "memory/incident-march-postmortem.md",
+        "memory/tenancy-model.md"
+      ],
+      "recall": 0.0,
+      "runs": 2
+    },
+    {
+      "arm": "B-plus-supersession",
+      "task_id": "canary-hold-time",
+      "difficulty": "hard",
+      "relevant_docs": [
+        "memory/deploy-strategy.md"
+      ],
+      "retrieved_docs": [
+        "distractors/deployment-checklist.md",
+        "distractors/glossary.md",
+        "memory/incident-march-postmortem.md"
+      ],
+      "recall": 0.0,
+      "runs": 2
+    },
+    {
+      "arm": "B-plus-supersession",
+      "task_id": "max-upload-size",
+      "difficulty": "easy",
+      "relevant_docs": [
+        "memory/upload-limits.md"
+      ],
+      "retrieved_docs": [
+        "distractors/storage-overview.md",
+        "memory/incident-march-postmortem.md",
+        "memory/slo-policy.md"
+      ],
+      "recall": 0.0,
+      "runs": 2
+    },
+    {
+      "arm": "B-plus-temporal-decay",
+      "task_id": "access-token-ttl",
+      "difficulty": "easy",
+      "relevant_docs": [
+        "memory/auth-token-ttl.md"
+      ],
+      "retrieved_docs": [
+        "distractors/security-overview.md",
+        "memory/api-versioning.md",
+        "memory/datastore-choice.md"
+      ],
+      "recall": 0.0,
+      "runs": 2
+    },
+    {
+      "arm": "B-plus-temporal-decay",
+      "task_id": "backup-rpo",
+      "difficulty": "medium",
+      "relevant_docs": [
+        "memory/backup-policy.md"
+      ],
+      "retrieved_docs": [
+        "memory/datastore-choice.md",
+        "memory/incident-march-postmortem.md",
+        "memory/tenancy-model.md"
+      ],
+      "recall": 0.0,
+      "runs": 2
+    },
+    {
+      "arm": "B-plus-temporal-decay",
+      "task_id": "canary-hold-time",
+      "difficulty": "hard",
+      "relevant_docs": [
+        "memory/deploy-strategy.md"
+      ],
+      "retrieved_docs": [
+        "distractors/deployment-checklist.md",
+        "distractors/glossary.md",
+        "memory/incident-march-postmortem.md"
+      ],
+      "recall": 0.0,
+      "runs": 2
+    },
+    {
+      "arm": "B-plus-temporal-decay",
+      "task_id": "max-upload-size",
+      "difficulty": "easy",
+      "relevant_docs": [
+        "memory/upload-limits.md"
+      ],
+      "retrieved_docs": [
+        "distractors/storage-overview.md",
+        "memory/incident-march-postmortem.md",
+        "memory/slo-policy.md"
       ],
       "recall": 0.0,
       "runs": 2
@@ -1317,6 +1725,20 @@
       "recall_delta_vs_b": 0.0,
       "verdict": "skip by default; no measured quality gain over B-default in this sample"
     },
+    "B-plus-entity-overlap": {
+      "tokens_per_success_delta_vs_b": 0.0,
+      "success_rate_delta_vs_b": 0.0,
+      "precision_delta_vs_b": 0.0,
+      "recall_delta_vs_b": 0.0,
+      "verdict": "skip by default; no measured quality gain over B-default in this sample"
+    },
+    "B-plus-episode-context": {
+      "tokens_per_success_delta_vs_b": 0.0,
+      "success_rate_delta_vs_b": 0.0,
+      "precision_delta_vs_b": 0.0,
+      "recall_delta_vs_b": 0.0,
+      "verdict": "skip by default; no measured quality gain over B-default in this sample"
+    },
     "B-plus-hyde": {
       "tokens_per_success_delta_vs_b": 943.243056,
       "success_rate_delta_vs_b": -0.35,
@@ -1331,12 +1753,56 @@
       "recall_delta_vs_b": -0.25,
       "verdict": "skip by default; no measured quality gain over B-default in this sample"
     },
+    "B-plus-supersession": {
+      "tokens_per_success_delta_vs_b": 0.0,
+      "success_rate_delta_vs_b": 0.0,
+      "precision_delta_vs_b": 0.0,
+      "recall_delta_vs_b": 0.0,
+      "verdict": "skip by default; no measured quality gain over B-default in this sample"
+    },
+    "B-plus-temporal-decay": {
+      "tokens_per_success_delta_vs_b": 2.5,
+      "success_rate_delta_vs_b": 0.0,
+      "precision_delta_vs_b": 0.0,
+      "recall_delta_vs_b": 0.0,
+      "verdict": "skip by default; no measured quality gain over B-default in this sample"
+    },
     "B-reflection-consolidated": {
       "tokens_per_success_delta_vs_b": 37.950658,
       "success_rate_delta_vs_b": 0.15,
       "precision_delta_vs_b": 0.05,
       "recall_delta_vs_b": 0.15,
       "verdict": "recommend for the task classes where the measured recall gain appears"
+    }
+  },
+  "focused_signal_verdicts": {
+    "B-plus-entity-overlap": {
+      "ability": "entity-disambiguation",
+      "targeted_task_count": 0,
+      "recall_delta": 0.0,
+      "precision_delta": 0.0,
+      "default_decision": "no ability-tagged tasks in this corpus; keeping OFF"
+    },
+    "B-plus-episode-context": {
+      "ability": "multi-session-synthesis",
+      "targeted_task_count": 0,
+      "recall_delta": 0.0,
+      "precision_delta": 0.0,
+      "default_decision": "no ability-tagged tasks in this corpus; keeping OFF"
+    },
+    "B-plus-supersession": {
+      "ability": "knowledge-update",
+      "targeted_task_count": 0,
+      "recall_delta": 0.0,
+      "precision_delta": 0.0,
+      "default_decision": "no ability-tagged tasks in this corpus; keeping OFF"
+    },
+    "B-plus-temporal-decay": {
+      "ability": "temporal-ordering",
+      "targeted_task_count": 0,
+      "recall_delta": 0.0,
+      "precision_delta": 0.0,
+      "default_decision": "no ability-tagged tasks in this corpus; keeping OFF"
     }
   }
 }
