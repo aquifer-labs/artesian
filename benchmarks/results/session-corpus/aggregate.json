@@ -423,6 +423,48 @@
           "mean_retrieval_recall": 0.0
         }
       }
+    },
+    "E-md-okf-index-first": {
+      "runs": 60,
+      "success_rate": 1.0,
+      "success_rate_ci95": 0.0,
+      "mean_total_tokens": 28756.6,
+      "total_tokens_variance": 243.532203,
+      "tokens_per_success": 28756.6,
+      "mean_retrieval_precision": 0.333333,
+      "mean_retrieval_recall": 1.0,
+      "by_difficulty": {
+        "easy": {
+          "runs": 20,
+          "success_rate": 1.0,
+          "success_rate_ci95": 0.0,
+          "mean_total_tokens": 28752.5,
+          "total_tokens_variance": 252.578947,
+          "tokens_per_success": 28752.5,
+          "mean_retrieval_precision": 0.333333,
+          "mean_retrieval_recall": 1.0
+        },
+        "hard": {
+          "runs": 20,
+          "success_rate": 1.0,
+          "success_rate_ci95": 0.0,
+          "mean_total_tokens": 28758.3,
+          "total_tokens_variance": 241.694737,
+          "tokens_per_success": 28758.3,
+          "mean_retrieval_precision": 0.333333,
+          "mean_retrieval_recall": 1.0
+        },
+        "medium": {
+          "runs": 20,
+          "success_rate": 1.0,
+          "success_rate_ci95": 0.0,
+          "mean_total_tokens": 28759.0,
+          "total_tokens_variance": 235.157895,
+          "tokens_per_success": 28759.0,
+          "mean_retrieval_precision": 0.333333,
+          "mean_retrieval_recall": 1.0
+        }
+      }
     }
   },
   "retrieval_misses": [

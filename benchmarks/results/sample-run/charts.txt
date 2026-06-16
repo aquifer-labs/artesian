@@ -9,6 +9,7 @@ B-plus-multi-query                       630.29 #########################
 B-reflection-consolidated                793.14 ################################
 C-built-in-agent-memory                  206.40 ########
 D-no-memory                                0.00 #
+E-md-okf-index-first                     588.71 ########################
 
 Retrieval misses (recall < 1.0)
 B-default-brunnr access-token-ttl recall=0 relevant=["memory/auth-token-ttl.md"] retrieved=["distractors/march-outage-briefing.md", "memory/deploy-regions.md", "memory/rate-limits.md"]
@@ -32,6 +33,7 @@ D-no-memory flag-default-on-config-outage recall=0 relevant=["memory/feature-fla
 D-no-memory march-outage-root-cause recall=0 relevant=["memory/incident-march-postmortem.md"] retrieved=[]
 D-no-memory primary-datastore recall=0 relevant=["memory/datastore-choice.md"] retrieved=[]
 D-no-memory retry-max-attempts recall=0 relevant=["memory/retry-policy.md"] retrieved=[]
+E-md-okf-index-first access-token-ttl recall=0 relevant=["memory/auth-token-ttl.md"] retrieved=["distractors/march-outage-briefing.md", "memory/deploy-regions.md", "memory/rate-limits.md"]
 
 Opt-in marginal verdicts
 B-plus-debate: delta_tokens=Some(33.142857) delta_success=0 delta_precision=0 delta_recall=0 skip by default; no measured quality gain over B-default in this sample

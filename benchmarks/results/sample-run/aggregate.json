@@ -423,6 +423,48 @@
           "mean_retrieval_recall": 0.0
         }
       }
+    },
+    "E-md-okf-index-first": {
+      "runs": 16,
+      "success_rate": 0.875,
+      "success_rate_ci95": 0.167367,
+      "mean_total_tokens": 515.125,
+      "total_tokens_variance": 65.183333,
+      "tokens_per_success": 588.714286,
+      "mean_retrieval_precision": 0.291666,
+      "mean_retrieval_recall": 0.875,
+      "by_difficulty": {
+        "easy": {
+          "runs": 4,
+          "success_rate": 0.5,
+          "success_rate_ci95": 0.565803,
+          "mean_total_tokens": 510.0,
+          "total_tokens_variance": 5.333333,
+          "tokens_per_success": 1020.0,
+          "mean_retrieval_precision": 0.166667,
+          "mean_retrieval_recall": 0.5
+        },
+        "hard": {
+          "runs": 6,
+          "success_rate": 1.0,
+          "success_rate_ci95": 0.0,
+          "mean_total_tokens": 522.333333,
+          "total_tokens_variance": 84.266667,
+          "tokens_per_success": 522.333333,
+          "mean_retrieval_precision": 0.333333,
+          "mean_retrieval_recall": 1.0
+        },
+        "medium": {
+          "runs": 6,
+          "success_rate": 1.0,
+          "success_rate_ci95": 0.0,
+          "mean_total_tokens": 511.333333,
+          "total_tokens_variance": 7.466667,
+          "tokens_per_success": 511.333333,
+          "mean_retrieval_precision": 0.333333,
+          "mean_retrieval_recall": 1.0
+        }
+      }
     }
   },
   "retrieval_misses": [
@@ -700,6 +742,21 @@
         "memory/retry-policy.md"
       ],
       "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 2
+    },
+    {
+      "arm": "E-md-okf-index-first",
+      "task_id": "access-token-ttl",
+      "difficulty": "easy",
+      "relevant_docs": [
+        "memory/auth-token-ttl.md"
+      ],
+      "retrieved_docs": [
+        "distractors/march-outage-briefing.md",
+        "memory/deploy-regions.md",
+        "memory/rate-limits.md"
+      ],
       "recall": 0.0,
       "runs": 2
     }

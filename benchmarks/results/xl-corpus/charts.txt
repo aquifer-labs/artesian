@@ -9,6 +9,7 @@ B-plus-multi-query                       923.85 ################################
 B-reflection-consolidated               1253.40 ##################################################
 C-built-in-agent-memory                  160.24 ######
 D-no-memory                                0.00 #
+E-md-okf-index-first                    2982.97 #######################################################################################################################
 
 Retrieval misses (recall < 1.0)
 B-plus-hyde xl-00-import-service recall=0 relevant=["memory/import-service.md"] retrieved=["distractors/naming-guide.md", "memory/analytics-api.md", "memory/import-gateway.md"]

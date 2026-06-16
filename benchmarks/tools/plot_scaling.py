@@ -42,6 +42,7 @@ RC = {
 }
 
 FULL = "#999999"     # full replay: muted gray (the cost we beat)
+MDOKF = "#e1812c"    # md/OKF index-first: middle ground
 BRUNNR = "#4e79a7"   # Brunnr: accent
 
 
@@ -54,6 +55,7 @@ def load():
     for tier in TIERS:
         rows = {r["arm"]: r for r in csv.DictReader(open(BENCH / "results" / tier / "summary.csv"))}
         pts.append((float(rows["A-full-replay"]["mean_total_tokens"]),
+                    float(rows["E-md-okf-index-first"]["mean_total_tokens"]),
                     float(rows["B-default-brunnr"]["mean_total_tokens"])))
     return sorted(pts)
 
@@ -61,15 +63,17 @@ def load():
 def main():
     plt.rcParams.update(RC)
     pts = load()
-    x = [f for f, _ in pts]
-    full = [f for f, _ in pts]
-    brunnr = [b for _, b in pts]
+    x = [f for f, _, _ in pts]
+    full = [f for f, _, _ in pts]
+    mdokf = [m for _, m, _ in pts]
+    brunnr = [b for _, _, b in pts]
 
     fig, ax = plt.subplots(figsize=(9, 5.4))
     ax.set_xscale("log")
     ax.set_yscale("log")
 
     ax.plot(x, full, color=FULL, lw=1.6, marker="o", ms=4)
+    ax.plot(x, mdokf, color=MDOKF, lw=1.8, marker="o", ms=4)
     ax.plot(x, brunnr, color=BRUNNR, lw=2.0, marker="o", ms=4)
 
     ax.set_xlim(x[0] * 0.7, x[-1] * 2.2)
@@ -88,11 +92,13 @@ def main():
     # direct labels (no legend)
     ax.annotate("Full-context replay", xy=(x[-1], full[-1]), xytext=(10, -2),
                 textcoords="offset points", color=FULL, va="center", fontsize=12)
+    ax.annotate("md / OKF index-first", xy=(x[-1], mdokf[-1]), xytext=(10, 0),
+                textcoords="offset points", color=MDOKF, va="center", fontsize=12)
     ax.annotate("Brunnr (memory.context)", xy=(x[-1], brunnr[-1]), xytext=(10, 0),
                 textcoords="offset points", color=BRUNNR, va="center", fontsize=12)
 
-    # annotate the saving at each point, just below the Brunnr line
-    for fx, b in pts:
+    # annotate Brunnr's saving vs full replay at each point
+    for fx, _m, b in pts:
         ax.annotate(f"{100*(fx-b)/fx:.1f}% less", xy=(fx, b), xytext=(0, -16),
                     textcoords="offset points", color="#666666", ha="center",
                     fontsize=10, fontstyle="italic")
@@ -100,7 +106,7 @@ def main():
     fig.text(0.09, 0.97, "One query stays ~1,000 tokens, however large the memory",
              fontsize=17, fontfamily="serif", color="#111111")
     fig.text(0.09, 0.925,
-             "Full-context replay grows with the conversation history; Brunnr retrieves a bounded slice (log–log)",
+             "Full replay and a markdown/OKF index both grow with the history; only Brunnr stays flat (log–log)",
              fontsize=12, fontfamily="serif", color="#666666")
 
     plt.subplots_adjust(top=0.86, left=0.09, right=0.78, bottom=0.13)
@@ -108,7 +114,7 @@ def main():
     png = BENCH / "results" / "scaling.png"
     fig.savefig(svg, format="svg")
     fig.savefig(png, format="png", dpi=200)
-    print(f"wrote {svg} and {png}  points={[(human(f), round(b)) for f, b in pts]}")
+    print(f"wrote {svg} and {png}  points={[(human(f), round(m), round(b)) for f, m, b in pts]}")
 
 
 if __name__ == "__main__":

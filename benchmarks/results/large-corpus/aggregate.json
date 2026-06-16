@@ -423,6 +423,48 @@
           "mean_retrieval_recall": 0.0
         }
       }
+    },
+    "E-md-okf-index-first": {
+      "runs": 40,
+      "success_rate": 0.8,
+      "success_rate_ci95": 0.125541,
+      "mean_total_tokens": 862.05,
+      "total_tokens_variance": 145.074359,
+      "tokens_per_success": 1077.5625,
+      "mean_retrieval_precision": 0.266666,
+      "mean_retrieval_recall": 0.8,
+      "by_difficulty": {
+        "easy": {
+          "runs": 6,
+          "success_rate": 0.333333,
+          "success_rate_ci95": 0.413205,
+          "mean_total_tokens": 867.666667,
+          "total_tokens_variance": 57.866667,
+          "tokens_per_success": 2603.0,
+          "mean_retrieval_precision": 0.111111,
+          "mean_retrieval_recall": 0.333333
+        },
+        "hard": {
+          "runs": 14,
+          "success_rate": 0.857143,
+          "success_rate_ci95": 0.190222,
+          "mean_total_tokens": 864.714286,
+          "total_tokens_variance": 267.912088,
+          "tokens_per_success": 1008.833333,
+          "mean_retrieval_precision": 0.285714,
+          "mean_retrieval_recall": 0.857143
+        },
+        "medium": {
+          "runs": 20,
+          "success_rate": 0.9,
+          "success_rate_ci95": 0.134897,
+          "mean_total_tokens": 858.5,
+          "total_tokens_variance": 70.789474,
+          "tokens_per_success": 953.888889,
+          "mean_retrieval_precision": 0.3,
+          "mean_retrieval_recall": 0.9
+        }
+      }
     }
   },
   "retrieval_misses": [
@@ -1203,6 +1245,66 @@
         "memory/webhook-policy.md"
       ],
       "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 2
+    },
+    {
+      "arm": "E-md-okf-index-first",
+      "task_id": "access-token-ttl",
+      "difficulty": "easy",
+      "relevant_docs": [
+        "memory/auth-token-ttl.md"
+      ],
+      "retrieved_docs": [
+        "distractors/security-overview.md",
+        "memory/api-versioning.md",
+        "memory/datastore-choice.md"
+      ],
+      "recall": 0.0,
+      "runs": 2
+    },
+    {
+      "arm": "E-md-okf-index-first",
+      "task_id": "backup-rpo",
+      "difficulty": "medium",
+      "relevant_docs": [
+        "memory/backup-policy.md"
+      ],
+      "retrieved_docs": [
+        "memory/datastore-choice.md",
+        "memory/incident-march-postmortem.md",
+        "memory/tenancy-model.md"
+      ],
+      "recall": 0.0,
+      "runs": 2
+    },
+    {
+      "arm": "E-md-okf-index-first",
+      "task_id": "canary-hold-time",
+      "difficulty": "hard",
+      "relevant_docs": [
+        "memory/deploy-strategy.md"
+      ],
+      "retrieved_docs": [
+        "distractors/deployment-checklist.md",
+        "distractors/glossary.md",
+        "memory/incident-march-postmortem.md"
+      ],
+      "recall": 0.0,
+      "runs": 2
+    },
+    {
+      "arm": "E-md-okf-index-first",
+      "task_id": "max-upload-size",
+      "difficulty": "easy",
+      "relevant_docs": [
+        "memory/upload-limits.md"
+      ],
+      "retrieved_docs": [
+        "distractors/storage-overview.md",
+        "memory/incident-march-postmortem.md",
+        "memory/slo-policy.md"
+      ],
       "recall": 0.0,
       "runs": 2
     }

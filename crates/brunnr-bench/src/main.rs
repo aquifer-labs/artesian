@@ -66,6 +66,7 @@ enum ArmKind {
     FullReplay,
     FullReplayCold,
     BuiltInAgentMemory,
+    MdOkfIndexFirst,
     DefaultBrunnr,
     DefaultBrunnrCold,
     Hyde,
@@ -81,6 +82,7 @@ impl ArmKind {
             Self::FullReplay,
             Self::FullReplayCold,
             Self::BuiltInAgentMemory,
+            Self::MdOkfIndexFirst,
             Self::DefaultBrunnr,
             Self::DefaultBrunnrCold,
             Self::Hyde,
@@ -96,6 +98,7 @@ impl ArmKind {
             Self::FullReplay => "A-full-replay",
             Self::FullReplayCold => "A-full-replay-cold-session",
             Self::BuiltInAgentMemory => "C-built-in-agent-memory",
+            Self::MdOkfIndexFirst => "E-md-okf-index-first",
             Self::DefaultBrunnr => "B-default-brunnr",
             Self::DefaultBrunnrCold => "B-default-brunnr-cold-session",
             Self::Hyde => "B-plus-hyde",
@@ -117,6 +120,7 @@ impl ArmKind {
         match self {
             Self::FullReplay | Self::FullReplayCold => "full-corpus-replay",
             Self::BuiltInAgentMemory => "real-memory-find-top1-no-index",
+            Self::MdOkfIndexFirst => "md-okf-full-index-plus-whole-file-retrieval",
             Self::DefaultBrunnr | Self::DefaultBrunnrCold => {
                 "real-memory-context-index-slice-plus-find-rrf-rerank"
             }
@@ -517,6 +521,23 @@ async fn retrieve(arm: ArmKind, task: &TaskSpec, state: &BenchState) -> Result<R
                 None,
             )
             .await
+        }
+        ArmKind::MdOkfIndexFirst => {
+            // md/OKF index-first: load the FULL index (one line per doc, grows with the
+            // corpus) plus the retrieved whole file(s) — the cost of a markdown memory that
+            // lists everything in a MEMORY.md before reading the relevant file.
+            let mut output = retrieve_find(
+                state.raw_backend.as_ref(),
+                &state.raw_docs,
+                &task.question,
+                DEFAULT_TOP_M,
+                DEFAULT_TOP_K,
+                true,
+                None,
+            )
+            .await?;
+            output.index_slice = Some(state.raw_index.clone());
+            Ok(output)
         }
         ArmKind::DefaultBrunnr | ArmKind::DefaultBrunnrCold => {
             retrieve_find(

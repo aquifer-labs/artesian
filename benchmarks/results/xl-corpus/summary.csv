@@ -9,3 +9,4 @@ B-plus-multi-query,80,1,923.85,923.85,0.333333,1
 B-reflection-consolidated,80,1,1253.4,1253.4,0.333333,1
 C-built-in-agent-memory,80,0.725,116.175,160.241379,0.725,0.725
 D-no-memory,80,0,54.25,,0,0
+E-md-okf-index-first,80,1,2982.975,2982.975,0.333333,1
