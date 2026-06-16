@@ -2,6 +2,7 @@
 
 /target/
 /.brunnr/
+**/.brunnr/
 /brunnr.toml
 **/*.rs.bk
 .DS_Store

@@ -107,10 +107,51 @@ pub struct VectorMemoryConfig {
     /// D3: Minimum cosine similarity to join an existing episode cluster (0.0–1.0).
     #[serde(default = "default_episode_threshold")]
     pub episode_similarity_threshold: f32,
+
+    /// Small-to-big retrieval (**default on**). After matching precise chunks, each
+    /// chunk hit is expanded to its surrounding parent-section context — contiguous
+    /// sibling chunks of the same `parent_node`, merged with overlap removed —
+    /// growing symmetrically around the match up to `parent_context_chars`. Multiple
+    /// matched chunks of one parent collapse into a single expanded hit whose
+    /// `node_id` is the `parent_node` (full source still reachable via `get_node`).
+    /// Single-chunk records have no siblings, so they pass through unchanged — which
+    /// keeps recall both bounded *and* coherent without altering small-document
+    /// behavior. `0` (with `parent_context_auto = false`) disables expansion. When
+    /// `parent_context_auto` is on (the default), this is only the fallback budget used
+    /// until the corpus has been observed.
+    #[serde(default = "default_parent_context_chars")]
+    pub parent_context_chars: usize,
+
+    /// Adaptive budget (**default on**). When true, the effective `parent_context_chars`
+    /// is the **median size of multi-chunk parent documents** observed on this collection,
+    /// clamped to `[chunk size, parent_context_max_chars]` — so the window self-adapts to
+    /// each corpus instead of a fixed guess (single-chunk documents are excluded, since
+    /// they need no expansion). Until any multi-chunk document is seen, the fixed
+    /// `parent_context_chars` is used. Set false to use `parent_context_chars` directly.
+    #[serde(default = "default_true")]
+    pub parent_context_auto: bool,
+
+    /// Upper bound for the adaptive budget so a corpus of very large documents cannot
+    /// inflate per-query context. Default `8192` (~2k tokens per source); the remainder
+    /// of an oversized parent stays reachable via `get_node` drill-down.
+    #[serde(default = "default_parent_context_max_chars")]
+    pub parent_context_max_chars: usize,
 }
 
 fn default_episode_threshold() -> f32 {
     0.75
+}
+
+fn default_parent_context_chars() -> usize {
+    3_200
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_parent_context_max_chars() -> usize {
+    8_192
 }
 
 impl VectorMemoryConfig {
@@ -125,6 +166,9 @@ impl VectorMemoryConfig {
             knowledge_update_supersession: false,
             episode_context_window: 0,
             episode_similarity_threshold: 0.75,
+            parent_context_chars: default_parent_context_chars(),
+            parent_context_auto: true,
+            parent_context_max_chars: default_parent_context_max_chars(),
         }
     }
 
@@ -147,6 +191,24 @@ impl VectorMemoryConfig {
         self.episode_context_window = window;
         self
     }
+
+    /// Set the small-to-big expansion budget in characters (`0` with auto off disables).
+    pub fn with_parent_context_chars(mut self, chars: usize) -> Self {
+        self.parent_context_chars = chars;
+        self
+    }
+
+    /// Enable or disable adaptive (corpus-median) budgeting.
+    pub fn with_parent_context_auto(mut self, auto: bool) -> Self {
+        self.parent_context_auto = auto;
+        self
+    }
+
+    /// Set the upper bound for the adaptive budget.
+    pub fn with_parent_context_max_chars(mut self, chars: usize) -> Self {
+        self.parent_context_max_chars = chars;
+        self
+    }
 }
 
 pub struct VectorMemoryBackend<V: VectorStore> {
@@ -155,6 +217,7 @@ pub struct VectorMemoryBackend<V: VectorStore> {
     embedder: Arc<dyn TextEmbedder>,
     entity_index: Arc<Mutex<EntityIndex>>,
     episode_index: Arc<Mutex<EpisodeIndex>>,
+    parent_samples: Arc<Mutex<ParentSizeSamples>>,
 }
 
 impl<V: VectorStore> VectorMemoryBackend<V> {
@@ -173,6 +236,7 @@ impl<V: VectorStore> VectorMemoryBackend<V> {
             embedder,
             entity_index: Arc::new(Mutex::new(EntityIndex::new())),
             episode_index: Arc::new(Mutex::new(EpisodeIndex::new())),
+            parent_samples: Arc::new(Mutex::new(ParentSizeSamples::default())),
         })
     }
 
@@ -317,6 +381,339 @@ impl<V: VectorStore> VectorMemoryBackend<V> {
         }
         Ok(result)
     }
+
+    /// Resolve the effective small-to-big budget. `None` means expansion is disabled
+    /// (manual mode with a zero budget). In auto mode the budget tracks the corpus
+    /// median parent size, clamped to `[chunk size, parent_context_max_chars]`, falling
+    /// back to the fixed `parent_context_chars` until a multi-chunk document is seen.
+    fn effective_parent_budget(&self) -> Option<usize> {
+        let config = &self.config;
+        if config.parent_context_auto {
+            let low = ChunkConfig::default().max_chars;
+            let high = config.parent_context_max_chars.max(low);
+            let target = self
+                .parent_samples
+                .lock()
+                .ok()
+                .and_then(|mut samples| samples.median())
+                .unwrap_or(config.parent_context_chars);
+            Some(target.clamp(low, high))
+        } else if config.parent_context_chars > 0 {
+            Some(config.parent_context_chars)
+        } else {
+            None
+        }
+    }
+
+    /// Fetch every sibling chunk that shares `parent_node`, sorted by `chunk_index`.
+    async fn fetch_siblings(
+        &self,
+        parent_node: &str,
+        cap: usize,
+    ) -> MemoryResult<Vec<MemoryRecord>> {
+        let mut filter = Filter::default();
+        filter.must_eq("metadata.parent_node", parent_node);
+        let hits = self
+            .store
+            .search(
+                &self.config.collection,
+                VectorSearch {
+                    vector: None,
+                    text: None,
+                    filter,
+                    limit: cap.max(1),
+                    source: VectorSearchSource::Keyword,
+                },
+            )
+            .await?;
+        let mut records = hits
+            .into_iter()
+            .map(|hit| point_to_record(hit.point))
+            .collect::<MemoryResult<Vec<_>>>()?;
+        records.sort_by_key(chunk_index_of);
+        Ok(records)
+    }
+
+    /// Small-to-big expansion: collapse same-parent chunk hits into one hit whose
+    /// content is the bounded parent-section window around the matched chunk(s).
+    /// Hits that are not chunks (no `parent_node`) pass through unchanged and keep
+    /// their order, so a result set without chunks is returned byte-for-byte.
+    async fn expand_small_to_big(
+        &self,
+        hits: Vec<SearchHit>,
+        limit: usize,
+        budget: usize,
+    ) -> MemoryResult<Vec<SearchHit>> {
+        if !hits
+            .iter()
+            .any(|hit| hit.record.metadata.contains_key("parent_node"))
+        {
+            return Ok(hits);
+        }
+
+        let max_overlap = ChunkConfig::default().overlap_chars;
+
+        // Group hits by parent (chunks) or by node_id (whole records), preserving
+        // first-seen rank order.
+        let mut order: Vec<String> = Vec::new();
+        let mut groups: std::collections::HashMap<String, SmallToBigGroup> =
+            std::collections::HashMap::new();
+        for hit in hits {
+            let parent = hit.record.metadata.get("parent_node").cloned();
+            let key = parent.clone().unwrap_or_else(|| hit.record.node_id.clone());
+            let idx = chunk_index_of(&hit.record);
+            match groups.get_mut(&key) {
+                Some(group) => {
+                    if hit.score > group.score {
+                        group.score = hit.score;
+                    }
+                    if parent.is_some() {
+                        group.matched.insert(idx);
+                    }
+                }
+                None => {
+                    order.push(key.clone());
+                    let mut matched = std::collections::BTreeSet::new();
+                    if parent.is_some() {
+                        matched.insert(idx);
+                    }
+                    groups.insert(
+                        key,
+                        SmallToBigGroup {
+                            score: hit.score,
+                            source: hit.source,
+                            parent,
+                            matched,
+                            record: hit.record,
+                        },
+                    );
+                }
+            }
+        }
+
+        let mut out: Vec<SearchHit> = Vec::with_capacity(order.len());
+        for key in order {
+            let group = groups.remove(&key).expect("group present");
+            let Some(parent_node) = group.parent.clone() else {
+                // Whole record / single chunk: unchanged.
+                out.push(SearchHit {
+                    score: group.score,
+                    record: group.record,
+                    source: group.source,
+                });
+                continue;
+            };
+
+            let cap = group
+                .record
+                .metadata
+                .get("chunk_count")
+                .and_then(|value| value.parse::<usize>().ok())
+                .map_or(256, |count| count + 1);
+            let siblings = self.fetch_siblings(&parent_node, cap).await?;
+            if siblings.is_empty() {
+                out.push(SearchHit {
+                    score: group.score,
+                    record: group.record,
+                    source: group.source,
+                });
+                continue;
+            }
+
+            let window = build_parent_window(&siblings, &group, budget, max_overlap);
+            let SmallToBigGroup {
+                score,
+                source,
+                record,
+                matched,
+                ..
+            } = group;
+            let MemoryRecord {
+                id,
+                tags,
+                tier,
+                created_at,
+                scope,
+                agent_id,
+                session_id,
+                task_id,
+                user_id,
+                mut metadata,
+                ..
+            } = record;
+            metadata.remove("chunk_index");
+            metadata.insert(
+                "expanded_from_chunk".to_string(),
+                matched
+                    .iter()
+                    .map(usize::to_string)
+                    .collect::<Vec<_>>()
+                    .join(","),
+            );
+            out.push(SearchHit {
+                score,
+                source,
+                record: MemoryRecord {
+                    id,
+                    node_id: parent_node,
+                    content: window,
+                    tags,
+                    metadata,
+                    tier,
+                    created_at,
+                    scope,
+                    agent_id,
+                    session_id,
+                    task_id,
+                    user_id,
+                },
+            });
+        }
+        out.truncate(limit);
+        Ok(out)
+    }
+}
+
+struct SmallToBigGroup {
+    score: f32,
+    source: SearchSource,
+    parent: Option<String>,
+    matched: std::collections::BTreeSet<usize>,
+    record: MemoryRecord,
+}
+
+/// Running sample of multi-chunk parent-document sizes (characters), used to derive
+/// the adaptive small-to-big budget as the corpus median. Bounded so it never grows
+/// without limit; the median is cached and refreshed as the sample grows.
+#[derive(Default)]
+struct ParentSizeSamples {
+    sizes: Vec<usize>,
+    cached_median: Option<usize>,
+    last_computed_len: usize,
+}
+
+impl ParentSizeSamples {
+    /// Max retained samples; the median is stable well before this and memory stays small.
+    const CAP: usize = 65_536;
+    /// Recompute the cached median once the sample has grown by this many entries.
+    const REFRESH_STEP: usize = 16;
+
+    fn record(&mut self, size: usize) {
+        if self.sizes.len() < Self::CAP {
+            self.sizes.push(size);
+        }
+    }
+
+    fn median(&mut self) -> Option<usize> {
+        if self.sizes.is_empty() {
+            return None;
+        }
+        if self.cached_median.is_none()
+            || self.sizes.len() >= self.last_computed_len + Self::REFRESH_STEP
+        {
+            let mut sorted = self.sizes.clone();
+            sorted.sort_unstable();
+            let mid = sorted.len() / 2;
+            let median = if sorted.len() % 2 == 1 {
+                sorted[mid]
+            } else {
+                (sorted[mid - 1] + sorted[mid]) / 2
+            };
+            self.cached_median = Some(median);
+            self.last_computed_len = sorted.len();
+        }
+        self.cached_median
+    }
+}
+
+fn chunk_index_of(record: &MemoryRecord) -> usize {
+    record
+        .metadata
+        .get("chunk_index")
+        .and_then(|value| value.parse::<usize>().ok())
+        .unwrap_or(0)
+}
+
+/// Append `next` to `acc`, removing up to `max_overlap` characters of duplicated
+/// boundary text created by the chunker's sliding-window overlap.
+fn append_with_overlap(acc: &mut String, next: &str, max_overlap: usize) {
+    if acc.is_empty() {
+        acc.push_str(next);
+        return;
+    }
+    let next_chars: Vec<char> = next.chars().collect();
+    let max_k = max_overlap.min(next_chars.len());
+    let mut best = 0;
+    for k in (1..=max_k).rev() {
+        let prefix: String = next_chars[..k].iter().collect();
+        if acc.ends_with(&prefix) {
+            best = k;
+            break;
+        }
+    }
+    let rest: String = next_chars[best..].iter().collect();
+    acc.push_str(&rest);
+}
+
+/// Build a parent-section window: take the contiguous span covering the matched
+/// chunks, then grow outward symmetrically while the estimated merged length stays
+/// within `budget`, merge with overlap removed, and hard-cap to `budget` chars.
+fn build_parent_window(
+    siblings: &[MemoryRecord],
+    group: &SmallToBigGroup,
+    budget: usize,
+    max_overlap: usize,
+) -> String {
+    let n = siblings.len();
+    let clen = |i: usize| siblings[i].content.chars().count();
+
+    let matched_positions: Vec<usize> = (0..n)
+        .filter(|&i| group.matched.contains(&chunk_index_of(&siblings[i])))
+        .collect();
+    let (mut lo, mut hi) = match (matched_positions.first(), matched_positions.last()) {
+        (Some(&first), Some(&last)) => (first, last),
+        _ => {
+            let pos = siblings
+                .iter()
+                .position(|s| s.node_id == group.record.node_id)
+                .unwrap_or(0);
+            (pos, pos)
+        }
+    };
+
+    let mut total: usize = (lo..=hi).map(clen).sum();
+    total = total.saturating_sub((hi - lo) * max_overlap);
+    loop {
+        let mut grew = false;
+        if lo > 0 {
+            let add = clen(lo - 1).saturating_sub(max_overlap);
+            if total + add <= budget {
+                lo -= 1;
+                total += add;
+                grew = true;
+            }
+        }
+        if hi + 1 < n {
+            let add = clen(hi + 1).saturating_sub(max_overlap);
+            if total + add <= budget {
+                hi += 1;
+                total += add;
+                grew = true;
+            }
+        }
+        if !grew {
+            break;
+        }
+    }
+
+    let mut window = String::new();
+    for sibling in siblings.iter().take(hi + 1).skip(lo) {
+        append_with_overlap(&mut window, &sibling.content, max_overlap);
+    }
+    if window.chars().count() > budget {
+        window = window.chars().take(budget).collect();
+    }
+    window
 }
 
 impl<V: VectorStore> MemoryBackend for VectorMemoryBackend<V> {
@@ -332,51 +729,64 @@ impl<V: VectorStore> MemoryBackend for VectorMemoryBackend<V> {
                 || self.config.knowledge_update_supersession
                 || self.config.episode_context_window > 0;
 
-            if !signals_active {
+            let raw_hits = if !signals_active {
                 // Fast path: existing 2-channel hybrid RRF (uses server-side if available).
-                return self.hybrid_rrf(query.clone(), query, options).await;
-            }
+                self.hybrid_rrf(query.clone(), query.clone(), options)
+                    .await?
+            } else {
+                // Signal path: client-side multi-channel RRF + post-processing.
+                self.ensure_ready().await?;
+                let mut channels: Vec<Vec<SearchHit>> = vec![
+                    self.keyword_hits(query.clone()).await?,
+                    self.vector_hits(query.clone()).await?,
+                ];
 
-            // Signal path: client-side multi-channel RRF + post-processing.
-            self.ensure_ready().await?;
-            let mut channels: Vec<Vec<SearchHit>> = vec![
-                self.keyword_hits(query.clone()).await?,
-                self.vector_hits(query.clone()).await?,
-            ];
-
-            if self.config.entity_linking {
-                let guard = self
-                    .entity_index
-                    .lock()
-                    .map_err(|e| MemoryError::Database(e.to_string()))?;
-                let entity_hits = guard.entity_hits(&query.text, query.limit);
-                if !entity_hits.is_empty() {
-                    channels.push(entity_hits);
+                if self.config.entity_linking {
+                    let guard = self
+                        .entity_index
+                        .lock()
+                        .map_err(|e| MemoryError::Database(e.to_string()))?;
+                    let entity_hits = guard.entity_hits(&query.text, query.limit);
+                    if !entity_hits.is_empty() {
+                        channels.push(entity_hits);
+                    }
                 }
+
+                let mut hits = reciprocal_rank_fusion(&channels, options);
+
+                if self.config.temporal_decay_lambda > 0.0 {
+                    hits = apply_recency_decay(hits, self.config.temporal_decay_lambda);
+                }
+
+                if self.config.knowledge_update_supersession {
+                    let guard = self
+                        .entity_index
+                        .lock()
+                        .map_err(|e| MemoryError::Database(e.to_string()))?;
+                    hits = apply_knowledge_supersession(hits, &guard, 0.3);
+                }
+
+                if self.config.episode_context_window > 0 {
+                    hits = self
+                        .expand_episode_context(hits, self.config.episode_context_window)
+                        .await?;
+                    hits.truncate(query.limit);
+                }
+
+                hits
+            };
+
+            // Small-to-big: expand each chunk hit to its bounded parent-section
+            // context and collapse same-parent hits. A no-op when disabled or when
+            // no hit is a chunk (e.g. single-chunk records), keeping small-document
+            // recall byte-identical.
+            match self.effective_parent_budget() {
+                Some(budget) => {
+                    self.expand_small_to_big(raw_hits, query.limit, budget)
+                        .await
+                }
+                None => Ok(raw_hits),
             }
-
-            let mut hits = reciprocal_rank_fusion(&channels, options);
-
-            if self.config.temporal_decay_lambda > 0.0 {
-                hits = apply_recency_decay(hits, self.config.temporal_decay_lambda);
-            }
-
-            if self.config.knowledge_update_supersession {
-                let guard = self
-                    .entity_index
-                    .lock()
-                    .map_err(|e| MemoryError::Database(e.to_string()))?;
-                hits = apply_knowledge_supersession(hits, &guard, 0.3);
-            }
-
-            if self.config.episode_context_window > 0 {
-                hits = self
-                    .expand_episode_context(hits, self.config.episode_context_window)
-                    .await?;
-                hits.truncate(query.limit);
-            }
-
-            Ok(hits)
         }
         .boxed()
     }
@@ -401,6 +811,14 @@ impl<V: VectorStore> MemoryBackend for VectorMemoryBackend<V> {
             let chunks = chunk_text(&memory.content, &ChunkConfig::default());
             let single = chunks.len() == 1;
             let chunk_count = chunks.len();
+
+            // Adaptive budget: record the size of every multi-chunk parent so the
+            // effective parent-context window can track the corpus median.
+            if !single {
+                if let Ok(mut samples) = self.parent_samples.lock() {
+                    samples.record(memory.content.chars().count());
+                }
+            }
 
             let mut representative: Option<MemoryRecord> = None;
             for chunk in chunks {
@@ -547,15 +965,54 @@ impl<V: VectorStore> MemoryBackend for VectorMemoryBackend<V> {
                     VectorSearch {
                         vector: None,
                         text: None,
-                        filter: Filter::node_id(node_id),
+                        filter: Filter::node_id(node_id.clone()),
                         limit: 1,
                         source: VectorSearchSource::Keyword,
                     },
                 )
                 .await?;
-            hits.pop().map(|hit| point_to_record(hit.point)).transpose()
+            if let Some(hit) = hits.pop() {
+                return point_to_record(hit.point).map(Some);
+            }
+            // Drill-down: a chunked document has no point at the bare parent node_id;
+            // reconstruct the full record from its chunk siblings in index order.
+            let siblings = self.fetch_siblings(&node_id, 4_096).await?;
+            if siblings.is_empty() {
+                return Ok(None);
+            }
+            Ok(Some(reconstruct_parent_record(&node_id, siblings)))
         }
         .boxed()
+    }
+}
+
+/// Reconstruct a full parent record from all of its chunk siblings (no budget cap —
+/// this is the explicit drill-down to the complete source document).
+fn reconstruct_parent_record(parent_node: &str, siblings: Vec<MemoryRecord>) -> MemoryRecord {
+    let max_overlap = ChunkConfig::default().overlap_chars;
+    let mut content = String::new();
+    for sibling in &siblings {
+        append_with_overlap(&mut content, &sibling.content, max_overlap);
+    }
+    let first = &siblings[0];
+    let mut metadata = first.metadata.clone();
+    metadata.remove("chunk_index");
+    metadata.remove("parent_node");
+    metadata.insert("chunk_count".to_string(), siblings.len().to_string());
+    metadata.insert("reconstructed".to_string(), "true".to_string());
+    MemoryRecord {
+        id: first.id.clone(),
+        node_id: parent_node.to_string(),
+        content,
+        tags: first.tags.clone(),
+        metadata,
+        tier: first.tier,
+        created_at: first.created_at,
+        scope: first.scope,
+        agent_id: first.agent_id.clone(),
+        session_id: first.session_id.clone(),
+        task_id: first.task_id.clone(),
+        user_id: first.user_id.clone(),
     }
 }
 
@@ -683,4 +1140,41 @@ fn vector_hits_to_memory_hits(
 fn point_to_record(point: VectorPoint) -> MemoryResult<MemoryRecord> {
     let payload: MemoryPayload = serde_json::from_value(point.payload)?;
     Ok(MemoryRecord::from(payload))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parent_size_median_is_empty_until_a_sample_exists() {
+        let mut samples = ParentSizeSamples::default();
+        assert_eq!(samples.median(), None);
+        samples.record(1_000);
+        assert_eq!(samples.median(), Some(1_000));
+    }
+
+    #[test]
+    fn parent_size_median_tracks_the_middle_value() {
+        let mut samples = ParentSizeSamples::default();
+        for size in [1_000, 9_000, 3_000, 5_000, 7_000] {
+            samples.record(size);
+        }
+        // Sorted: 1k 3k 5k 7k 9k -> median 5k. (Cache refreshes as the sample grows.)
+        assert_eq!(samples.median(), Some(5_000));
+    }
+
+    #[test]
+    fn append_with_overlap_removes_duplicated_boundary() {
+        let mut acc = "the quick brown fox".to_string();
+        append_with_overlap(&mut acc, "brown fox jumps over", 16);
+        assert_eq!(acc, "the quick brown fox jumps over");
+    }
+
+    #[test]
+    fn append_with_overlap_appends_disjoint_text_verbatim() {
+        let mut acc = "alpha".to_string();
+        append_with_overlap(&mut acc, "beta", 8);
+        assert_eq!(acc, "alphabeta");
+    }
 }

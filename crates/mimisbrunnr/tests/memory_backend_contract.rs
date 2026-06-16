@@ -398,21 +398,123 @@ async fn large_content_is_chunked_so_recall_stays_bounded() {
         .expect("find should succeed");
 
     assert!(!hits.is_empty(), "a chunk should be retrieved");
-    // Bounded: no returned chunk is anywhere near the whole-document size.
+    // Bounded: small-to-big expansion stays within the (adaptive) budget ceiling,
+    // never anywhere near the whole-document size.
+    let ceiling = VectorMemoryConfig::new("chunking").parent_context_max_chars;
     for hit in &hits {
         assert!(
-            hit.record.content.chars().count() < 2_500,
-            "recall must be bounded by chunk size, got {} chars",
+            hit.record.content.chars().count() <= ceiling,
+            "recall must be bounded by parent_context_max_chars ({ceiling}), got {} chars",
             hit.record.content.chars().count()
         );
     }
-    // Relevant: the buried marker survives in a retrieved chunk (not lost to truncation).
-    assert!(
-        hits.iter().any(|hit| hit.record.content.contains(marker)),
-        "the relevant passage must be retrieved"
-    );
-    // Parent linkage: chunks point back to the source node for drill-down.
-    assert!(hits
+    // Relevant: the buried marker survives in the retrieved window (not lost to truncation).
+    let marker_hit = hits
         .iter()
-        .all(|hit| hit.record.node_id.starts_with("node:big")));
+        .find(|hit| hit.record.content.contains(marker))
+        .expect("the relevant passage must be retrieved");
+    // Coherent (small-to-big): the matched chunk was expanded with its surrounding
+    // parent-section context, so the window is larger than a single ~1600-char chunk.
+    assert!(
+        marker_hit.record.content.chars().count() > 1_600,
+        "small-to-big should expand the matched chunk with neighbouring context, got {} chars",
+        marker_hit.record.content.chars().count()
+    );
+    // Single source: same-parent chunk hits collapse into one expanded hit whose
+    // node_id is the parent (drill-down target for the full document).
+    assert_eq!(
+        hits.iter()
+            .filter(|hit| hit.record.node_id == "node:big")
+            .count(),
+        1,
+        "same-parent hits must dedup to a single expanded hit"
+    );
+    assert!(hits.iter().all(|hit| hit.record.node_id == "node:big"));
+
+    // Drill-down: get_node on the parent reconstructs the full source document.
+    let full = backend
+        .get_node("node:big")
+        .await
+        .expect("get_node should succeed")
+        .expect("parent node should reconstruct from chunks");
+    assert!(
+        full.content.chars().count() > 50_000,
+        "drill-down must return the complete source, got {} chars",
+        full.content.chars().count()
+    );
+    assert!(
+        full.content.contains(marker),
+        "reconstructed document must contain the buried marker"
+    );
+}
+
+/// Small-to-big must be a no-op for single-chunk records: every stored document is
+/// small enough to be one chunk, so retrieval returns the records verbatim (same
+/// node_id, same content, no expansion). This guards the invariant that the
+/// scaling benchmark — built from small single-chunk documents — is unchanged by
+/// small-to-big / adaptive budgeting.
+#[tokio::test]
+async fn single_chunk_records_are_unaffected_by_small_to_big() {
+    let store = SqliteVecVectorStore::in_memory().expect("sqlite-vec store should open");
+    let backend = VectorMemoryBackend::with_embedder(
+        store,
+        VectorMemoryConfig {
+            collection: "small".to_string(),
+            dimensions: TEST_DIMENSIONS,
+            ..VectorMemoryConfig::new("small")
+        },
+        Arc::new(TestEmbedder),
+    )
+    .expect("backend should construct");
+
+    let docs = [
+        ("node:a", "alpha caching ttl is ninety seconds"),
+        ("node:b", "beta auth tokens expire in fifteen minutes"),
+        ("node:c", "gamma payment retries are idempotent by key"),
+    ];
+    for (node, body) in docs {
+        backend
+            .store(StoreMemory {
+                content: body.to_string(),
+                tags: vec![],
+                metadata: Default::default(),
+                tier: MemoryTier::L1Atom,
+                node_id: Some(node.to_string()),
+                created_at: None,
+                scope: None,
+                agent_id: None,
+                session_id: None,
+                task_id: None,
+                user_id: None,
+            })
+            .await
+            .expect("store should succeed");
+    }
+
+    let hits = backend
+        .find(MemoryQuery::new("auth tokens expire").with_limit(5))
+        .await
+        .expect("find should succeed");
+
+    assert!(!hits.is_empty(), "a record should be retrieved");
+    for hit in &hits {
+        // No chunking happened, so no expansion markers and the content is verbatim.
+        assert!(
+            !hit.record.metadata.contains_key("parent_node"),
+            "single-chunk records must not carry chunk metadata"
+        );
+        assert!(
+            !hit.record.metadata.contains_key("expanded_from_chunk"),
+            "single-chunk records must not be expanded"
+        );
+        let original = docs
+            .iter()
+            .find(|(node, _)| *node == hit.record.node_id)
+            .map(|(_, body)| *body)
+            .expect("hit must map to a stored doc");
+        assert_eq!(
+            hit.record.content, original,
+            "single-chunk content must be returned verbatim"
+        );
+    }
 }

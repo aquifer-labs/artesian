@@ -56,6 +56,10 @@ fn make_backend(store: SqliteVecVectorStore) -> VectorMemoryBackend<SqliteVecVec
         VectorMemoryConfig {
             collection: COLLECTION.to_string(),
             dimensions: TEST_DIMENSIONS,
+            // These tests assert the raw chunk/storage layer; disable small-to-big
+            // retrieval expansion so find() returns individual stored chunks.
+            parent_context_auto: false,
+            parent_context_chars: 0,
             ..VectorMemoryConfig::new(COLLECTION)
         },
         Arc::new(TestEmbedder),
