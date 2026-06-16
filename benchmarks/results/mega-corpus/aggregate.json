@@ -1,0 +1,1839 @@
+{
+  "suite_version": "seed-honest-v1",
+  "tokenizer": "cl100k_base (tiktoken-rs)",
+  "embedding_model": "intfloat/multilingual-e5-small/384",
+  "backend": "SqliteVecVectorStore via VectorMemoryBackend",
+  "aggregate": {
+    "A-full-replay": {
+      "runs": 100,
+      "success_rate": 1.0,
+      "success_rate_ci95": 0.0,
+      "mean_total_tokens": 1046431.13,
+      "total_tokens_variance": 1.69,
+      "tokens_per_success": 1046431.13,
+      "mean_retrieval_precision": 0.000071,
+      "mean_retrieval_recall": 1.0,
+      "by_difficulty": {
+        "easy": {
+          "runs": 34,
+          "success_rate": 1.0,
+          "success_rate_ci95": 0.0,
+          "mean_total_tokens": 1046431.0,
+          "total_tokens_variance": 2.0,
+          "tokens_per_success": 1046431.0,
+          "mean_retrieval_precision": 0.000071,
+          "mean_retrieval_recall": 1.0
+        },
+        "hard": {
+          "runs": 33,
+          "success_rate": 1.0,
+          "success_rate_ci95": 0.0,
+          "mean_total_tokens": 1046431.212121,
+          "total_tokens_variance": 1.859848,
+          "tokens_per_success": 1046431.212121,
+          "mean_retrieval_precision": 0.000071,
+          "mean_retrieval_recall": 1.0
+        },
+        "medium": {
+          "runs": 33,
+          "success_rate": 1.0,
+          "success_rate_ci95": 0.0,
+          "mean_total_tokens": 1046431.181818,
+          "total_tokens_variance": 1.278409,
+          "tokens_per_success": 1046431.181818,
+          "mean_retrieval_precision": 0.000071,
+          "mean_retrieval_recall": 1.0
+        }
+      }
+    },
+    "A-full-replay-cold-session": {
+      "runs": 100,
+      "success_rate": 1.0,
+      "success_rate_ci95": 0.0,
+      "mean_total_tokens": 1046434.13,
+      "total_tokens_variance": 1.69,
+      "tokens_per_success": 1046434.13,
+      "mean_retrieval_precision": 0.000071,
+      "mean_retrieval_recall": 1.0,
+      "by_difficulty": {
+        "easy": {
+          "runs": 34,
+          "success_rate": 1.0,
+          "success_rate_ci95": 0.0,
+          "mean_total_tokens": 1046434.0,
+          "total_tokens_variance": 2.0,
+          "tokens_per_success": 1046434.0,
+          "mean_retrieval_precision": 0.000071,
+          "mean_retrieval_recall": 1.0
+        },
+        "hard": {
+          "runs": 33,
+          "success_rate": 1.0,
+          "success_rate_ci95": 0.0,
+          "mean_total_tokens": 1046434.212121,
+          "total_tokens_variance": 1.859848,
+          "tokens_per_success": 1046434.212121,
+          "mean_retrieval_precision": 0.000071,
+          "mean_retrieval_recall": 1.0
+        },
+        "medium": {
+          "runs": 33,
+          "success_rate": 1.0,
+          "success_rate_ci95": 0.0,
+          "mean_total_tokens": 1046434.181818,
+          "total_tokens_variance": 1.278409,
+          "tokens_per_success": 1046434.181818,
+          "mean_retrieval_precision": 0.000071,
+          "mean_retrieval_recall": 1.0
+        }
+      }
+    },
+    "B-default-brunnr": {
+      "runs": 100,
+      "success_rate": 1.0,
+      "success_rate_ci95": 0.0,
+      "mean_total_tokens": 1045.59,
+      "total_tokens_variance": 180.830202,
+      "tokens_per_success": 1045.59,
+      "mean_retrieval_precision": 0.333333,
+      "mean_retrieval_recall": 1.0,
+      "by_difficulty": {
+        "easy": {
+          "runs": 34,
+          "success_rate": 1.0,
+          "success_rate_ci95": 0.0,
+          "mean_total_tokens": 1045.941176,
+          "total_tokens_variance": 191.875223,
+          "tokens_per_success": 1045.941176,
+          "mean_retrieval_precision": 0.333333,
+          "mean_retrieval_recall": 1.0
+        },
+        "hard": {
+          "runs": 33,
+          "success_rate": 1.0,
+          "success_rate_ci95": 0.0,
+          "mean_total_tokens": 1044.242424,
+          "total_tokens_variance": 182.189394,
+          "tokens_per_success": 1044.242424,
+          "mean_retrieval_precision": 0.333333,
+          "mean_retrieval_recall": 1.0
+        },
+        "medium": {
+          "runs": 33,
+          "success_rate": 1.0,
+          "success_rate_ci95": 0.0,
+          "mean_total_tokens": 1046.575758,
+          "total_tokens_variance": 176.376894,
+          "tokens_per_success": 1046.575758,
+          "mean_retrieval_precision": 0.333333,
+          "mean_retrieval_recall": 1.0
+        }
+      }
+    },
+    "B-default-brunnr-cold-session": {
+      "runs": 100,
+      "success_rate": 1.0,
+      "success_rate_ci95": 0.0,
+      "mean_total_tokens": 1048.59,
+      "total_tokens_variance": 180.830202,
+      "tokens_per_success": 1048.59,
+      "mean_retrieval_precision": 0.333333,
+      "mean_retrieval_recall": 1.0,
+      "by_difficulty": {
+        "easy": {
+          "runs": 34,
+          "success_rate": 1.0,
+          "success_rate_ci95": 0.0,
+          "mean_total_tokens": 1048.941176,
+          "total_tokens_variance": 191.875223,
+          "tokens_per_success": 1048.941176,
+          "mean_retrieval_precision": 0.333333,
+          "mean_retrieval_recall": 1.0
+        },
+        "hard": {
+          "runs": 33,
+          "success_rate": 1.0,
+          "success_rate_ci95": 0.0,
+          "mean_total_tokens": 1047.242424,
+          "total_tokens_variance": 182.189394,
+          "tokens_per_success": 1047.242424,
+          "mean_retrieval_precision": 0.333333,
+          "mean_retrieval_recall": 1.0
+        },
+        "medium": {
+          "runs": 33,
+          "success_rate": 1.0,
+          "success_rate_ci95": 0.0,
+          "mean_total_tokens": 1049.575758,
+          "total_tokens_variance": 176.376894,
+          "tokens_per_success": 1049.575758,
+          "mean_retrieval_precision": 0.333333,
+          "mean_retrieval_recall": 1.0
+        }
+      }
+    },
+    "B-plus-debate": {
+      "runs": 100,
+      "success_rate": 1.0,
+      "success_rate_ci95": 0.0,
+      "mean_total_tokens": 1078.72,
+      "total_tokens_variance": 160.749091,
+      "tokens_per_success": 1078.72,
+      "mean_retrieval_precision": 0.333333,
+      "mean_retrieval_recall": 1.0,
+      "by_difficulty": {
+        "easy": {
+          "runs": 34,
+          "success_rate": 1.0,
+          "success_rate_ci95": 0.0,
+          "mean_total_tokens": 1078.941176,
+          "total_tokens_variance": 172.178253,
+          "tokens_per_success": 1078.941176,
+          "mean_retrieval_precision": 0.333333,
+          "mean_retrieval_recall": 1.0
+        },
+        "hard": {
+          "runs": 33,
+          "success_rate": 1.0,
+          "success_rate_ci95": 0.0,
+          "mean_total_tokens": 1077.454545,
+          "total_tokens_variance": 157.755682,
+          "tokens_per_success": 1077.454545,
+          "mean_retrieval_precision": 0.333333,
+          "mean_retrieval_recall": 1.0
+        },
+        "medium": {
+          "runs": 33,
+          "success_rate": 1.0,
+          "success_rate_ci95": 0.0,
+          "mean_total_tokens": 1079.757576,
+          "total_tokens_variance": 159.189394,
+          "tokens_per_success": 1079.757576,
+          "mean_retrieval_precision": 0.333333,
+          "mean_retrieval_recall": 1.0
+        }
+      }
+    },
+    "B-plus-hyde": {
+      "runs": 100,
+      "success_rate": 0.92,
+      "success_rate_ci95": 0.053441,
+      "mean_total_tokens": 1080.15,
+      "total_tokens_variance": 168.755051,
+      "tokens_per_success": 1174.076087,
+      "mean_retrieval_precision": 0.306666,
+      "mean_retrieval_recall": 0.92,
+      "by_difficulty": {
+        "easy": {
+          "runs": 34,
+          "success_rate": 0.941176,
+          "success_rate_ci95": 0.080281,
+          "mean_total_tokens": 1080.558824,
+          "total_tokens_variance": 176.375223,
+          "tokens_per_success": 1148.09375,
+          "mean_retrieval_precision": 0.313725,
+          "mean_retrieval_recall": 0.941176
+        },
+        "hard": {
+          "runs": 33,
+          "success_rate": 0.878788,
+          "success_rate_ci95": 0.113082,
+          "mean_total_tokens": 1078.515152,
+          "total_tokens_variance": 150.882576,
+          "tokens_per_success": 1227.275862,
+          "mean_retrieval_precision": 0.292929,
+          "mean_retrieval_recall": 0.878788
+        },
+        "medium": {
+          "runs": 33,
+          "success_rate": 0.939394,
+          "success_rate_ci95": 0.082673,
+          "mean_total_tokens": 1081.363636,
+          "total_tokens_variance": 184.863636,
+          "tokens_per_success": 1151.129032,
+          "mean_retrieval_precision": 0.313131,
+          "mean_retrieval_recall": 0.939394
+        }
+      }
+    },
+    "B-plus-multi-query": {
+      "runs": 100,
+      "success_rate": 1.0,
+      "success_rate_ci95": 0.0,
+      "mean_total_tokens": 1099.41,
+      "total_tokens_variance": 103.618081,
+      "tokens_per_success": 1099.41,
+      "mean_retrieval_precision": 0.333333,
+      "mean_retrieval_recall": 1.0,
+      "by_difficulty": {
+        "easy": {
+          "runs": 34,
+          "success_rate": 1.0,
+          "success_rate_ci95": 0.0,
+          "mean_total_tokens": 1099.117647,
+          "total_tokens_variance": 135.137255,
+          "tokens_per_success": 1099.117647,
+          "mean_retrieval_precision": 0.333333,
+          "mean_retrieval_recall": 1.0
+        },
+        "hard": {
+          "runs": 33,
+          "success_rate": 1.0,
+          "success_rate_ci95": 0.0,
+          "mean_total_tokens": 1100.454545,
+          "total_tokens_variance": 78.630682,
+          "tokens_per_success": 1100.454545,
+          "mean_retrieval_precision": 0.333333,
+          "mean_retrieval_recall": 1.0
+        },
+        "medium": {
+          "runs": 33,
+          "success_rate": 1.0,
+          "success_rate_ci95": 0.0,
+          "mean_total_tokens": 1098.666667,
+          "total_tokens_variance": 100.791667,
+          "tokens_per_success": 1098.666667,
+          "mean_retrieval_precision": 0.333333,
+          "mean_retrieval_recall": 1.0
+        }
+      }
+    },
+    "B-reflection-consolidated": {
+      "runs": 100,
+      "success_rate": 1.0,
+      "success_rate_ci95": 0.0,
+      "mean_total_tokens": 15704.08,
+      "total_tokens_variance": 169.993535,
+      "tokens_per_success": 15704.08,
+      "mean_retrieval_precision": 0.333333,
+      "mean_retrieval_recall": 1.0,
+      "by_difficulty": {
+        "easy": {
+          "runs": 34,
+          "success_rate": 1.0,
+          "success_rate_ci95": 0.0,
+          "mean_total_tokens": 15703.294118,
+          "total_tokens_variance": 207.607843,
+          "tokens_per_success": 15703.294118,
+          "mean_retrieval_precision": 0.333333,
+          "mean_retrieval_recall": 1.0
+        },
+        "hard": {
+          "runs": 33,
+          "success_rate": 1.0,
+          "success_rate_ci95": 0.0,
+          "mean_total_tokens": 15705.181818,
+          "total_tokens_variance": 166.278409,
+          "tokens_per_success": 15705.181818,
+          "mean_retrieval_precision": 0.333333,
+          "mean_retrieval_recall": 1.0
+        },
+        "medium": {
+          "runs": 33,
+          "success_rate": 1.0,
+          "success_rate_ci95": 0.0,
+          "mean_total_tokens": 15703.787879,
+          "total_tokens_variance": 143.547348,
+          "tokens_per_success": 15703.787879,
+          "mean_retrieval_precision": 0.333333,
+          "mean_retrieval_recall": 1.0
+        }
+      }
+    },
+    "C-built-in-agent-memory": {
+      "runs": 100,
+      "success_rate": 0.91,
+      "success_rate_ci95": 0.056374,
+      "mean_total_tokens": 125.73,
+      "total_tokens_variance": 35.007172,
+      "tokens_per_success": 138.164835,
+      "mean_retrieval_precision": 0.91,
+      "mean_retrieval_recall": 0.91,
+      "by_difficulty": {
+        "easy": {
+          "runs": 34,
+          "success_rate": 0.970588,
+          "success_rate_ci95": 0.057647,
+          "mean_total_tokens": 127.0,
+          "total_tokens_variance": 19.69697,
+          "tokens_per_success": 130.848485,
+          "mean_retrieval_precision": 0.970588,
+          "mean_retrieval_recall": 0.970588
+        },
+        "hard": {
+          "runs": 33,
+          "success_rate": 0.848485,
+          "success_rate_ci95": 0.124231,
+          "mean_total_tokens": 124.121212,
+          "total_tokens_variance": 48.297348,
+          "tokens_per_success": 146.285714,
+          "mean_retrieval_precision": 0.848485,
+          "mean_retrieval_recall": 0.848485
+        },
+        "medium": {
+          "runs": 33,
+          "success_rate": 0.909091,
+          "success_rate_ci95": 0.099607,
+          "mean_total_tokens": 126.030303,
+          "total_tokens_variance": 35.217803,
+          "tokens_per_success": 138.633333,
+          "mean_retrieval_precision": 0.909091,
+          "mean_retrieval_recall": 0.909091
+        }
+      }
+    },
+    "D-no-memory": {
+      "runs": 100,
+      "success_rate": 0.0,
+      "success_rate_ci95": 0.0,
+      "mean_total_tokens": 56.13,
+      "total_tokens_variance": 1.69,
+      "tokens_per_success": null,
+      "mean_retrieval_precision": 0.0,
+      "mean_retrieval_recall": 0.0,
+      "by_difficulty": {
+        "easy": {
+          "runs": 34,
+          "success_rate": 0.0,
+          "success_rate_ci95": 0.0,
+          "mean_total_tokens": 56.0,
+          "total_tokens_variance": 2.0,
+          "tokens_per_success": null,
+          "mean_retrieval_precision": 0.0,
+          "mean_retrieval_recall": 0.0
+        },
+        "hard": {
+          "runs": 33,
+          "success_rate": 0.0,
+          "success_rate_ci95": 0.0,
+          "mean_total_tokens": 56.212121,
+          "total_tokens_variance": 1.859848,
+          "tokens_per_success": null,
+          "mean_retrieval_precision": 0.0,
+          "mean_retrieval_recall": 0.0
+        },
+        "medium": {
+          "runs": 33,
+          "success_rate": 0.0,
+          "success_rate_ci95": 0.0,
+          "mean_total_tokens": 56.181818,
+          "total_tokens_variance": 1.278409,
+          "tokens_per_success": null,
+          "mean_retrieval_precision": 0.0,
+          "mean_retrieval_recall": 0.0
+        }
+      }
+    },
+    "E-md-okf-index-first": {
+      "runs": 100,
+      "success_rate": 1.0,
+      "success_rate_ci95": 0.0,
+      "mean_total_tokens": 257130.59,
+      "total_tokens_variance": 180.830202,
+      "tokens_per_success": 257130.59,
+      "mean_retrieval_precision": 0.333333,
+      "mean_retrieval_recall": 1.0,
+      "by_difficulty": {
+        "easy": {
+          "runs": 34,
+          "success_rate": 1.0,
+          "success_rate_ci95": 0.0,
+          "mean_total_tokens": 257130.941176,
+          "total_tokens_variance": 191.875223,
+          "tokens_per_success": 257130.941176,
+          "mean_retrieval_precision": 0.333333,
+          "mean_retrieval_recall": 1.0
+        },
+        "hard": {
+          "runs": 33,
+          "success_rate": 1.0,
+          "success_rate_ci95": 0.0,
+          "mean_total_tokens": 257129.242424,
+          "total_tokens_variance": 182.189394,
+          "tokens_per_success": 257129.242424,
+          "mean_retrieval_precision": 0.333333,
+          "mean_retrieval_recall": 1.0
+        },
+        "medium": {
+          "runs": 33,
+          "success_rate": 1.0,
+          "success_rate_ci95": 0.0,
+          "mean_total_tokens": 257131.575758,
+          "total_tokens_variance": 176.376894,
+          "tokens_per_success": 257131.575758,
+          "mean_retrieval_precision": 0.333333,
+          "mean_retrieval_recall": 1.0
+        }
+      }
+    }
+  },
+  "retrieval_misses": [
+    {
+      "arm": "B-plus-hyde",
+      "task_id": "mega-00-subscriptions-processor-26",
+      "difficulty": "easy",
+      "relevant_docs": [
+        "memory/subscriptions-processor-26.md"
+      ],
+      "retrieved_docs": [
+        "distractors/naming-guide.md",
+        "distractors/quota-overview.md",
+        "memory/analytics-api.md"
+      ],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "B-plus-hyde",
+      "task_id": "mega-24-metering-service-36",
+      "difficulty": "easy",
+      "relevant_docs": [
+        "memory/metering-service-36.md"
+      ],
+      "retrieved_docs": [
+        "distractors/naming-guide.md",
+        "distractors/quota-overview.md",
+        "memory/analytics-api.md"
+      ],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "B-plus-hyde",
+      "task_id": "mega-41-feeds-scheduler-22",
+      "difficulty": "hard",
+      "relevant_docs": [
+        "memory/feeds-scheduler-22.md"
+      ],
+      "retrieved_docs": [
+        "distractors/naming-guide.md",
+        "memory/analytics-indexer.md",
+        "memory/analytics-service.md"
+      ],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "B-plus-hyde",
+      "task_id": "mega-43-geocoding-worker-6",
+      "difficulty": "medium",
+      "relevant_docs": [
+        "memory/geocoding-worker-6.md"
+      ],
+      "retrieved_docs": [
+        "distractors/naming-guide.md",
+        "distractors/quota-overview.md",
+        "memory/analytics-api.md"
+      ],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "B-plus-hyde",
+      "task_id": "mega-50-ledger-processor-41",
+      "difficulty": "hard",
+      "relevant_docs": [
+        "memory/ledger-processor-41.md"
+      ],
+      "retrieved_docs": [
+        "distractors/naming-guide.md",
+        "memory/analytics-indexer.md",
+        "memory/analytics-service.md"
+      ],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "B-plus-hyde",
+      "task_id": "mega-52-webhooks-worker-30",
+      "difficulty": "medium",
+      "relevant_docs": [
+        "memory/webhooks-worker-30.md"
+      ],
+      "retrieved_docs": [
+        "distractors/naming-guide.md",
+        "distractors/quota-overview.md",
+        "memory/analytics-api.md"
+      ],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "B-plus-hyde",
+      "task_id": "mega-56-webhooks-processor-14",
+      "difficulty": "hard",
+      "relevant_docs": [
+        "memory/webhooks-processor-14.md"
+      ],
+      "retrieved_docs": [
+        "distractors/naming-guide.md",
+        "distractors/quota-overview.md",
+        "memory/analytics-api.md"
+      ],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "B-plus-hyde",
+      "task_id": "mega-77-billing-scheduler-12",
+      "difficulty": "hard",
+      "relevant_docs": [
+        "memory/billing-scheduler-12.md"
+      ],
+      "retrieved_docs": [
+        "distractors/naming-guide.md",
+        "distractors/quota-overview.md",
+        "memory/analytics-api.md"
+      ],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "C-built-in-agent-memory",
+      "task_id": "mega-11-catalog-processor-31",
+      "difficulty": "hard",
+      "relevant_docs": [
+        "memory/catalog-processor-31.md"
+      ],
+      "retrieved_docs": [
+        "distractors/naming-guide.md"
+      ],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "C-built-in-agent-memory",
+      "task_id": "mega-43-geocoding-worker-6",
+      "difficulty": "medium",
+      "relevant_docs": [
+        "memory/geocoding-worker-6.md"
+      ],
+      "retrieved_docs": [
+        "distractors/naming-guide.md"
+      ],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "C-built-in-agent-memory",
+      "task_id": "mega-45-audit-processor-19",
+      "difficulty": "easy",
+      "relevant_docs": [
+        "memory/audit-processor-19.md"
+      ],
+      "retrieved_docs": [
+        "memory/messaging-processor-19.md"
+      ],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "C-built-in-agent-memory",
+      "task_id": "mega-52-webhooks-worker-30",
+      "difficulty": "medium",
+      "relevant_docs": [
+        "memory/webhooks-worker-30.md"
+      ],
+      "retrieved_docs": [
+        "distractors/naming-guide.md"
+      ],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "C-built-in-agent-memory",
+      "task_id": "mega-53-wallet-gateway-33",
+      "difficulty": "hard",
+      "relevant_docs": [
+        "memory/wallet-gateway-33.md"
+      ],
+      "retrieved_docs": [
+        "distractors/naming-guide.md"
+      ],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "C-built-in-agent-memory",
+      "task_id": "mega-62-translation-worker",
+      "difficulty": "hard",
+      "relevant_docs": [
+        "memory/translation-worker.md"
+      ],
+      "retrieved_docs": [
+        "distractors/naming-guide.md"
+      ],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "C-built-in-agent-memory",
+      "task_id": "mega-76-metering-api-33",
+      "difficulty": "medium",
+      "relevant_docs": [
+        "memory/metering-api-33.md"
+      ],
+      "retrieved_docs": [
+        "distractors/naming-guide.md"
+      ],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "C-built-in-agent-memory",
+      "task_id": "mega-77-billing-scheduler-12",
+      "difficulty": "hard",
+      "relevant_docs": [
+        "memory/billing-scheduler-12.md"
+      ],
+      "retrieved_docs": [
+        "distractors/naming-guide.md"
+      ],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "C-built-in-agent-memory",
+      "task_id": "mega-89-moderation-gateway-26",
+      "difficulty": "hard",
+      "relevant_docs": [
+        "memory/moderation-gateway-26.md"
+      ],
+      "retrieved_docs": [
+        "distractors/naming-guide.md"
+      ],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-00-subscriptions-processor-26",
+      "difficulty": "easy",
+      "relevant_docs": [
+        "memory/subscriptions-processor-26.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-01-checkout-processor-7",
+      "difficulty": "medium",
+      "relevant_docs": [
+        "memory/checkout-processor-7.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-02-loyalty-api-40",
+      "difficulty": "hard",
+      "relevant_docs": [
+        "memory/loyalty-api-40.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-03-search-indexer-28",
+      "difficulty": "easy",
+      "relevant_docs": [
+        "memory/search-indexer-28.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-04-messaging-scheduler-7",
+      "difficulty": "medium",
+      "relevant_docs": [
+        "memory/messaging-scheduler-7.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-05-sync-scheduler-17",
+      "difficulty": "hard",
+      "relevant_docs": [
+        "memory/sync-scheduler-17.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-06-import-gateway-31",
+      "difficulty": "easy",
+      "relevant_docs": [
+        "memory/import-gateway-31.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-07-orders-gateway-39",
+      "difficulty": "medium",
+      "relevant_docs": [
+        "memory/orders-gateway-39.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-08-catalog-gateway-29",
+      "difficulty": "hard",
+      "relevant_docs": [
+        "memory/catalog-gateway-29.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-09-payments-processor-8",
+      "difficulty": "easy",
+      "relevant_docs": [
+        "memory/payments-processor-8.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-10-payments-scheduler-41",
+      "difficulty": "medium",
+      "relevant_docs": [
+        "memory/payments-scheduler-41.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-11-catalog-processor-31",
+      "difficulty": "hard",
+      "relevant_docs": [
+        "memory/catalog-processor-31.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-12-messaging-scheduler-27",
+      "difficulty": "easy",
+      "relevant_docs": [
+        "memory/messaging-scheduler-27.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-13-checkout-processor-13",
+      "difficulty": "medium",
+      "relevant_docs": [
+        "memory/checkout-processor-13.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-14-shipping-processor-31",
+      "difficulty": "hard",
+      "relevant_docs": [
+        "memory/shipping-processor-31.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-15-payments-worker-12",
+      "difficulty": "easy",
+      "relevant_docs": [
+        "memory/payments-worker-12.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-16-notifications-service-12",
+      "difficulty": "medium",
+      "relevant_docs": [
+        "memory/notifications-service-12.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-17-export-scheduler-8",
+      "difficulty": "hard",
+      "relevant_docs": [
+        "memory/export-scheduler-8.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-18-scheduling-api-41",
+      "difficulty": "easy",
+      "relevant_docs": [
+        "memory/scheduling-api-41.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-19-loyalty-api-19",
+      "difficulty": "medium",
+      "relevant_docs": [
+        "memory/loyalty-api-19.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-20-routing-scheduler-8",
+      "difficulty": "hard",
+      "relevant_docs": [
+        "memory/routing-scheduler-8.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-21-payments-service",
+      "difficulty": "easy",
+      "relevant_docs": [
+        "memory/payments-service.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-22-metering-scheduler-48",
+      "difficulty": "medium",
+      "relevant_docs": [
+        "memory/metering-scheduler-48.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-23-loyalty-processor-26",
+      "difficulty": "hard",
+      "relevant_docs": [
+        "memory/loyalty-processor-26.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-24-metering-service-36",
+      "difficulty": "easy",
+      "relevant_docs": [
+        "memory/metering-service-36.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-25-recommendations-api-26",
+      "difficulty": "medium",
+      "relevant_docs": [
+        "memory/recommendations-api-26.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-26-feeds-worker-2",
+      "difficulty": "hard",
+      "relevant_docs": [
+        "memory/feeds-worker-2.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-27-recommendations-gateway-11",
+      "difficulty": "easy",
+      "relevant_docs": [
+        "memory/recommendations-gateway-11.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-28-feeds-gateway-8",
+      "difficulty": "medium",
+      "relevant_docs": [
+        "memory/feeds-gateway-8.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-29-loyalty-worker-49",
+      "difficulty": "hard",
+      "relevant_docs": [
+        "memory/loyalty-worker-49.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-30-pricing-scheduler-4",
+      "difficulty": "easy",
+      "relevant_docs": [
+        "memory/pricing-scheduler-4.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-31-translation-service-38",
+      "difficulty": "medium",
+      "relevant_docs": [
+        "memory/translation-service-38.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-32-inventory-scheduler-3",
+      "difficulty": "hard",
+      "relevant_docs": [
+        "memory/inventory-scheduler-3.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-33-scheduling-scheduler-7",
+      "difficulty": "easy",
+      "relevant_docs": [
+        "memory/scheduling-scheduler-7.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-34-loyalty-indexer-35",
+      "difficulty": "medium",
+      "relevant_docs": [
+        "memory/loyalty-indexer-35.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-35-checkout-api-13",
+      "difficulty": "hard",
+      "relevant_docs": [
+        "memory/checkout-api-13.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-36-tax-scheduler-19",
+      "difficulty": "easy",
+      "relevant_docs": [
+        "memory/tax-scheduler-19.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-37-import-gateway-25",
+      "difficulty": "medium",
+      "relevant_docs": [
+        "memory/import-gateway-25.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-38-export-api-18",
+      "difficulty": "hard",
+      "relevant_docs": [
+        "memory/export-api-18.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-39-refunds-service-19",
+      "difficulty": "easy",
+      "relevant_docs": [
+        "memory/refunds-service-19.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-40-sync-indexer-38",
+      "difficulty": "medium",
+      "relevant_docs": [
+        "memory/sync-indexer-38.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-41-feeds-scheduler-22",
+      "difficulty": "hard",
+      "relevant_docs": [
+        "memory/feeds-scheduler-22.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-42-import-indexer-47",
+      "difficulty": "easy",
+      "relevant_docs": [
+        "memory/import-indexer-47.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-43-geocoding-worker-6",
+      "difficulty": "medium",
+      "relevant_docs": [
+        "memory/geocoding-worker-6.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-44-audit-api-28",
+      "difficulty": "hard",
+      "relevant_docs": [
+        "memory/audit-api-28.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-45-audit-processor-19",
+      "difficulty": "easy",
+      "relevant_docs": [
+        "memory/audit-processor-19.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-46-reporting-api-22",
+      "difficulty": "medium",
+      "relevant_docs": [
+        "memory/reporting-api-22.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-47-export-processor-21",
+      "difficulty": "hard",
+      "relevant_docs": [
+        "memory/export-processor-21.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-48-subscriptions-service-23",
+      "difficulty": "easy",
+      "relevant_docs": [
+        "memory/subscriptions-service-23.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-49-subscriptions-indexer-5",
+      "difficulty": "medium",
+      "relevant_docs": [
+        "memory/subscriptions-indexer-5.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-50-ledger-processor-41",
+      "difficulty": "hard",
+      "relevant_docs": [
+        "memory/ledger-processor-41.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-51-metering-scheduler-50",
+      "difficulty": "easy",
+      "relevant_docs": [
+        "memory/metering-scheduler-50.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-52-webhooks-worker-30",
+      "difficulty": "medium",
+      "relevant_docs": [
+        "memory/webhooks-worker-30.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-53-wallet-gateway-33",
+      "difficulty": "hard",
+      "relevant_docs": [
+        "memory/wallet-gateway-33.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-54-reporting-worker-20",
+      "difficulty": "easy",
+      "relevant_docs": [
+        "memory/reporting-worker-20.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-55-shipping-scheduler-35",
+      "difficulty": "medium",
+      "relevant_docs": [
+        "memory/shipping-scheduler-35.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-56-webhooks-processor-14",
+      "difficulty": "hard",
+      "relevant_docs": [
+        "memory/webhooks-processor-14.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-57-wallet-service-44",
+      "difficulty": "easy",
+      "relevant_docs": [
+        "memory/wallet-service-44.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-58-archive-scheduler-35",
+      "difficulty": "medium",
+      "relevant_docs": [
+        "memory/archive-scheduler-35.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-59-inventory-processor-43",
+      "difficulty": "hard",
+      "relevant_docs": [
+        "memory/inventory-processor-43.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-60-identity-scheduler-50",
+      "difficulty": "easy",
+      "relevant_docs": [
+        "memory/identity-scheduler-50.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-61-sync-api-26",
+      "difficulty": "medium",
+      "relevant_docs": [
+        "memory/sync-api-26.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-62-translation-worker",
+      "difficulty": "hard",
+      "relevant_docs": [
+        "memory/translation-worker.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-63-feeds-indexer-38",
+      "difficulty": "easy",
+      "relevant_docs": [
+        "memory/feeds-indexer-38.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-64-identity-gateway-35",
+      "difficulty": "medium",
+      "relevant_docs": [
+        "memory/identity-gateway-35.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-65-reviews-gateway-50",
+      "difficulty": "hard",
+      "relevant_docs": [
+        "memory/reviews-gateway-50.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-66-sync-api-35",
+      "difficulty": "easy",
+      "relevant_docs": [
+        "memory/sync-api-35.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-67-notifications-scheduler-48",
+      "difficulty": "medium",
+      "relevant_docs": [
+        "memory/notifications-scheduler-48.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-68-notifications-worker-35",
+      "difficulty": "hard",
+      "relevant_docs": [
+        "memory/notifications-worker-35.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-69-auth-scheduler-48",
+      "difficulty": "easy",
+      "relevant_docs": [
+        "memory/auth-scheduler-48.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-70-messaging-service-18",
+      "difficulty": "medium",
+      "relevant_docs": [
+        "memory/messaging-service-18.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-71-tax-api-13",
+      "difficulty": "hard",
+      "relevant_docs": [
+        "memory/tax-api-13.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-72-notifications-scheduler-10",
+      "difficulty": "easy",
+      "relevant_docs": [
+        "memory/notifications-scheduler-10.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-73-media-scheduler-9",
+      "difficulty": "medium",
+      "relevant_docs": [
+        "memory/media-scheduler-9.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-74-auth-indexer-17",
+      "difficulty": "hard",
+      "relevant_docs": [
+        "memory/auth-indexer-17.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-75-reporting-gateway-20",
+      "difficulty": "easy",
+      "relevant_docs": [
+        "memory/reporting-gateway-20.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-76-metering-api-33",
+      "difficulty": "medium",
+      "relevant_docs": [
+        "memory/metering-api-33.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-77-billing-scheduler-12",
+      "difficulty": "hard",
+      "relevant_docs": [
+        "memory/billing-scheduler-12.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-78-sync-indexer-15",
+      "difficulty": "easy",
+      "relevant_docs": [
+        "memory/sync-indexer-15.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-79-payments-scheduler-5",
+      "difficulty": "medium",
+      "relevant_docs": [
+        "memory/payments-scheduler-5.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-80-catalog-api-31",
+      "difficulty": "hard",
+      "relevant_docs": [
+        "memory/catalog-api-31.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-81-catalog-indexer-47",
+      "difficulty": "easy",
+      "relevant_docs": [
+        "memory/catalog-indexer-47.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-82-payments-api-36",
+      "difficulty": "medium",
+      "relevant_docs": [
+        "memory/payments-api-36.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-83-payments-indexer-44",
+      "difficulty": "hard",
+      "relevant_docs": [
+        "memory/payments-indexer-44.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-84-media-service-29",
+      "difficulty": "easy",
+      "relevant_docs": [
+        "memory/media-service-29.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-85-media-indexer-47",
+      "difficulty": "medium",
+      "relevant_docs": [
+        "memory/media-indexer-47.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-86-moderation-gateway-20",
+      "difficulty": "hard",
+      "relevant_docs": [
+        "memory/moderation-gateway-20.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-87-recommendations-api",
+      "difficulty": "easy",
+      "relevant_docs": [
+        "memory/recommendations-api.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-88-translation-worker-19",
+      "difficulty": "medium",
+      "relevant_docs": [
+        "memory/translation-worker-19.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-89-moderation-gateway-26",
+      "difficulty": "hard",
+      "relevant_docs": [
+        "memory/moderation-gateway-26.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-90-scheduling-api-45",
+      "difficulty": "easy",
+      "relevant_docs": [
+        "memory/scheduling-api-45.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-91-archive-scheduler-39",
+      "difficulty": "medium",
+      "relevant_docs": [
+        "memory/archive-scheduler-39.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-92-notifications-worker-27",
+      "difficulty": "hard",
+      "relevant_docs": [
+        "memory/notifications-worker-27.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-93-routing-api-30",
+      "difficulty": "easy",
+      "relevant_docs": [
+        "memory/routing-api-30.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-94-search-api-42",
+      "difficulty": "medium",
+      "relevant_docs": [
+        "memory/search-api-42.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-95-refunds-processor-32",
+      "difficulty": "hard",
+      "relevant_docs": [
+        "memory/refunds-processor-32.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-96-routing-processor-23",
+      "difficulty": "easy",
+      "relevant_docs": [
+        "memory/routing-processor-23.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-97-routing-processor-45",
+      "difficulty": "medium",
+      "relevant_docs": [
+        "memory/routing-processor-45.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-98-recommendations-processor-30",
+      "difficulty": "hard",
+      "relevant_docs": [
+        "memory/recommendations-processor-30.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    },
+    {
+      "arm": "D-no-memory",
+      "task_id": "mega-99-wallet-gateway-13",
+      "difficulty": "easy",
+      "relevant_docs": [
+        "memory/wallet-gateway-13.md"
+      ],
+      "retrieved_docs": [],
+      "recall": 0.0,
+      "runs": 1
+    }
+  ],
+  "marginal_verdicts": {
+    "B-plus-debate": {
+      "tokens_per_success_delta_vs_b": 33.13,
+      "success_rate_delta_vs_b": 0.0,
+      "precision_delta_vs_b": 0.0,
+      "recall_delta_vs_b": 0.0,
+      "verdict": "skip by default; no measured quality gain over B-default in this sample"
+    },
+    "B-plus-hyde": {
+      "tokens_per_success_delta_vs_b": 128.486087,
+      "success_rate_delta_vs_b": -0.08,
+      "precision_delta_vs_b": -0.026667,
+      "recall_delta_vs_b": -0.08,
+      "verdict": "skip by default; no measured quality gain over B-default in this sample"
+    },
+    "B-plus-multi-query": {
+      "tokens_per_success_delta_vs_b": 53.82,
+      "success_rate_delta_vs_b": 0.0,
+      "precision_delta_vs_b": 0.0,
+      "recall_delta_vs_b": 0.0,
+      "verdict": "skip by default; no measured quality gain over B-default in this sample"
+    },
+    "B-reflection-consolidated": {
+      "tokens_per_success_delta_vs_b": 14658.49,
+      "success_rate_delta_vs_b": 0.0,
+      "precision_delta_vs_b": 0.0,
+      "recall_delta_vs_b": 0.0,
+      "verdict": "skip by default; no measured quality gain over B-default in this sample"
+    }
+  }
+}

@@ -18,7 +18,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 BENCH = Path(__file__).resolve().parents[1]
-TIERS = ["xl-corpus", "session-corpus", "mid-corpus"]
+TIERS = ["xl-corpus", "session-corpus", "mid-corpus", "mega-corpus"]
 
 RC = {
     "font.family": "serif",

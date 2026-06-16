@@ -30,10 +30,10 @@ section).
 
 ## Headline
 
-Brunnr keeps per-query context cost roughly **constant (~1,000 tokens)** while the memory grows into
-the hundreds of thousands of tokens. Full-context replay grows with the history and quickly becomes
-the dominant cost; a realistic multi-session workload is already 100k+ tokens of accumulated
-reasoning, tool output, and messages.
+Brunnr keeps per-query context cost roughly **constant (~1,000 tokens)** while the memory grows past a
+**million tokens**. Full-context replay grows with the history and quickly becomes the dominant cost;
+a realistic multi-session workload is already 100k+ tokens of accumulated reasoning, tool output, and
+messages.
 
 ![Per-query tokens stay flat as memory grows](results/scaling.png)
 
@@ -42,13 +42,14 @@ reasoning, tool output, and messages.
 | ~13k tokens (180 docs) | 12,902 | 2,983 | 876 | 93.2% | 100% |
 | ~119k tokens (1,600 docs) | 118,566 | 28,757 | 974 | 99.2% | 100% |
 | ~478k tokens (6,400 docs) | 477,740 | 117,159 | 992 | 99.8% | 100% |
+| ~1M tokens (14,000 docs) | 1,046,431 | 257,131 | 1,046 | 99.9% | 100% |
 
 Brunnr sends a compact index slice plus a top-k retrieval slice regardless of how large the memory
-is, so its per-query cost barely moves (876 → 974 → 992 tokens) while replay grows ~37×. A plain
-markdown/OKF index helps a lot (~75% off replay) but **still grows with the memory** (2,983 → 28,757
-→ 117,159) because the index lists every file — only Brunnr stays flat. This is the same property
-memory systems like Mem0 report (near-constant tokens per query as history scales); here it is
-measured end-to-end against the real retrieval path.
+is, so its per-query cost barely moves (876 → 1,046 tokens) while replay grows ~81× to over a million.
+A plain markdown/OKF index helps a lot (~75% off replay) but **still grows with the memory** (2,983 →
+257,131) because the index lists every file — only Brunnr stays flat. This is the same property memory
+systems like Mem0 report (near-constant tokens per query as history scales); here it is measured
+end-to-end against the real retrieval path.
 
 ## Methodology
 
