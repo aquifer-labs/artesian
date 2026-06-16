@@ -31,10 +31,14 @@ diagrams:
     done
 
 bench:
-    cargo run -p brunnr-bench -- --reps 2
+    cargo run -p brunnr-bench -- --reps 2 --signal-arms
 
 bench-large:
-    cargo run -p brunnr-bench -- --reps 2 --seed-corpus benchmarks/large-corpus --results benchmarks/results/large-corpus
+    cargo run -p brunnr-bench -- --reps 2 --seed-corpus benchmarks/large-corpus --results benchmarks/results/large-corpus --signal-arms
+
+bench-large-source:
+    python3 benchmarks/tools/generate_large_source_corpus.py
+    cargo run -p brunnr-bench -- --reps 2 --seed-corpus benchmarks/large-source-corpus --results benchmarks/results/large-source-run --signal-arms
 
 bench-xl:
     python3 benchmarks/tools/generate_corpus.py --out xl-corpus --docs 180 --tasks 40
@@ -62,6 +66,7 @@ bench-check:
     just bench-session
     just bench-mid
     just bench-mega
-    git diff --exit-code -- benchmarks/results/sample-run benchmarks/results/large-corpus benchmarks/results/xl-corpus benchmarks/results/session-corpus benchmarks/results/mid-corpus benchmarks/results/mega-corpus
+    just bench-large-source
+    git diff --exit-code -- benchmarks/results/sample-run benchmarks/results/large-corpus benchmarks/results/xl-corpus benchmarks/results/session-corpus benchmarks/results/mid-corpus benchmarks/results/mega-corpus benchmarks/results/large-source-run
 
 ci: fmt clippy test build
