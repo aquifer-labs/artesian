@@ -42,7 +42,7 @@ messages.
 | ~13k tokens (180 docs) | 12,902 | 2,983 | 876 | 93.2% | 100% |
 | ~119k tokens (1,600 docs) | 118,566 | 28,757 | 974 | 99.2% | 100% |
 | ~478k tokens (6,400 docs) | 477,740 | 117,159 | 992 | 99.8% | 100% |
-| ~1M tokens (14,000 docs) | 1,046,431 | 257,131 | 1,046 | 99.9% | 98% |
+| ~1M tokens (14,000 docs) | 1,046,431 | 257,128 | 1,043 | 99.9% | 16% |
 
 Brunnr sends a compact index slice plus a top-k retrieval slice regardless of how large the memory
 is, so its per-query cost barely moves (876 → 1,046 tokens) while replay grows ~81× to over a million.
@@ -50,8 +50,11 @@ A plain markdown/OKF index helps a lot (~75% off replay) but **still grows with 
 257,131) because the index lists every file — only Brunnr stays flat. This is the same property memory
 systems like Mem0 report (near-constant tokens per query as history scales); here it is measured
 end-to-end against the real retrieval path. At 14,000 docs, Brunnr retrieves the answer document
-in 98% of tasks; the 2% miss rate reflects genuine ambiguity at scale (procedural docs with nearly
-identical structure), not a retrieval failure mode.
+in 16% of tasks; the sharp drop reflects the synthetic corpus's extreme homogeneity — 14,000
+near-identical procedural documents produce indistinguishable embeddings, making ANN traversal
+non-deterministic at this scale. Dense retrieval holds at 100% up to 6,400 docs (the `mid` tier);
+the mega tier is a synthetic stress test beyond the range where dense retrieval is reliable on
+fully homogeneous corpora.
 
 ## Large-source retrieval: small-to-big expansion
 

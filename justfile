@@ -50,11 +50,11 @@ bench-session:
 
 bench-mid:
     python3 benchmarks/tools/generate_corpus.py --out mid-corpus --docs 6400 --tasks 80
-    cargo run -p brunnr-bench -- --reps 1 --seed-corpus benchmarks/mid-corpus --results benchmarks/results/mid-corpus
+    cargo run -p brunnr-bench -- --reps 1 --seed-corpus benchmarks/mid-corpus --results benchmarks/results/mid-corpus --skip-arm B-reflection-consolidated
 
 bench-mega:
     python3 benchmarks/tools/generate_corpus.py --out mega-corpus --docs 14000 --tasks 100
-    cargo run -p brunnr-bench -- --reps 1 --seed-corpus benchmarks/mega-corpus --results benchmarks/results/mega-corpus
+    cargo run -p brunnr-bench -- --reps 1 --seed-corpus benchmarks/mega-corpus --results benchmarks/results/mega-corpus --skip-arm B-reflection-consolidated
 
 bench-plot:
     python3 benchmarks/tools/plot_scaling.py
