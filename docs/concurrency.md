@@ -14,7 +14,8 @@ starts:
 - **Idempotent writes.** A record's id is a content hash (`stable_memory_id`); `store` short-
   circuits if the id exists. Two agents storing the *same* learning converge to one point; two
   agents storing *different* learnings create independent points. There is **no read-modify-write
-  on a point**, so there are no lost updates.
+  on a point**, so there are no lost updates. A large record is stored as several **chunk** points,
+  each independently content-hashed, so chunking keeps the same per-point idempotency.
 - **Lock-free reads.** `find` is pure retrieval; concurrent searches never block each other.
 - **Isolated units.** Each memory is its own point; concurrency is "many independent inserts +
   many independent reads", the workload vector stores are built for.
@@ -48,6 +49,11 @@ flowchart TD
    for multi-tenant storage layout + fast filtering.
 3. **Strict per-user (optional).** If users must never see each other's data, give each a
    collection (`<project>__<user>`); same trait, just more collections.
+
+**Agent teams (Hirð)** are the canonical "many agents on one project" case: teammates share the
+project collection and read each other's `shared` knowledge, while their `agent`/`task` owners keep
+per-teammate scratch isolated — so a team coordinates over one memory without cross-contamination.
+See [teams.md](teams.md).
 
 The `VectorStore` trait already carries a `Filter`; tenancy is a **convention on payload + filter**,
 not a new API. `StoreMemory`/`MemoryQuery` gain an optional `scope`/owner set that maps to payload
