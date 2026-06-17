@@ -222,7 +222,7 @@ fn write_index(root: &Path, catalog: &[CatalogEntry]) -> Result<PathBuf> {
     fs::create_dir_all(&memory_dir)?;
     let path = memory_dir.join("index.md");
     let mut output = String::from(
-        "---\ntype: index\ntitle: Brunnr Memory Index\n---\n\n# Brunnr Memory Index\n\nRead this catalog first, then drill into the listed OKF records or task files as needed.\n",
+        "---\ntype: index\ntitle: Artesian Memory Index\n---\n\n# Artesian Memory Index\n\nRead this catalog first, then drill into the listed OKF records or task files as needed.\n",
     );
 
     for kind in [CatalogKind::Memory, CatalogKind::Task] {

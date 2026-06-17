@@ -155,7 +155,7 @@ pub struct VectorStoreCapabilities {
 ///
 /// `VectorStore` owns only collection/index management and normalized point search. Embedding,
 /// memory tiering, payload schema, and RRF stay in `VectorMemoryBackend`, so engine adapters do
-/// not leak backend-specific behavior into Brunnr's memory model.
+/// not leak backend-specific behavior into Artesian's memory model.
 ///
 /// ```
 /// # use futures_util::{future::BoxFuture, FutureExt};

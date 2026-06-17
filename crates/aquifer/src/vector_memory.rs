@@ -73,7 +73,7 @@ impl TextEmbedder for FastembedTextEmbedder {
 /// Configuration for a `VectorMemoryBackend`.
 ///
 /// New retrieval signals default to **off** (`false` / `0.0`) pending measurement on your corpus.
-/// Turn each signal on only after verifying a measurable recall improvement (see `brunnr-bench`).
+/// Turn each signal on only after verifying a measurable recall improvement (see `artesian-bench`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct VectorMemoryConfig {
     pub collection: String,
@@ -1059,7 +1059,7 @@ struct CompatPayload {
 }
 
 fn compat_payload_kind() -> String {
-    "brunnr.compat".to_string()
+    "artesian.compat".to_string()
 }
 
 fn compat_point_id() -> String {

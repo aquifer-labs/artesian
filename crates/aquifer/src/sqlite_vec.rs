@@ -575,7 +575,7 @@ fn sanitize_collection(collection: &str) -> MemoryResult<String> {
             "collection name must contain at least one alphanumeric character".to_string(),
         ));
     }
-    Ok(format!("brunnr_{output}"))
+    Ok(format!("artesian_{output}"))
 }
 
 fn quote_identifier(identifier: &str) -> String {

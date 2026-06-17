@@ -61,7 +61,7 @@ impl FilesBackend {
         if !index.exists() {
             fs::write(
                 &index,
-                "---\ntype: index\ntitle: Brunnr Memory Index\n---\n\n# Brunnr Memory Index\n",
+                "---\ntype: index\ntitle: Artesian Memory Index\n---\n\n# Artesian Memory Index\n",
             )
             .await?;
         }
@@ -69,7 +69,7 @@ impl FilesBackend {
         if !log.exists() {
             fs::write(
                 &log,
-                "---\ntype: log\ntitle: Brunnr Memory Log\n---\n\n# Log\n",
+                "---\ntype: log\ntitle: Artesian Memory Log\n---\n\n# Log\n",
             )
             .await?;
         }

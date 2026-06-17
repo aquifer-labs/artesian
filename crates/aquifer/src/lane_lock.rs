@@ -31,9 +31,9 @@ impl SessionLaneLock {
 
     pub fn default_rooted() -> Self {
         Self::new(
-            std::env::var_os("BRUNNR_LANE_LOCK_DIR")
+            std::env::var_os("ARTESIAN_LANE_LOCK_DIR")
                 .map(PathBuf::from)
-                .unwrap_or_else(|| PathBuf::from(".brunnr").join("locks")),
+                .unwrap_or_else(|| PathBuf::from(".artesian").join("locks")),
         )
     }
 

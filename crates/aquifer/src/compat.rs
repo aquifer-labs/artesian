@@ -8,11 +8,11 @@ use crate::{
 };
 
 pub const OKF_VERSION: &str = "1";
-pub const COMPAT_POINT_ID: &str = "__brunnr_compat";
+pub const COMPAT_POINT_ID: &str = "__artesian_compat";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CollectionCompat {
-    pub brunnr_version: String,
+    pub artesian_version: String,
     pub okf_version: String,
     pub embedding_model: String,
     pub dimensions: usize,
@@ -22,7 +22,7 @@ pub struct CollectionCompat {
 impl CollectionCompat {
     pub fn current() -> Self {
         Self {
-            brunnr_version: env!("CARGO_PKG_VERSION").to_string(),
+            artesian_version: env!("CARGO_PKG_VERSION").to_string(),
             okf_version: OKF_VERSION.to_string(),
             embedding_model: PINNED_FASTEMBED_MODEL.to_string(),
             dimensions: PINNED_FASTEMBED_DIMENSIONS,
@@ -32,7 +32,7 @@ impl CollectionCompat {
 
     pub fn from_config(config: &VectorMemoryConfig) -> Self {
         Self {
-            brunnr_version: env!("CARGO_PKG_VERSION").to_string(),
+            artesian_version: env!("CARGO_PKG_VERSION").to_string(),
             okf_version: OKF_VERSION.to_string(),
             embedding_model: config.embedding_model.clone(),
             dimensions: config.dimensions,

@@ -12,39 +12,39 @@ fn cli_memory_mode_round_trip_and_spawn_alias_work() {
 
     let init = Command::new(binary)
         .arg("init")
-        .env("BRUNNR_HOME", &home)
+        .env("ARTESIAN_HOME", &home)
         .current_dir(tempdir.path())
         .output()
         .expect("init should run");
     assert!(init.status.success(), "{}", stderr(&init));
     assert!(std::fs::read_to_string(tempdir.join(".mcp.json"))
         .expect("Claude MCP config should be written")
-        .contains("brunnr-mcp"));
+        .contains("artesian-mcp"));
     assert!(
         std::fs::read_to_string(home.join(".codex").join("config.toml"))
             .expect("Codex config should be written")
-            .contains("brunnr-mcp")
+            .contains("artesian-mcp")
     );
     assert!(
         std::fs::read_to_string(home.join(".config").join("zed").join("settings.json"))
             .expect("Zed settings should be written")
-            .contains("brunnr-mcp")
+            .contains("artesian-mcp")
     );
 
     let spawn = Command::new(binary)
-        .args(["spawn", "thor", "echo", "--arg", "brunnr-spawn"])
+        .args(["spawn", "thor", "echo", "--arg", "artesian-spawn"])
         .current_dir(tempdir.path())
         .output()
         .expect("spawn should run");
     assert!(spawn.status.success(), "{}", stderr(&spawn));
     assert!(stdout(&spawn).contains("role=worker alias=thor agent=echo"));
-    assert!(stdout(&spawn).contains("brunnr-spawn"));
+    assert!(stdout(&spawn).contains("artesian-spawn"));
 
     let store = Command::new(binary)
         .args([
             "memory",
             "store",
-            "Brunnr memory mode works",
+            "Artesian memory mode works",
             "--tag",
             "smoke",
             "--node-id",
@@ -61,7 +61,7 @@ fn cli_memory_mode_round_trip_and_spawn_alias_work() {
         .output()
         .expect("find should run");
     assert!(find.status.success(), "{}", stderr(&find));
-    assert!(stdout(&find).contains("node:cli\tBrunnr memory mode works"));
+    assert!(stdout(&find).contains("node:cli\tArtesian memory mode works"));
 
     let import_dir = tempdir.join("import");
     std::fs::create_dir_all(&import_dir).expect("import dir should be created");

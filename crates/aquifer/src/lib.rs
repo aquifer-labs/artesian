@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-//! Mímisbrunnr memory API and local backends.
+//! Aquifer memory API and local backends.
 
 mod anchor;
 mod backend;

@@ -2,19 +2,19 @@
 
 use std::{env, fs, path::PathBuf};
 
-use artesian_core::{BrunnrConfig, MemoryBackendKind, MemoryConfig, Mode};
+use artesian_core::{ArtesianConfig, MemoryBackendKind, MemoryConfig, Mode};
 use clap::{Parser, ValueEnum};
 
 #[derive(Debug, Parser)]
-#[command(name = "brunnr-mcp", about = "Brunnr MCP memory server")]
+#[command(name = "artesian-mcp", about = "Artesian MCP memory server")]
 struct Args {
     #[arg(long)]
     config: Option<PathBuf>,
-    #[arg(long, env = "BRUNNR_MEMORY_ROOT", default_value = ".brunnr")]
+    #[arg(long, env = "ARTESIAN_MEMORY_ROOT", default_value = ".artesian")]
     root: PathBuf,
     #[arg(long, value_enum, default_value_t = BackendArg::Files)]
     backend: BackendArg,
-    #[arg(long, default_value = "brunnr-memory")]
+    #[arg(long, default_value = "artesian-memory")]
     collection: String,
     #[arg(long, env = "QDRANT_URL")]
     qdrant_url: Option<String>,
@@ -50,22 +50,22 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     let config = load_runtime_config(&args)?;
-    artesian_mcp::run_stdio_with_brunnr_config(config.config).await
+    artesian_mcp::run_stdio_with_artesian_config(config.config).await
 }
 
 struct RuntimeConfig {
-    config: BrunnrConfig,
+    config: ArtesianConfig,
 }
 
 fn load_runtime_config(args: &Args) -> anyhow::Result<RuntimeConfig> {
     if let Some(path) = &args.config {
         let text = fs::read_to_string(path)?;
-        let config = BrunnrConfig::from_toml(&text)?;
+        let config = ArtesianConfig::from_toml(&text)?;
         return Ok(RuntimeConfig { config });
     }
 
     Ok(RuntimeConfig {
-        config: BrunnrConfig {
+        config: ArtesianConfig {
             mode: Mode::Memory,
             memory: MemoryConfig {
                 backend: args.backend.into(),

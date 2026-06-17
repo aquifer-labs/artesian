@@ -4,7 +4,7 @@ FROM rust:trixie AS builder
 
 WORKDIR /src
 COPY . .
-RUN cargo build --release -p brunnr-cli --features qdrant --bins
+RUN cargo build --release -p artesian-cli --features qdrant --bins
 
 FROM debian:trixie-slim AS runtime
 
@@ -12,15 +12,15 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates libstdc++6 \
     && rm -rf /var/lib/apt/lists/*
 
-RUN useradd --system --create-home --home-dir /var/lib/brunnr --shell /usr/sbin/nologin brunnr \
+RUN useradd --system --create-home --home-dir /var/lib/artesian --shell /usr/sbin/nologin artesian \
     && mkdir -p /data \
-    && chown brunnr:brunnr /data
+    && chown artesian:artesian /data
 WORKDIR /data
 
-COPY --from=builder /src/target/release/brunnr /usr/local/bin/brunnr
-COPY --from=builder /src/target/release/brunnrd /usr/local/bin/brunnrd
+COPY --from=builder /src/target/release/artesian /usr/local/bin/artesian
+COPY --from=builder /src/target/release/artesiand /usr/local/bin/artesiand
 
-USER brunnr
+USER artesian
 VOLUME ["/data"]
-ENTRYPOINT ["brunnrd"]
-CMD ["--config", "/data/brunnr.toml", "--root", "/data"]
+ENTRYPOINT ["artesiand"]
+CMD ["--config", "/data/artesian.toml", "--root", "/data"]

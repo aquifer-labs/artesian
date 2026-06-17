@@ -2,9 +2,9 @@
 
 /target/
 /target
-/.brunnr/
-**/.brunnr/
-/brunnr.toml
+/.artesian/
+**/.artesian/
+/artesian.toml
 **/*.rs.bk
 .DS_Store
 .idea/

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-//! Brunnr-native agent teams (Hirð).
+//! Artesian-native agent teams (Hirð).
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -59,14 +59,14 @@ pub type FlotillaResult<T> = Result<T, FlotillaError>;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum RoleDefinitionSource {
-    Brunnr,
+    Artesian,
     ClaudeInterop,
 }
 
 impl RoleDefinitionSource {
     const fn as_str(self) -> &'static str {
         match self {
-            Self::Brunnr => "brunnr",
+            Self::Artesian => "artesian",
             Self::ClaudeInterop => "claude-interop",
         }
     }
@@ -140,7 +140,7 @@ pub fn load_role_definitions(repo_root: impl AsRef<Path>) -> FlotillaResult<Vec<
     let mut definitions = Vec::new();
     definitions.extend(load_definition_dir(
         repo_root.join(".agent").join("agents"),
-        RoleDefinitionSource::Brunnr,
+        RoleDefinitionSource::Artesian,
     )?);
     definitions.extend(load_definition_dir(
         repo_root.join(".claude").join("agents"),
@@ -193,7 +193,7 @@ pub fn parse_role_definition(
     let name = required_header(header.name, "name", path)?;
     let description = required_header(header.description, "description", path)?;
     let kind = match source {
-        RoleDefinitionSource::Brunnr => {
+        RoleDefinitionSource::Artesian => {
             let kind = required_header(header.kind, "kind", path)?;
             parse_kind(&kind)?
         }
@@ -283,7 +283,7 @@ impl TeamRuntimeConfig {
     pub fn new(repo_root: impl Into<PathBuf>, task_root: impl Into<PathBuf>) -> Self {
         let repo_root = repo_root.into();
         Self {
-            registry_dir: repo_root.join(".brunnr").join("spawns"),
+            registry_dir: repo_root.join(".artesian").join("spawns"),
             repo_root,
             task_root: task_root.into(),
             bindings: Vec::new(),
@@ -752,7 +752,7 @@ impl TeamRuntime {
             .any(|entry| entry.agent == agent && entry.reachable)
         {
             return Err(FlotillaError::Agent(format!(
-                "agent '{agent}' is not reachable in the catalog; run `brunnr agents refresh`"
+                "agent '{agent}' is not reachable in the catalog; run `artesian agents refresh`"
             )));
         }
         let binding = AgentBinding {
@@ -1042,14 +1042,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parses_brunnr_and_claude_role_definitions() {
+    fn parses_artesian_and_claude_role_definitions() {
         let tempdir = TempDir::new("delta-definitions");
-        let brunnr_dir = tempdir.join(".agent").join("agents");
+        let artesian_dir = tempdir.join(".agent").join("agents");
         let claude_dir = tempdir.join(".claude").join("agents");
-        fs::create_dir_all(&brunnr_dir).expect("brunnr dir should exist");
+        fs::create_dir_all(&artesian_dir).expect("artesian dir should exist");
         fs::create_dir_all(&claude_dir).expect("claude dir should exist");
         fs::write(
-            brunnr_dir.join("security.md"),
+            artesian_dir.join("security.md"),
             "---\nname: security-reviewer\nkind: worker\ndescription: Reviews security-sensitive code.\nagent: codex\nmodel: gpt-5\nallow_tools: [read, grep, memory.find]\n---\nSecurity prompt.\n",
         )
         .expect("definition should write");
@@ -1081,7 +1081,7 @@ mod tests {
         let definition = parse_role_definition(
             "architect.md",
             "---\nname: architect\nkind: worker\ndescription: Designs module boundaries.\n---\nPrompt.\n",
-            RoleDefinitionSource::Brunnr,
+            RoleDefinitionSource::Artesian,
         )
         .expect("definition should parse");
 
@@ -1296,7 +1296,7 @@ mod tests {
                     vec![
                         "-c".to_string(),
                         script.to_string(),
-                        "brunnr-test-sh".to_string(),
+                        "artesian-test-sh".to_string(),
                         parent_pid.display().to_string(),
                         child_pid.display().to_string(),
                     ],
@@ -1413,7 +1413,7 @@ mod tests {
             model: model.map(str::to_string),
             allow_tools: Vec::new(),
             prompt_addendum: "Prompt addendum.".to_string(),
-            source: RoleDefinitionSource::Brunnr,
+            source: RoleDefinitionSource::Artesian,
             path: PathBuf::from(format!("{name}.md")),
         }
     }

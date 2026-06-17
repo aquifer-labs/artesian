@@ -10,10 +10,10 @@ use serde_json::json;
 mod runtime;
 use runtime::{build_orchestrator, load_config, process_supervisor_from_config, shutdown_signal};
 
-const DEFAULT_CONFIG: &str = "brunnr.toml";
+const DEFAULT_CONFIG: &str = "artesian.toml";
 
 #[derive(Debug, Parser)]
-#[command(name = "brunnrd", about = "Brunnr orchestration daemon")]
+#[command(name = "artesiand", about = "Artesian orchestration daemon")]
 struct Cli {
     #[arg(long, default_value = DEFAULT_CONFIG)]
     config: PathBuf,
@@ -33,7 +33,7 @@ async fn main() -> Result<()> {
     let config = load_config(&cli.config)?;
     if !matches!(config.mode, Mode::Orchestrate | Mode::Full) {
         bail!(
-            "brunnrd requires mode orchestrate or full, got {:?}",
+            "artesiand requires mode orchestrate or full, got {:?}",
             config.mode
         );
     }
@@ -58,7 +58,7 @@ async fn main() -> Result<()> {
                 let signal = signal?;
                 let report = supervisor.terminate_current_owner()?;
                 eprintln!(
-                    "brunnrd received {signal}; terminated tracked process groups={}",
+                    "artesiand received {signal}; terminated tracked process groups={}",
                     report.terminated
                 );
                 return Ok(());
@@ -82,7 +82,7 @@ async fn main() -> Result<()> {
                 let signal = signal?;
                 let report = supervisor.terminate_current_owner()?;
                 eprintln!(
-                    "brunnrd received {signal}; terminated tracked process groups={}",
+                    "artesiand received {signal}; terminated tracked process groups={}",
                     report.terminated
                 );
                 break;

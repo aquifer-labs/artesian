@@ -18,7 +18,7 @@ async fn live_qdrant_benchmark_path_uses_real_vector_backend() {
     let mut config = QdrantVectorStoreConfig::new(url);
     config.rest_url = env::var("QDRANT_REST_URL").ok();
     config.api_key = env::var("QDRANT_API_KEY").ok();
-    let collection = format!("brunnr_bench_smoke_{}", Utc::now().timestamp_millis());
+    let collection = format!("artesian_bench_smoke_{}", Utc::now().timestamp_millis());
     let backend = VectorMemoryBackend::new(
         QdrantVectorStore::connect(config).expect("Qdrant store should connect"),
         VectorMemoryConfig::new(collection.clone()),

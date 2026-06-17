@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
-use artesian_core::{AgentBinding, BrunnrConfig, Role};
+use artesian_core::{AgentBinding, ArtesianConfig, Role};
 
 #[test]
 fn config_round_trips_through_toml() {
-    let config = BrunnrConfig::memory_files(
-        ".brunnr",
+    let config = ArtesianConfig::memory_files(
+        ".artesian",
         vec![AgentBinding {
             role: Role::Master,
             agent: "claude-code".to_string(),
@@ -17,7 +17,7 @@ fn config_round_trips_through_toml() {
     );
 
     let encoded = config.to_toml().expect("config should encode");
-    let decoded = BrunnrConfig::from_toml(&encoded).expect("config should decode");
+    let decoded = ArtesianConfig::from_toml(&encoded).expect("config should decode");
 
     assert_eq!(decoded, config);
 }

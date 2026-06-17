@@ -17,8 +17,8 @@ use aquifer::{
     VectorMemoryBackend, VectorMemoryConfig,
 };
 use artesian_core::{
-    Agent, AgentBinding, AgentCatalog, AgentMessage, BrunnrConfig, MemoryBackendKind, MemoryConfig,
-    Mode, Role, SpawnRequest,
+    Agent, AgentBinding, AgentCatalog, AgentMessage, ArtesianConfig, MemoryBackendKind,
+    MemoryConfig, Mode, Role, SpawnRequest,
 };
 use artesian_process_agent::{
     fallback_agent_catalog, load_or_refresh_agent_catalog, validate_binding_model, ProcessAgent,
@@ -110,9 +110,9 @@ impl MemoryServer {
             delegate_results: Arc::new(Mutex::new(HashMap::new())),
             team_runtime: Arc::new(AsyncMutex::new(TeamRuntime::new(TeamRuntimeConfig::new(
                 std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
-                PathBuf::from(".brunnr").join("tasks"),
+                PathBuf::from(".artesian").join("tasks"),
             )))),
-            task_root: PathBuf::from(".brunnr").join("tasks"),
+            task_root: PathBuf::from(".artesian").join("tasks"),
             repo_root: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
             process_defaults: ProcessDefaults::default(),
             tool_router: Self::mode_tool_router(Mode::Memory),
@@ -129,7 +129,7 @@ impl MemoryServer {
         self
     }
 
-    pub fn with_runtime_config(mut self, config: &BrunnrConfig) -> Self {
+    pub fn with_runtime_config(mut self, config: &ArtesianConfig) -> Self {
         self.mode = config.mode;
         self.bindings = Arc::new(Mutex::new(config.agents.clone()));
         let mut catalog = fallback_agent_catalog(&config.agents);
@@ -219,7 +219,7 @@ impl MemoryServer {
         .with_okf_root(Some(PathBuf::from(&config.root))))
     }
 
-    pub async fn from_brunnr_config(config: &BrunnrConfig) -> anyhow::Result<Self> {
+    pub async fn from_artesian_config(config: &ArtesianConfig) -> anyhow::Result<Self> {
         let mut server = Self::from_config(&config.memory)?.with_runtime_config(config);
         if matches!(config.mode, Mode::Orchestrate | Mode::Full) {
             let cache_path = PathBuf::from(&config.memory.root).join("agents.json");
@@ -476,7 +476,7 @@ struct ProcessDefaults {
 impl Default for ProcessDefaults {
     fn default() -> Self {
         Self {
-            registry_dir: PathBuf::from(".brunnr").join("spawns"),
+            registry_dir: PathBuf::from(".artesian").join("spawns"),
             max_concurrent_spawns: 32,
             max_lifetime: Duration::from_secs(30 * 60),
             termination_grace: Duration::from_secs(2),
@@ -485,7 +485,7 @@ impl Default for ProcessDefaults {
 }
 
 impl ProcessDefaults {
-    fn from_config(config: &BrunnrConfig) -> Self {
+    fn from_config(config: &ArtesianConfig) -> Self {
         let repo_root = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
         let registry_dir = config
             .coordination
@@ -499,7 +499,7 @@ impl ProcessDefaults {
                     repo_root.join(path)
                 }
             })
-            .unwrap_or_else(|| repo_root.join(".brunnr").join("spawns"));
+            .unwrap_or_else(|| repo_root.join(".artesian").join("spawns"));
         Self {
             registry_dir,
             max_concurrent_spawns: config
@@ -1319,11 +1319,11 @@ impl ServerHandler for MemoryServer {
     fn get_info(&self) -> ServerInfo {
         let instructions = if matches!(self.mode, Mode::Orchestrate | Mode::Full) {
             format!(
-                "Brunnr memory and orchestration server. {TOOL_INSTRUCTIONS} {MASTER_ROLE_SKILL}"
+                "Artesian memory and orchestration server. {TOOL_INSTRUCTIONS} {MASTER_ROLE_SKILL}"
             )
         } else {
             format!(
-                "Brunnr memory server exposing memory.find and memory.store. {TOOL_INSTRUCTIONS}"
+                "Artesian memory server exposing memory.find and memory.store. {TOOL_INSTRUCTIONS}"
             )
         };
         ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
@@ -1364,9 +1364,9 @@ pub async fn run_stdio_with_config_and_router(
     Ok(())
 }
 
-pub async fn run_stdio_with_brunnr_config(config: BrunnrConfig) -> anyhow::Result<()> {
+pub async fn run_stdio_with_artesian_config(config: ArtesianConfig) -> anyhow::Result<()> {
     let router_enabled = config.coordination.router_enabled;
-    let server = MemoryServer::from_brunnr_config(&config)
+    let server = MemoryServer::from_artesian_config(&config)
         .await?
         .with_router_enabled(router_enabled);
     server.serve(stdio()).await?.waiting().await?;
@@ -1414,7 +1414,7 @@ fn open_qdrant_backend(config: &MemoryConfig) -> anyhow::Result<Arc<dyn MemoryBa
 
 #[cfg(not(feature = "qdrant"))]
 fn open_qdrant_backend(_config: &MemoryConfig) -> anyhow::Result<Arc<dyn MemoryBackend>> {
-    anyhow::bail!("Qdrant backend requires building brunnr-mcp with the qdrant feature")
+    anyhow::bail!("Qdrant backend requires building artesian-mcp with the qdrant feature")
 }
 
 fn sqlite_path(root: &str) -> PathBuf {

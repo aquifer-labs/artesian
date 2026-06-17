@@ -20,7 +20,7 @@ use std::sync::Arc;
 use tiktoken_rs::{cl100k_base, CoreBPE};
 
 const SUITE_VERSION: &str = "seed-honest-v1";
-const BRUNNR_VERSION: &str = env!("CARGO_PKG_VERSION");
+const ARTESIAN_VERSION: &str = env!("CARGO_PKG_VERSION");
 const TOKENIZER_ID: &str = "cl100k_base";
 const TOKENIZER_PACKAGE: &str = "tiktoken-rs";
 const EMBEDDING_MODEL: &str = "intfloat/multilingual-e5-small/384";
@@ -29,7 +29,7 @@ const DEFAULT_TOP_M: usize = 8;
 const DEFAULT_TOP_K: usize = 3;
 
 #[derive(Debug, Parser)]
-#[command(about = "Run the Brunnr public retrieval benchmark")]
+#[command(about = "Run the Artesian public retrieval benchmark")]
 struct Args {
     #[arg(long, default_value = "benchmarks/seed-corpus")]
     seed_corpus: PathBuf,
@@ -87,8 +87,8 @@ enum ArmKind {
     FullReplayCold,
     BuiltInAgentMemory,
     MdOkfIndexFirst,
-    DefaultBrunnr,
-    DefaultBrunnrCold,
+    DefaultArtesian,
+    DefaultArtesianCold,
     Hyde,
     MultiQuery,
     Reflection,
@@ -112,8 +112,8 @@ impl ArmKind {
             Self::FullReplayCold,
             Self::BuiltInAgentMemory,
             Self::MdOkfIndexFirst,
-            Self::DefaultBrunnr,
-            Self::DefaultBrunnrCold,
+            Self::DefaultArtesian,
+            Self::DefaultArtesianCold,
             Self::Hyde,
             Self::MultiQuery,
             Self::Reflection,
@@ -130,8 +130,8 @@ impl ArmKind {
             Self::FullReplayCold,
             Self::BuiltInAgentMemory,
             Self::MdOkfIndexFirst,
-            Self::DefaultBrunnr,
-            Self::DefaultBrunnrCold,
+            Self::DefaultArtesian,
+            Self::DefaultArtesianCold,
             Self::Hyde,
             Self::MultiQuery,
             Self::Reflection,
@@ -150,8 +150,8 @@ impl ArmKind {
             Self::FullReplayCold => "A-full-replay-cold-session",
             Self::BuiltInAgentMemory => "C-built-in-agent-memory",
             Self::MdOkfIndexFirst => "E-md-okf-index-first",
-            Self::DefaultBrunnr => "B-default-brunnr",
-            Self::DefaultBrunnrCold => "B-default-brunnr-cold-session",
+            Self::DefaultArtesian => "B-default-artesian",
+            Self::DefaultArtesianCold => "B-default-artesian-cold-session",
             Self::Hyde => "B-plus-hyde",
             Self::MultiQuery => "B-plus-multi-query",
             Self::Reflection => "B-reflection-consolidated",
@@ -166,7 +166,7 @@ impl ArmKind {
 
     fn cache_state(self) -> &'static str {
         match self {
-            Self::FullReplayCold | Self::DefaultBrunnrCold => "cold",
+            Self::FullReplayCold | Self::DefaultArtesianCold => "cold",
             _ => "warm",
         }
     }
@@ -176,7 +176,7 @@ impl ArmKind {
             Self::FullReplay | Self::FullReplayCold => "full-corpus-replay",
             Self::BuiltInAgentMemory => "real-memory-find-top1-no-index",
             Self::MdOkfIndexFirst => "md-okf-full-index-plus-whole-file-retrieval",
-            Self::DefaultBrunnr | Self::DefaultBrunnrCold => {
+            Self::DefaultArtesian | Self::DefaultArtesianCold => {
                 "real-memory-context-index-slice-plus-find-rrf-rerank"
             }
             Self::Hyde => "real-memory-context-with-hypothetical-query",
@@ -213,7 +213,7 @@ struct BenchState {
 #[derive(Debug, Clone, Serialize)]
 struct RawRow {
     suite_version: String,
-    brunnr_version: String,
+    artesian_version: String,
     embedding_model: String,
     tokenizer: String,
     arm: String,
@@ -414,14 +414,14 @@ async fn main() -> Result<()> {
     }
 
     // Isolate lane locks per bench process. The bench uses throwaway in-memory stores, so the
-    // shared on-disk lane-lock files (`.brunnr/locks`) only invite cross-run contention: a
+    // shared on-disk lane-lock files (`.artesian/locks`) only invite cross-run contention: a
     // crashed or concurrent run leaves a stale lock that a later run blocks on, which looks like
     // non-determinism. A unique per-process lock dir makes every run self-contained and
-    // reproducible. An explicit BRUNNR_LANE_LOCK_DIR override is honored.
-    if std::env::var_os("BRUNNR_LANE_LOCK_DIR").is_none() {
+    // reproducible. An explicit ARTESIAN_LANE_LOCK_DIR override is honored.
+    if std::env::var_os("ARTESIAN_LANE_LOCK_DIR").is_none() {
         let lock_dir =
-            std::env::temp_dir().join(format!("brunnr-bench-locks-{}", std::process::id()));
-        std::env::set_var("BRUNNR_LANE_LOCK_DIR", &lock_dir);
+            std::env::temp_dir().join(format!("artesian-bench-locks-{}", std::process::id()));
+        std::env::set_var("ARTESIAN_LANE_LOCK_DIR", &lock_dir);
     }
 
     let repo_root = std::env::current_dir().context("resolve current directory")?;
@@ -563,7 +563,7 @@ async fn prepare_state(
     let reflection_method_usage =
         reflection_method_usage(&tokenizer, &raw_docs, &reflection_docs, suite.tasks.len());
 
-    let work_root = repo_root.join("target/brunnr-bench");
+    let work_root = repo_root.join("target/artesian-bench");
     if work_root.exists() {
         fs::remove_dir_all(&work_root).with_context(|| format!("clean {}", work_root.display()))?;
     }
@@ -696,7 +696,7 @@ async fn run_row(
 
     let row = RawRow {
         suite_version: SUITE_VERSION.to_string(),
-        brunnr_version: BRUNNR_VERSION.to_string(),
+        artesian_version: ARTESIAN_VERSION.to_string(),
         embedding_model: EMBEDDING_MODEL.to_string(),
         tokenizer: format!("{TOKENIZER_ID} ({TOKENIZER_PACKAGE})"),
         arm: arm.id().to_string(),
@@ -783,7 +783,7 @@ async fn retrieve(arm: ArmKind, task: &TaskSpec, state: &BenchState) -> Result<R
             output.index_slice = Some(state.raw_index.clone());
             Ok(output)
         }
-        ArmKind::DefaultBrunnr | ArmKind::DefaultBrunnrCold => {
+        ArmKind::DefaultArtesian | ArmKind::DefaultArtesianCold => {
             retrieve_find(
                 state.raw_backend.as_ref(),
                 &state.raw_docs,
@@ -1240,7 +1240,7 @@ fn aggregate_rows(rows: &[RawRow]) -> AggregateOutput {
 
 /// Small-to-big assertions for tasks that define a `coherence_needle`.
 ///
-/// Scoped to the canonical `B-default-brunnr` arm only — the arm that uses small-to-big
+/// Scoped to the canonical `B-default-artesian` arm only — the arm that uses small-to-big
 /// parent-context expansion. Other arms (full-replay, top-1, no-memory) are excluded
 /// because they don't invoke the expansion path.
 ///
@@ -1258,13 +1258,13 @@ fn aggregate_rows(rows: &[RawRow]) -> AggregateOutput {
 fn large_source_assertions(rows: &[RawRow]) -> Vec<LargeSourceAssertion> {
     const PARENT_CONTEXT_MAX_CHARS: usize = 8192;
     const PREVIEW_CHARS: usize = 500;
-    const TARGET_ARM: &str = "B-default-brunnr";
+    const TARGET_ARM: &str = "B-default-artesian";
 
     let mut seen: BTreeSet<String> = BTreeSet::new();
     let mut assertions = Vec::new();
 
     for row in rows {
-        // Only assert on the canonical Brunnr arm and tasks with a coherence needle.
+        // Only assert on the canonical Artesian arm and tasks with a coherence needle.
         if row.arm != TARGET_ARM {
             continue;
         }
@@ -1363,7 +1363,7 @@ fn aggregate_group(rows: &[RawRow]) -> AggregateGroup {
 fn marginal_verdicts(
     aggregate: &BTreeMap<String, AggregateArm>,
 ) -> BTreeMap<String, MarginalVerdict> {
-    let Some(baseline) = aggregate.get("B-default-brunnr") else {
+    let Some(baseline) = aggregate.get("B-default-artesian") else {
         return BTreeMap::new();
     };
     [
@@ -1446,22 +1446,22 @@ fn focused_signal_verdicts(
         (
             "B-plus-entity-overlap",
             "entity-disambiguation",
-            "B-default-brunnr",
+            "B-default-artesian",
         ),
         (
             "B-plus-temporal-decay",
             "temporal-ordering",
-            "B-default-brunnr",
+            "B-default-artesian",
         ),
         (
             "B-plus-supersession",
             "knowledge-update",
-            "B-default-brunnr",
+            "B-default-artesian",
         ),
         (
             "B-plus-episode-context",
             "multi-session-synthesis",
-            "B-default-brunnr",
+            "B-default-artesian",
         ),
     ];
     let mut out = BTreeMap::new();
@@ -1883,7 +1883,7 @@ mod tests {
     fn aggregation_keeps_hard_task_miss_evidence() {
         let row = RawRow {
             suite_version: SUITE_VERSION.to_string(),
-            brunnr_version: BRUNNR_VERSION.to_string(),
+            artesian_version: ARTESIAN_VERSION.to_string(),
             embedding_model: EMBEDDING_MODEL.to_string(),
             tokenizer: TOKENIZER_ID.to_string(),
             arm: "C-built-in-agent-memory".to_string(),

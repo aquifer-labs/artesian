@@ -9,7 +9,7 @@ use aquifer::{
 };
 use artesian_core::{
     Agent, AgentCapabilities, AgentError, AgentEvent, AgentEventStream, AgentMessage,
-    AgentResponse, AgentResult, AgentSession, BrunnrConfig, Erindi, ErindiStatus, EventEnvelope,
+    AgentResponse, AgentResult, AgentSession, ArtesianConfig, Erindi, ErindiStatus, EventEnvelope,
     EventSender, EventType, Galdr, Mode, ResourceQuota, Role, SpawnRequest, TokenAccounting,
 };
 use chrono::Utc;
@@ -45,7 +45,7 @@ pub struct OrchestratorConfig {
 }
 
 impl OrchestratorConfig {
-    pub fn from_brunnr(config: &BrunnrConfig, repo_root: impl Into<PathBuf>) -> Self {
+    pub fn from_artesian(config: &ArtesianConfig, repo_root: impl Into<PathBuf>) -> Self {
         Self {
             mode: config.mode,
             repo_root: repo_root.into(),

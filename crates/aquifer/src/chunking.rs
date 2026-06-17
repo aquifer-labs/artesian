@@ -5,7 +5,7 @@
 //! Long records are split into bounded, coherent chunks so retrieval returns a
 //! small relevant slice (top-k chunks) instead of whole documents — the
 //! standard RAG granularity (cf. recursive character splitting). Splitting is
-//! deterministic and requires no LLM, preserving Brunnr's zero-cost local
+//! deterministic and requires no LLM, preserving Artesian's zero-cost local
 //! default. Boundaries are tried in order — markdown headings, blank lines,
 //! line breaks, sentences, then words — so a chunk stays semantically coherent;
 //! a small overlap carries context across chunk boundaries.

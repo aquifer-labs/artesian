@@ -9,7 +9,7 @@ use std::{
 };
 
 use artesian_core::{
-    AgentBinding, BrunnrConfig, CoordinationConfig, MemoryBackendKind, MemoryConfig, Mode, Role,
+    AgentBinding, ArtesianConfig, CoordinationConfig, MemoryBackendKind, MemoryConfig, Mode, Role,
 };
 use artesian_test_support::TempDir;
 use headrace::{FilesTaskStore, NewTask, TaskStore};
@@ -34,7 +34,7 @@ async fn sigterm_to_orchestrator_kills_tracked_worker_process_group() {
         parent_pid_file.display(),
         child_pid_file.display()
     );
-    let config = BrunnrConfig {
+    let config = ArtesianConfig {
         mode: Mode::Orchestrate,
         memory: MemoryConfig {
             backend: MemoryBackendKind::Files,
@@ -67,13 +67,13 @@ async fn sigterm_to_orchestrator_kills_tracked_worker_process_group() {
             ..CoordinationConfig::default()
         },
     };
-    let config_path = tempdir.join("brunnr.toml");
+    let config_path = tempdir.join("artesian.toml");
     fs::write(
         &config_path,
         config.to_toml().expect("config should encode"),
     )
     .expect("config should write");
-    let mut brunnr = Command::new(env!("CARGO_BIN_EXE_artesian"))
+    let mut artesian = Command::new(env!("CARGO_BIN_EXE_artesian"))
         .arg("run")
         .arg("--config")
         .arg(&config_path)
@@ -82,13 +82,13 @@ async fn sigterm_to_orchestrator_kills_tracked_worker_process_group() {
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
-        .expect("brunnr should start");
+        .expect("artesian should start");
     wait_for_file(&child_pid_file);
     let worker_pid = read_pid(&parent_pid_file);
     let grandchild_pid = read_pid(&child_pid_file);
 
-    send_sigterm(brunnr.id());
-    wait_for_exit(&mut brunnr);
+    send_sigterm(artesian.id());
+    wait_for_exit(&mut artesian);
 
     assert_pid_gone(worker_pid);
     assert_pid_gone(grandchild_pid);
@@ -116,7 +116,7 @@ fn wait_for_exit(child: &mut Child) {
         std::thread::sleep(Duration::from_millis(20));
     }
     let _ = child.kill();
-    panic!("brunnr did not exit after SIGTERM");
+    panic!("artesian did not exit after SIGTERM");
 }
 
 fn wait_for_file(path: &std::path::Path) {

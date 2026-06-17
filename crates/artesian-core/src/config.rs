@@ -107,7 +107,7 @@ pub struct VerifierCommandConfig {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-pub struct BrunnrConfig {
+pub struct ArtesianConfig {
     pub mode: Mode,
     pub memory: MemoryConfig,
     pub agents: Vec<AgentBinding>,
@@ -115,7 +115,7 @@ pub struct BrunnrConfig {
     pub coordination: CoordinationConfig,
 }
 
-impl BrunnrConfig {
+impl ArtesianConfig {
     pub fn memory_files(root: impl Into<String>, agents: Vec<AgentBinding>) -> Self {
         Self {
             mode: Mode::Memory,
@@ -147,7 +147,7 @@ impl BrunnrConfig {
 }
 
 fn default_memory_collection() -> String {
-    "brunnr-memory".to_string()
+    "artesian-memory".to_string()
 }
 
 fn default_local_rerank_enabled() -> bool {

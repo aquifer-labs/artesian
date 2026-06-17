@@ -8,8 +8,8 @@ use tokio::{fs, io::AsyncWriteExt};
 
 use crate::{MemoryBackend, MemoryError, MemoryQuery, MemoryResult, SearchHit};
 
-const ANCHOR_START: &str = "<!-- brunnr:anchor -->";
-const ANCHOR_END: &str = "<!-- /brunnr:anchor -->";
+const ANCHOR_START: &str = "<!-- artesian:anchor -->";
+const ANCHOR_END: &str = "<!-- /artesian:anchor -->";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionAnchor {
@@ -66,7 +66,7 @@ impl AnchorAnchorStore {
         if !self.log_path.exists() {
             fs::write(
                 &self.log_path,
-                "---\ntype: log\ntitle: Brunnr Memory Log\n---\n\n# Log\n",
+                "---\ntype: log\ntitle: Artesian Memory Log\n---\n\n# Log\n",
             )
             .await?;
         }

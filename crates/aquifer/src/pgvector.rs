@@ -35,8 +35,8 @@ pub type PgVectorBackend = VectorMemoryBackend<PgVectorStore>;
 /// pgvector-backed `VectorStore`.
 ///
 /// Uses PostgreSQL with the `pgvector` extension. Two tables per collection:
-/// - `brunnr_{name}_records`: stores the payload JSON
-/// - `brunnr_{name}_vectors`: stores the embedding vector
+/// - `artesian_{name}_records`: stores the payload JSON
+/// - `artesian_{name}_vectors`: stores the embedding vector
 ///
 /// Keyword search uses PostgreSQL full-text search (`plainto_tsquery`). Vector search uses the
 /// `<=>` cosine-distance operator from pgvector.
@@ -84,8 +84,8 @@ fn collection_names(collection: &str) -> (String, String) {
         .collect();
     let safe = safe.trim_matches('_').to_string();
     (
-        format!("brunnr_{safe}_records"),
-        format!("brunnr_{safe}_vectors"),
+        format!("artesian_{safe}_records"),
+        format!("artesian_{safe}_vectors"),
     )
 }
 

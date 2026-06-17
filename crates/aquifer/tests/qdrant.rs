@@ -64,7 +64,7 @@ async fn live_qdrant_vector_backend_satisfies_memory_contract() {
     };
     let mut config = QdrantVectorStoreConfig::new(url);
     config.api_key = env::var("QDRANT_API_KEY").ok();
-    let collection = format!("brunnr_test_{}", Utc::now().timestamp_millis());
+    let collection = format!("artesian_test_{}", Utc::now().timestamp_millis());
     let store = QdrantVectorStore::connect(config).expect("Qdrant store should connect");
     let backend = VectorMemoryBackend::new(store, VectorMemoryConfig::new(collection.clone()))
         .expect("backend should construct");
@@ -154,7 +154,7 @@ async fn live_qdrant_small_to_big_expands_and_reconstructs() {
     };
     let mut config = QdrantVectorStoreConfig::new(url);
     config.api_key = env::var("QDRANT_API_KEY").ok();
-    let collection = format!("brunnr_test_s2b_{}", Utc::now().timestamp_millis());
+    let collection = format!("artesian_test_s2b_{}", Utc::now().timestamp_millis());
     let store = QdrantVectorStore::connect(config).expect("Qdrant store should connect");
     let backend = VectorMemoryBackend::new(store, VectorMemoryConfig::new(collection.clone()))
         .expect("backend should construct");
@@ -237,12 +237,12 @@ async fn live_qdrant_collections_isolate_two_projects() {
     config_b.api_key = env::var("QDRANT_API_KEY").ok();
     let project_a = VectorMemoryBackend::new(
         QdrantVectorStore::connect(config_a).expect("project A Qdrant should connect"),
-        VectorMemoryConfig::new(format!("brunnr_project_a_{collection_suffix}")),
+        VectorMemoryConfig::new(format!("artesian_project_a_{collection_suffix}")),
     )
     .expect("project A backend should construct");
     let project_b = VectorMemoryBackend::new(
         QdrantVectorStore::connect(config_b).expect("project B Qdrant should connect"),
-        VectorMemoryConfig::new(format!("brunnr_project_b_{collection_suffix}")),
+        VectorMemoryConfig::new(format!("artesian_project_b_{collection_suffix}")),
     )
     .expect("project B backend should construct");
 
@@ -295,12 +295,12 @@ async fn live_qdrant_collections_isolate_two_projects() {
 
     project_a
         .vector_store()
-        .delete_collection(&format!("brunnr_project_a_{collection_suffix}"))
+        .delete_collection(&format!("artesian_project_a_{collection_suffix}"))
         .await
         .expect("cleanup project A collection");
     project_b
         .vector_store()
-        .delete_collection(&format!("brunnr_project_b_{collection_suffix}"))
+        .delete_collection(&format!("artesian_project_b_{collection_suffix}"))
         .await
         .expect("cleanup project B collection");
 }

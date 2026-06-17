@@ -214,7 +214,7 @@ async fn vector_collections_isolate_two_projects_on_one_store() {
 async fn assert_backend_contract<B: MemoryBackend>(backend: &B) {
     let stored = backend
         .store(StoreMemory {
-            content: "Brunnr stores durable context".to_string(),
+            content: "Artesian stores durable context".to_string(),
             tags: vec!["contract".to_string()],
             metadata: BTreeMap::new(),
             tier: MemoryTier::L1Atom,

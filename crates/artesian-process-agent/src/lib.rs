@@ -348,7 +348,7 @@ pub fn validate_binding_model(binding: &AgentBinding, catalog: &AgentCatalog) ->
         .find(|entry| entry.agent == binding.agent)
     else {
         return Err(AgentError::Unavailable(format!(
-            "agent '{}' is not in the model catalog; run `brunnr agents refresh`",
+            "agent '{}' is not in the model catalog; run `artesian agents refresh`",
             binding.agent
         )));
     };
@@ -370,7 +370,7 @@ pub fn validate_binding_model(binding: &AgentBinding, catalog: &AgentCatalog) ->
         "model '{model}' is unavailable for agent '{}'; available models: {}",
         binding.agent,
         if available.is_empty() {
-            "<none>; run `brunnr agents refresh` or configure a supported model"
+            "<none>; run `artesian agents refresh` or configure a supported model"
         } else {
             available.as_str()
         }
@@ -427,7 +427,7 @@ async fn validate_model(config: &ProcessAgentConfig, model: Option<&str>) -> Age
         "model '{model}' is unavailable for agent '{}'; available models: {}",
         logical_agent_id(config),
         if available.is_empty() {
-            "<none>; run `brunnr agents refresh` or choose a configured model"
+            "<none>; run `artesian agents refresh` or choose a configured model"
         } else {
             available.as_str()
         }
@@ -477,7 +477,7 @@ async fn discover_models(config: &ProcessAgentConfig) -> Vec<AgentModel> {
 
 async fn discover_models_from_env_command(config: &ProcessAgentConfig) -> Option<Vec<String>> {
     let env_name = format!(
-        "BRUNNR_{}_MODELS_CMD",
+        "ARTESIAN_{}_MODELS_CMD",
         sanitize_env_token(logical_agent_id(config))
     );
     let command = std::env::var(env_name).ok()?;
@@ -997,9 +997,9 @@ fn sanitize_agent_id(agent: &str) -> String {
 }
 
 fn default_registry_dir() -> PathBuf {
-    std::env::var_os("BRUNNR_SPAWN_REGISTRY")
+    std::env::var_os("ARTESIAN_SPAWN_REGISTRY")
         .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(".brunnr").join("spawns"))
+        .unwrap_or_else(|| PathBuf::from(".artesian").join("spawns"))
 }
 
 fn now_unix_ms() -> u128 {
@@ -1294,7 +1294,7 @@ mod tests {
         let tempdir = TempDir::new("process-agent-echo");
         let agent = ProcessAgent::new(
             ProcessAgentConfig::new("echo")
-                .with_args(vec!["brunnr".into()])
+                .with_args(vec!["artesian".into()])
                 .with_registry_dir(tempdir.join("spawns"))
                 .with_termination_grace(Duration::from_millis(10)),
         );
@@ -1317,7 +1317,7 @@ mod tests {
             .await
             .expect("echo should launch");
 
-        assert_eq!(response.content.trim(), "brunnr");
+        assert_eq!(response.content.trim(), "artesian");
     }
 
     #[tokio::test]
@@ -1471,9 +1471,9 @@ mod tests {
     #[tokio::test]
     async fn failing_process_error_redacts_and_limits_secret_output() {
         let tempdir = TempDir::new("process-agent-secret-error");
-        let secret = "sk-brunnr-secret-1234567890";
+        let secret = "sk-artesian-secret-1234567890";
         let script = format!(
-            "printf 'token=brunnr-token-value\\n{secret}\\n'; printf '%4096s\\n' x; exit 7"
+            "printf 'token=artesian-token-value\\n{secret}\\n'; printf '%4096s\\n' x; exit 7"
         );
         let agent = ProcessAgent::new(
             ProcessAgentConfig::new("sh")
@@ -1503,7 +1503,7 @@ mod tests {
         let text = error.to_string();
 
         assert!(!text.contains(secret));
-        assert!(!text.contains("brunnr-token-value"));
+        assert!(!text.contains("artesian-token-value"));
         assert!(text.contains("[REDACTED]"));
         assert!(text.len() < MAX_PROCESS_ERROR_OUTPUT_CHARS + 256);
     }
@@ -1511,7 +1511,7 @@ mod tests {
     #[tokio::test]
     async fn discovery_output_and_registry_command_are_redacted() {
         let tempdir = TempDir::new("process-agent-secret-discovery");
-        let env_name = "BRUNNR_SECRET_PROBE_MODELS_CMD";
+        let env_name = "ARTESIAN_SECRET_PROBE_MODELS_CMD";
         std::env::set_var(
             env_name,
             "printf 'sk-discovery-secret-123456\\nsafe-model\\n'",
@@ -1718,7 +1718,7 @@ mod tests {
             version: REGISTRY_VERSION,
             id: format!("spawn-{pid}-test"),
             owner_pid: 999_999,
-            owner_exe: Some("brunnr-dead-owner".to_string()),
+            owner_exe: Some("artesian-dead-owner".to_string()),
             pid,
             pgid: pid as i32,
             task_id: Some("task-restart".to_string()),
@@ -1781,7 +1781,7 @@ mod tests {
                 .with_args(vec![
                     "-c".to_string(),
                     script.to_string(),
-                    "brunnr-test-sh".to_string(),
+                    "artesian-test-sh".to_string(),
                     parent_pid_file.display().to_string(),
                     child_pid_file.display().to_string(),
                 ])

@@ -15,7 +15,7 @@ use aquifer::{
     FilesBackend, MemoryBackend, SqliteVecVectorStore, SqliteVecVectorStoreConfig,
     VectorMemoryBackend, VectorMemoryConfig,
 };
-use artesian_core::{Agent, AgentBinding, BrunnrConfig, MemoryBackendKind, MemoryConfig, Role};
+use artesian_core::{Agent, AgentBinding, ArtesianConfig, MemoryBackendKind, MemoryConfig, Role};
 use artesian_process_agent::{ProcessAgent, ProcessAgentConfig, ProcessSupervisor};
 use basin::{DryRunAgent, Orchestrator, OrchestratorConfig};
 use headrace::{CommandVerifier, FilesTaskStore, Verifier, VerifierGate};
@@ -25,7 +25,7 @@ use sandbox::ScratchWorkspaceProvider;
 use aquifer::{QdrantVectorStore, QdrantVectorStoreConfig};
 
 pub fn build_orchestrator(
-    config: BrunnrConfig,
+    config: ArtesianConfig,
     root: PathBuf,
     repo_root: PathBuf,
     dry_run: bool,
@@ -54,7 +54,7 @@ pub fn build_orchestrator(
             .transpose()?
             .map(|agent| Arc::new(agent) as Arc<dyn Agent>)
     };
-    let orchestrator_config = OrchestratorConfig::from_brunnr(&config, repo_root);
+    let orchestrator_config = OrchestratorConfig::from_artesian(&config, repo_root);
     Ok(Orchestrator::new(
         orchestrator_config,
         task_store,
@@ -66,14 +66,14 @@ pub fn build_orchestrator(
     ))
 }
 
-pub fn load_config(config_path: &Path) -> Result<BrunnrConfig> {
+pub fn load_config(config_path: &Path) -> Result<ArtesianConfig> {
     let text = fs::read_to_string(config_path)
         .with_context(|| format!("read {}", config_path.display()))?;
-    BrunnrConfig::from_toml(&text).with_context(|| format!("parse {}", config_path.display()))
+    ArtesianConfig::from_toml(&text).with_context(|| format!("parse {}", config_path.display()))
 }
 
 pub fn process_supervisor_from_config(
-    config: &BrunnrConfig,
+    config: &ArtesianConfig,
     repo_root: &Path,
 ) -> ProcessSupervisor {
     ProcessSupervisor::new(spawn_registry_dir(config, repo_root))
@@ -130,7 +130,7 @@ pub fn open_memory_backend(config: &MemoryConfig) -> Result<Arc<dyn MemoryBacken
     }
 }
 
-fn verifier_gate_from_config(config: &BrunnrConfig) -> VerifierGate {
+fn verifier_gate_from_config(config: &ArtesianConfig) -> VerifierGate {
     let verifiers = config
         .coordination
         .verifiers
@@ -146,7 +146,7 @@ fn verifier_gate_from_config(config: &BrunnrConfig) -> VerifierGate {
 }
 
 fn process_agent_from_binding(
-    config: &BrunnrConfig,
+    config: &ArtesianConfig,
     role: Role,
     repo_root: &Path,
 ) -> Result<ProcessAgent> {
@@ -159,7 +159,7 @@ fn process_agent_from_binding(
 }
 
 fn process_agent_from_binding_value(
-    config: &BrunnrConfig,
+    config: &ArtesianConfig,
     binding: &AgentBinding,
     repo_root: &Path,
 ) -> Result<ProcessAgent> {
@@ -196,7 +196,7 @@ fn process_agent_from_binding_value(
     Ok(ProcessAgent::new(process_config))
 }
 
-fn spawn_registry_dir(config: &BrunnrConfig, repo_root: &Path) -> PathBuf {
+fn spawn_registry_dir(config: &ArtesianConfig, repo_root: &Path) -> PathBuf {
     config
         .coordination
         .spawn_registry_path
@@ -209,7 +209,7 @@ fn spawn_registry_dir(config: &BrunnrConfig, repo_root: &Path) -> PathBuf {
                 repo_root.join(path)
             }
         })
-        .unwrap_or_else(|| repo_root.join(".brunnr").join("spawns"))
+        .unwrap_or_else(|| repo_root.join(".artesian").join("spawns"))
 }
 
 #[cfg(feature = "qdrant")]
@@ -236,7 +236,7 @@ fn open_qdrant_backend(config: &MemoryConfig) -> Result<Arc<dyn MemoryBackend>> 
 
 #[cfg(not(feature = "qdrant"))]
 fn open_qdrant_backend(_config: &MemoryConfig) -> Result<Arc<dyn MemoryBackend>> {
-    bail!("Qdrant backend requires building brunnr-cli with the qdrant feature")
+    bail!("Qdrant backend requires building artesian-cli with the qdrant feature")
 }
 
 fn sqlite_path(root: &str) -> PathBuf {

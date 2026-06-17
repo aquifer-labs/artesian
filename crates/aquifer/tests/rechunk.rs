@@ -226,7 +226,7 @@ async fn rechunk_oversized_sqlite_migrates_legacy_whole_file_records() {
     assert_eq!(report.rechunked, 1);
 
     // Post-migration: multiple chunk records, each bounded, each with parent_node.
-    // Exclude the internal compat metadata record (kind = "brunnr.compat").
+    // Exclude the internal compat metadata record (kind = "artesian.compat").
     let post = store
         .scan_all_records(COLLECTION)
         .expect("scan after rechunk");
@@ -236,7 +236,7 @@ async fn rechunk_oversized_sqlite_migrates_legacy_whole_file_records() {
         .filter(|p| {
             p.get("kind")
                 .and_then(|v| v.as_str())
-                .is_none_or(|k| k != "brunnr.compat")
+                .is_none_or(|k| k != "artesian.compat")
         })
         .collect();
 

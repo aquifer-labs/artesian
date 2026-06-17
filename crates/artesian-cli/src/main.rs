@@ -16,7 +16,7 @@ use aquifer::{
     MigrationPlan, SessionAnchor, StoreMemory, VectorMemoryConfig,
 };
 use artesian_core::{
-    Agent, AgentBinding, BrunnrConfig, MemoryBackendKind, MemoryConfig, Mode, Role, SpawnRequest,
+    Agent, AgentBinding, ArtesianConfig, MemoryBackendKind, MemoryConfig, Mode, Role, SpawnRequest,
 };
 use artesian_process_agent::{
     fallback_agent_catalog, refresh_agent_catalog, ProcessAgent, ProcessAgentConfig,
@@ -34,8 +34,8 @@ use headrace::{
 use serde_json::{json, Value};
 use toml_edit::{value, Array, DocumentMut, Item, Table};
 
-const DEFAULT_CONFIG: &str = "brunnr.toml";
-const MCP_SERVER_NAME: &str = "brunnr-memory";
+const DEFAULT_CONFIG: &str = "artesian.toml";
+const MCP_SERVER_NAME: &str = "artesian-memory";
 const MCP_TOOL_HINT: &str =
     "ALWAYS search the project memory before non-trivial work; store durable, reusable learnings.";
 
@@ -48,7 +48,7 @@ use runtime::{
 };
 
 #[derive(Debug, Parser)]
-#[command(name = "brunnr", about = "Multi-agent context orchestration")]
+#[command(name = "artesian", about = "Multi-agent context orchestration")]
 struct Cli {
     #[command(subcommand)]
     command: Command,
@@ -137,7 +137,7 @@ enum Command {
         directory: PathBuf,
         #[arg(long, default_value = DEFAULT_CONFIG)]
         config: PathBuf,
-        #[arg(long, default_value = ".brunnr")]
+        #[arg(long, default_value = ".artesian")]
         root: PathBuf,
         #[arg(long, value_enum)]
         backend: Option<BackendArg>,
@@ -167,7 +167,7 @@ enum Command {
     Consolidate {
         #[arg(long, default_value = DEFAULT_CONFIG)]
         config: PathBuf,
-        #[arg(long, default_value = ".brunnr")]
+        #[arg(long, default_value = ".artesian")]
         root: PathBuf,
         #[arg(long)]
         allow_llm: bool,
@@ -354,34 +354,34 @@ enum TaskCommand {
         role: String,
         #[arg(long, default_value = DEFAULT_CONFIG)]
         config: PathBuf,
-        #[arg(long, default_value = ".brunnr")]
+        #[arg(long, default_value = ".artesian")]
         root: PathBuf,
         #[arg(long, value_enum)]
         backend: Option<BackendArg>,
     },
     List {
-        #[arg(long, default_value = ".brunnr")]
+        #[arg(long, default_value = ".artesian")]
         root: PathBuf,
     },
     Claim {
         id: Option<String>,
         #[arg(long, default_value = "worker")]
         claimant: String,
-        #[arg(long, default_value = ".brunnr")]
+        #[arg(long, default_value = ".artesian")]
         root: PathBuf,
     },
     Done {
         id: String,
         #[arg(long = "verify-command")]
         verify_commands: Vec<String>,
-        #[arg(long, default_value = ".brunnr")]
+        #[arg(long, default_value = ".artesian")]
         root: PathBuf,
     },
     Find {
         query: String,
         #[arg(long, default_value = DEFAULT_CONFIG)]
         config: PathBuf,
-        #[arg(long, default_value = ".brunnr")]
+        #[arg(long, default_value = ".artesian")]
         root: PathBuf,
         #[arg(long, value_enum)]
         backend: Option<BackendArg>,
@@ -423,7 +423,7 @@ enum MemoryCommand {
         user_id: Option<String>,
         #[arg(long, default_value = DEFAULT_CONFIG)]
         config: PathBuf,
-        #[arg(long, default_value = ".brunnr")]
+        #[arg(long, default_value = ".artesian")]
         root: PathBuf,
         #[arg(long, value_enum)]
         backend: Option<BackendArg>,
@@ -446,7 +446,7 @@ enum MemoryCommand {
         user_id: Option<String>,
         #[arg(long, default_value = DEFAULT_CONFIG)]
         config: PathBuf,
-        #[arg(long, default_value = ".brunnr")]
+        #[arg(long, default_value = ".artesian")]
         root: PathBuf,
         #[arg(long, value_enum)]
         backend: Option<BackendArg>,
@@ -459,7 +459,7 @@ enum MemoryCommand {
         index_chars: usize,
         #[arg(long, default_value = DEFAULT_CONFIG)]
         config: PathBuf,
-        #[arg(long, default_value = ".brunnr")]
+        #[arg(long, default_value = ".artesian")]
         root: PathBuf,
         #[arg(long, value_enum)]
         backend: Option<BackendArg>,
@@ -475,7 +475,7 @@ enum AnchorCommand {
     Get {
         #[arg(long, default_value = DEFAULT_CONFIG)]
         config: PathBuf,
-        #[arg(long, default_value = ".brunnr")]
+        #[arg(long, default_value = ".artesian")]
         root: PathBuf,
     },
     Set {
@@ -489,7 +489,7 @@ enum AnchorCommand {
         last_decisions: Vec<String>,
         #[arg(long, default_value = DEFAULT_CONFIG)]
         config: PathBuf,
-        #[arg(long, default_value = ".brunnr")]
+        #[arg(long, default_value = ".artesian")]
         root: PathBuf,
     },
     Recover {
@@ -497,7 +497,7 @@ enum AnchorCommand {
         limit: usize,
         #[arg(long, default_value = DEFAULT_CONFIG)]
         config: PathBuf,
-        #[arg(long, default_value = ".brunnr")]
+        #[arg(long, default_value = ".artesian")]
         root: PathBuf,
         #[arg(long, value_enum)]
         backend: Option<BackendArg>,
@@ -948,7 +948,7 @@ async fn init(options: InitOptions, _non_interactive: bool) -> Result<()> {
     }
     let mut agents = detect_agents();
     prefill_models_from_catalog(&mut agents);
-    let config = BrunnrConfig {
+    let config = ArtesianConfig {
         mode: artesian_core::Mode::Memory,
         memory: MemoryConfig {
             backend: options.backend.into(),
@@ -975,7 +975,7 @@ async fn init(options: InitOptions, _non_interactive: bool) -> Result<()> {
     }
     write_master_role_skill(&options.memory_root)?;
     println!(
-        "initialized Brunnr memory mode at {} collection={} project={}",
+        "initialized Artesian memory mode at {} collection={} project={}",
         options.memory_root.display(),
         config.memory.collection,
         options.project.as_deref().unwrap_or("default")
@@ -1005,7 +1005,7 @@ fn write_master_role_skill(memory_root: &Path) -> Result<()> {
     }
     fs::write(
         path,
-        "<!-- SPDX-License-Identifier: Apache-2.0 -->\n\n# Brunnr Lead Role Skill\n\nWhen Brunnr is running in `orchestrate` or `full` mode, inspect `agents.list` for reachable agents, models, and role definitions. Use `memory.context` for compact project recall. For multi-teammate work, create a Hirð with `team.create`, admit definitions with `team.spawn`, coordinate through `team.task.*` and `team.message`, and gate accepted outcomes through the judge/master path before marking work done. For a single bounded subtask, `orchestrate.delegate(worker)` is still sufficient.\n",
+        "<!-- SPDX-License-Identifier: Apache-2.0 -->\n\n# Artesian Lead Role Skill\n\nWhen Artesian is running in `orchestrate` or `full` mode, inspect `agents.list` for reachable agents, models, and role definitions. Use `memory.context` for compact project recall. For multi-teammate work, create a Hirð with `team.create`, admit definitions with `team.spawn`, coordinate through `team.task.*` and `team.message`, and gate accepted outcomes through the judge/master path before marking work done. For a single bounded subtask, `orchestrate.delegate(worker)` is still sufficient.\n",
     )?;
     Ok(())
 }
@@ -1013,15 +1013,15 @@ fn write_master_role_skill(memory_root: &Path) -> Result<()> {
 fn project_memory_root(memory_root: Option<PathBuf>, project: Option<&str>) -> PathBuf {
     memory_root.unwrap_or_else(|| {
         project
-            .map(|project| PathBuf::from(".brunnr").join(project))
-            .unwrap_or_else(|| PathBuf::from(".brunnr"))
+            .map(|project| PathBuf::from(".artesian").join(project))
+            .unwrap_or_else(|| PathBuf::from(".artesian"))
     })
 }
 
 fn project_collection(collection: Option<String>, project: Option<&str>) -> String {
     collection
         .or_else(|| project.map(sanitize_project_name))
-        .unwrap_or_else(|| "brunnr-memory".to_string())
+        .unwrap_or_else(|| "artesian-memory".to_string())
 }
 
 fn sanitize_project_name(project: &str) -> String {
@@ -1336,7 +1336,9 @@ async fn backfill(
         report.failed.len()
     );
     println!("{}", serde_json::to_string_pretty(&report)?);
-    println!("next best step: run `brunnr consolidate` when you want the opt-in LLM semantic pass");
+    println!(
+        "next best step: run `artesian consolidate` when you want the opt-in LLM semantic pass"
+    );
     Ok(())
 }
 
@@ -1351,8 +1353,8 @@ async fn onboard(
     let memory = load_config(&config_path)
         .map(|config| config.memory)
         .unwrap_or_else(|_| {
-            let text = fs::read_to_string(DEFAULT_CONFIG).expect("init wrote brunnr.toml");
-            BrunnrConfig::from_toml(&text)
+            let text = fs::read_to_string(DEFAULT_CONFIG).expect("init wrote artesian.toml");
+            ArtesianConfig::from_toml(&text)
                 .expect("init config should parse")
                 .memory
         });
@@ -1379,7 +1381,9 @@ async fn onboard(
         project, memory.collection, memory.root, verification_hits
     );
     println!("{}", serde_json::to_string_pretty(&report)?);
-    println!("next best step: run `brunnr consolidate` when you want the opt-in LLM semantic pass");
+    println!(
+        "next best step: run `artesian consolidate` when you want the opt-in LLM semantic pass"
+    );
     Ok(())
 }
 
@@ -1392,7 +1396,7 @@ async fn migrate_okf(
     let config = load_config(&config_path)?;
     if config.memory.backend != MemoryBackendKind::Qdrant {
         bail!(
-            "brunnr migrate okf-bundle currently requires backend = qdrant for atomic alias swap"
+            "artesian migrate okf-bundle currently requires backend = qdrant for atomic alias swap"
         );
     }
     let vector_config = VectorMemoryConfig::new(&config.memory.collection);
@@ -1413,7 +1417,7 @@ async fn migrate_okf(
 async fn migrate_rechunk(config_path: PathBuf) -> Result<()> {
     let config = load_config(&config_path)?;
     if config.memory.backend != MemoryBackendKind::SqliteVec {
-        bail!("brunnr migrate rechunk currently requires backend = sqlite-vec; for Qdrant use brunnr migrate okf-bundle");
+        bail!("artesian migrate rechunk currently requires backend = sqlite-vec; for Qdrant use artesian migrate okf-bundle");
     }
     use aquifer::{rechunk_oversized_sqlite, SqliteVecVectorStore, SqliteVecVectorStoreConfig};
     use std::path::PathBuf as SPath;
@@ -1444,7 +1448,7 @@ async fn snapshot(
     let config = load_config(&config_path)?;
     if config.memory.backend != MemoryBackendKind::Qdrant {
         bail!(
-            "brunnr snapshot currently requires backend = qdrant; use brunnr okf export for files"
+            "artesian snapshot currently requires backend = qdrant; use artesian okf export for files"
         );
     }
     let collection = collection.unwrap_or_else(|| config.memory.collection.clone());
@@ -1476,7 +1480,7 @@ fn consolidate(config_path: PathBuf, root: PathBuf, allow_llm: bool) -> Result<(
     if !index_path.exists() {
         fs::write(
             &index_path,
-            "---\ntype: index\ntitle: Brunnr Memory Index\n---\n\n# Brunnr Memory Index\n\nNo structural import catalog exists yet.\n",
+            "---\ntype: index\ntitle: Artesian Memory Index\n---\n\n# Artesian Memory Index\n\nNo structural import catalog exists yet.\n",
         )?;
     }
     let mode = if allow_llm {
@@ -1537,7 +1541,7 @@ async fn migrate_qdrant(
     _memory: &MemoryConfig,
     _plan: MigrationPlan,
 ) -> Result<aquifer::MigrationReport> {
-    bail!("brunnr migrate requires building brunnr-cli with the qdrant feature")
+    bail!("artesian migrate requires building artesian-cli with the qdrant feature")
 }
 
 #[cfg(feature = "qdrant")]
@@ -1558,7 +1562,7 @@ async fn snapshot_qdrant(
     _collection: &str,
     _output_dir: &Path,
 ) -> Result<aquifer::SnapshotReport> {
-    bail!("brunnr snapshot requires building brunnr-cli with the qdrant feature")
+    bail!("artesian snapshot requires building artesian-cli with the qdrant feature")
 }
 
 #[cfg(feature = "qdrant")]
@@ -1591,7 +1595,7 @@ async fn preflight_qdrant_memory(memory: &MemoryConfig) -> Result<()> {
 
 #[cfg(not(feature = "qdrant"))]
 async fn preflight_qdrant_memory(_memory: &MemoryConfig) -> Result<()> {
-    bail!("Qdrant preflight requires building brunnr-cli with the qdrant feature")
+    bail!("Qdrant preflight requires building artesian-cli with the qdrant feature")
 }
 
 async fn preflight_qdrant_options(options: &InitOptions) -> Result<()> {
@@ -1628,7 +1632,7 @@ fn memory_config_for_command(
     let config = if config_path.exists() {
         let text = fs::read_to_string(config_path)
             .with_context(|| format!("read {}", config_path.display()))?;
-        let config = BrunnrConfig::from_toml(&text)
+        let config = ArtesianConfig::from_toml(&text)
             .with_context(|| format!("parse {}", config_path.display()))?;
         if config.mode != Mode::Memory {
             bail!("memory commands require mode = memory");
@@ -1638,7 +1642,7 @@ fn memory_config_for_command(
         MemoryConfig {
             backend: backend.unwrap_or(BackendArg::Files).into(),
             root: root.display().to_string(),
-            collection: "brunnr-memory".to_string(),
+            collection: "artesian-memory".to_string(),
             qdrant_url: env::var("QDRANT_URL").ok(),
             qdrant_rest_url: env::var("QDRANT_REST_URL").ok(),
             qdrant_api_key_env: Some("QDRANT_API_KEY".to_string()),
@@ -1678,10 +1682,10 @@ fn write_claude_mcp(config_path: &Path) -> Result<()> {
     let path = Path::new(".mcp.json");
     let mut root = read_json_object(path)?;
     let server = json!({
-        "command": "brunnr-mcp",
+        "command": "artesian-mcp",
         "args": mcp_args(config_path),
         "env": {
-            "BRUNNR_MCP_TOOL_HINT": MCP_TOOL_HINT
+            "ARTESIAN_MCP_TOOL_HINT": MCP_TOOL_HINT
         }
     });
     ensure_object(&mut root, "mcpServers")?.insert(MCP_SERVER_NAME.to_string(), server);
@@ -1696,13 +1700,14 @@ fn write_codex_mcp(config_path: &Path) -> Result<()> {
     let text = fs::read_to_string(&path).unwrap_or_default();
     let mut document = text.parse::<DocumentMut>().unwrap_or_default();
     ensure_toml_table(&mut document, "mcp_servers");
-    document["mcp_servers"][MCP_SERVER_NAME]["command"] = value("brunnr-mcp");
+    document["mcp_servers"][MCP_SERVER_NAME]["command"] = value("artesian-mcp");
     let mut args = Array::new();
     for arg in mcp_args(config_path) {
         args.push(arg);
     }
     document["mcp_servers"][MCP_SERVER_NAME]["args"] = value(args);
-    document["mcp_servers"][MCP_SERVER_NAME]["env"]["BRUNNR_MCP_TOOL_HINT"] = value(MCP_TOOL_HINT);
+    document["mcp_servers"][MCP_SERVER_NAME]["env"]["ARTESIAN_MCP_TOOL_HINT"] =
+        value(MCP_TOOL_HINT);
     fs::write(path, document.to_string())?;
     Ok(())
 }
@@ -1715,10 +1720,10 @@ fn write_zed_mcp(config_path: &Path) -> Result<()> {
     let mut root = read_json_object(&path)?;
     let server = json!({
         "command": {
-            "path": "brunnr-mcp",
+            "path": "artesian-mcp",
             "args": mcp_args(config_path),
             "env": {
-                "BRUNNR_MCP_TOOL_HINT": MCP_TOOL_HINT
+                "ARTESIAN_MCP_TOOL_HINT": MCP_TOOL_HINT
             }
         }
     });
@@ -1762,7 +1767,7 @@ fn ensure_toml_table(document: &mut DocumentMut, key: &str) {
 }
 
 fn home_dir() -> Result<PathBuf> {
-    if let Some(home) = env::var_os("BRUNNR_HOME").or_else(|| env::var_os("HOME")) {
+    if let Some(home) = env::var_os("ARTESIAN_HOME").or_else(|| env::var_os("HOME")) {
         return Ok(PathBuf::from(home));
     }
     bail!("HOME is not set")

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-//! Shared test helpers for Brunnr crates.
+//! Shared test helpers for Artesian crates.
 
 use std::{
     path::{Path, PathBuf},
@@ -15,7 +15,7 @@ pub struct TempDir {
 impl TempDir {
     pub fn new(name: &str) -> Self {
         let path = std::env::temp_dir().join(format!(
-            "brunnr-{name}-{}-{}",
+            "artesian-{name}-{}-{}",
             std::process::id(),
             unique_suffix()
         ));

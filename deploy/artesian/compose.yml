@@ -1,17 +1,17 @@
 # SPDX-License-Identifier: Apache-2.0
 
 services:
-  brunnrd:
+  artesiand:
     build:
       context: ../..
       dockerfile: Dockerfile
-    command: ["--config", "/data/brunnr.toml", "--root", "/data"]
+    command: ["--config", "/data/artesian.toml", "--root", "/data"]
     environment:
       QDRANT_URL: http://qdrant:6333
       QDRANT_REST_URL: http://qdrant:6333
       # Set QDRANT_API_KEY in an env file or orchestrator secret store when auth is enabled.
     volumes:
-      - brunnr-data:/data
+      - artesian-data:/data
     depends_on:
       - qdrant
 
@@ -24,5 +24,5 @@ services:
       - qdrant-storage:/qdrant/storage
 
 volumes:
-  brunnr-data:
+  artesian-data:
   qdrant-storage:

@@ -184,7 +184,7 @@ pub fn export_okf_bundle(
 
 pub fn migration_manifest_path(root: impl AsRef<Path>) -> PathBuf {
     root.as_ref().join(format!(
-        "brunnr-migration-{}.json",
+        "artesian-migration-{}.json",
         Utc::now().format("%Y%m%d%H%M%S")
     ))
 }
