@@ -24,10 +24,10 @@ use serde_json::Value;
 use tokio_postgres::{Client, NoTls};
 
 use crate::{
-    vector::payload_matches_filter, Distance, Filter, FilterCondition, FilterValue, MemoryError,
-    MemoryResult, PayloadIndex, VectorCollection, VectorMemoryBackend, VectorMemoryConfig,
-    VectorPoint, VectorSearch, VectorSearchHit, VectorSearchSource, VectorStore,
-    VectorStoreCapabilities,
+    vector::{is_safe_field_path, must_string_eq, payload_matches_filter},
+    Distance, Filter, MemoryError, MemoryResult, PayloadIndex, VectorCollection,
+    VectorMemoryBackend, VectorMemoryConfig, VectorPoint, VectorSearch, VectorSearchHit,
+    VectorSearchSource, VectorStore, VectorStoreCapabilities,
 };
 
 pub type PgVectorBackend = VectorMemoryBackend<PgVectorStore>;
@@ -147,11 +147,31 @@ impl VectorStore for PgVectorStore {
 
     fn ensure_payload_index(
         &self,
-        _collection: &str,
-        _index: PayloadIndex,
+        collection: &str,
+        index: PayloadIndex,
     ) -> BoxFuture<'_, MemoryResult<()>> {
-        // Payload filtering uses the JSONB index created in ensure_collection.
-        async { Ok(()) }.boxed()
+        let collection = collection.to_string();
+        async move {
+            // node_id already has a btree column index from ensure_collection. For other
+            // payload fields (tenancy fields, metadata.parent_node) build an expression
+            // index over the JSONB path so equality filters use an index instead of a
+            // sequential scan.
+            if index.field == "node_id" || !is_safe_field_path(&index.field) {
+                return Ok(());
+            }
+            let (records, _) = collection_names(&collection);
+            let path = index.field.split('.').collect::<Vec<_>>().join(",");
+            let index_name = format!("{records}_{}_idx", index.field.replace('.', "_"));
+            let sql = format!(
+                "CREATE INDEX IF NOT EXISTS {index_name} ON {records} ((payload #>> '{{{path}}}'))"
+            );
+            self.client
+                .batch_execute(&sql)
+                .await
+                .map_err(|e| MemoryError::Database(e.to_string()))?;
+            Ok(())
+        }
+        .boxed()
     }
 
     fn upsert(
@@ -286,7 +306,7 @@ impl PgVectorStore {
                      {where_clause}
                      ORDER BY v.embedding <=> $1
                      LIMIT $2",
-                    where_clause = node_id_where_clause(filter),
+                    where_clause = filter_where_clause(filter),
                 ),
                 &[&embed, &(limit.max(1) as i64)],
             )
@@ -323,7 +343,7 @@ impl PgVectorStore {
                 .query(
                     &format!(
                         "SELECT id, payload FROM {records} {where_clause} LIMIT $1",
-                        where_clause = node_id_where_clause(filter),
+                        where_clause = filter_where_clause(filter),
                     ),
                     &[&(limit.max(1) as i64)],
                 )
@@ -354,7 +374,7 @@ impl PgVectorStore {
                      {and_clause}
                      ORDER BY rank DESC
                      LIMIT $2",
-                    and_clause = node_id_and_clause(filter),
+                    and_clause = filter_and_clause(filter),
                 ),
                 &[&text, &(limit.max(1) as i64)],
             )
@@ -389,38 +409,45 @@ fn row_to_point(row: &tokio_postgres::Row) -> MemoryResult<VectorPoint> {
     })
 }
 
-/// Build a WHERE clause that filters by node_id if the filter contains a single Eq on node_id.
-/// Falls back to empty string (no SQL filter) for complex filters — payload_matches_filter
-/// handles those in Rust after the DB returns rows.
-fn node_id_where_clause(filter: &Filter) -> String {
-    if let Some(node_id) = extract_node_id_eq(filter) {
-        format!("WHERE node_id = '{}'", node_id.replace('\'', "''"))
-    } else {
-        String::new()
-    }
-}
-
-fn node_id_and_clause(filter: &Filter) -> String {
-    if let Some(node_id) = extract_node_id_eq(filter) {
-        format!("AND node_id = '{}'", node_id.replace('\'', "''"))
-    } else {
-        String::new()
-    }
-}
-
-fn extract_node_id_eq(filter: &Filter) -> Option<&str> {
-    if filter.must.len() == 1 {
-        if let FilterCondition::Eq {
-            field,
-            value: FilterValue::String(val),
-        } = &filter.must[0]
-        {
+/// SQL fragments pushing the filter's string-equality conditions: `node_id` via its
+/// column, other fields via the JSONB path operator (`payload #>> '{a,b}'`). This lets
+/// filter-only and keyword queries hit an index and return **all** matching rows (e.g.
+/// every sibling chunk of a parent), not just the first page. Values are single-quote
+/// escaped and field paths are validated, so they are safe to inline. Conditions not
+/// pushed here are still enforced by `payload_matches_filter` after the DB returns rows.
+fn sql_eq_parts(filter: &Filter) -> Vec<String> {
+    must_string_eq(filter)
+        .into_iter()
+        .filter_map(|(field, value)| {
+            let escaped = value.replace('\'', "''");
             if field == "node_id" {
-                return Some(val.as_str());
+                Some(format!("node_id = '{escaped}'"))
+            } else if is_safe_field_path(field) {
+                let path = field.split('.').collect::<Vec<_>>().join(",");
+                Some(format!("payload #>> '{{{path}}}' = '{escaped}'"))
+            } else {
+                None
             }
-        }
+        })
+        .collect()
+}
+
+fn filter_where_clause(filter: &Filter) -> String {
+    let parts = sql_eq_parts(filter);
+    if parts.is_empty() {
+        String::new()
+    } else {
+        format!("WHERE {}", parts.join(" AND "))
     }
-    None
+}
+
+fn filter_and_clause(filter: &Filter) -> String {
+    let parts = sql_eq_parts(filter);
+    if parts.is_empty() {
+        String::new()
+    } else {
+        format!("AND {}", parts.join(" AND "))
+    }
 }
 
 #[cfg(test)]

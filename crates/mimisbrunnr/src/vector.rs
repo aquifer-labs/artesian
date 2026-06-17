@@ -74,6 +74,36 @@ impl Filter {
     }
 }
 
+/// The `must` string-equality conditions of a filter, as `(field, value)` pairs.
+///
+/// Adapters push these into their native filter / SQL `WHERE` so equality lookups use an
+/// index and return **all** matching rows (e.g. every sibling chunk of a parent), rather
+/// than scanning the first N rows. `payload_matches_filter` still runs as the
+/// full-correctness backstop for any conditions not pushed down. Shared so every vector
+/// backend treats filter-only retrieval identically.
+pub(crate) fn must_string_eq(filter: &Filter) -> Vec<(&str, &str)> {
+    filter
+        .must
+        .iter()
+        .filter_map(|condition| match condition {
+            FilterCondition::Eq {
+                field,
+                value: FilterValue::String(value),
+            } => Some((field.as_str(), value.as_str())),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Whether a payload field is a safe dotted identifier (ASCII alphanumeric, `_`, `.`),
+/// so it can be interpolated into an engine-specific path/index without injection risk.
+pub(crate) fn is_safe_field_path(field: &str) -> bool {
+    !field.is_empty()
+        && field
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.')
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VectorCollection {
     pub name: String,
@@ -284,4 +314,36 @@ fn range_matches(candidate: f64, range: &RangeFilter) -> bool {
         && range.gt.is_none_or(|value| candidate > value)
         && range.lte.is_none_or(|value| candidate <= value)
         && range.lt.is_none_or(|value| candidate < value)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn must_string_eq_extracts_only_string_equality_conditions() {
+        let mut filter = Filter::default();
+        filter.must_eq("node_id", "n1");
+        filter.must_eq("metadata.parent_node", "node:p");
+        filter.must.push(FilterCondition::Range(RangeFilter {
+            field: "age".to_string(),
+            gte: Some(1.0),
+            gt: None,
+            lte: None,
+            lt: None,
+        }));
+        assert_eq!(
+            must_string_eq(&filter),
+            vec![("node_id", "n1"), ("metadata.parent_node", "node:p")]
+        );
+    }
+
+    #[test]
+    fn is_safe_field_path_accepts_only_dotted_identifiers() {
+        assert!(is_safe_field_path("metadata.parent_node"));
+        assert!(is_safe_field_path("node_id"));
+        assert!(!is_safe_field_path(""));
+        assert!(!is_safe_field_path("a b"));
+        assert!(!is_safe_field_path("x'; DROP TABLE y;--"));
+    }
 }

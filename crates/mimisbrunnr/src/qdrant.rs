@@ -589,7 +589,15 @@ fn retrieved_point_to_hit(
         .get("content")
         .and_then(JsonValue::as_str)
         .unwrap_or_default();
-    let score = keyword_score(content, text);
+    // Filter-only retrieval (empty query text — e.g. small-to-big sibling lookups or
+    // node_id drill-down) keeps every point the filter already selected; we only drop on
+    // a genuine keyword miss. Without this, an empty query scored 0 and dropped all
+    // filter-matched rows, silently breaking sibling/parent retrieval on Qdrant.
+    let score = if text.trim().is_empty() {
+        1.0
+    } else {
+        keyword_score(content, text)
+    };
     if score == 0.0 {
         return Ok(None);
     }

@@ -11,10 +11,10 @@ use rusqlite::{params, Connection, OptionalExtension};
 use serde_json::Value;
 
 use crate::{
-    vector::payload_matches_filter, Distance, Filter, FilterCondition, FilterValue, MemoryError,
-    MemoryResult, PayloadIndex, VectorCollection, VectorMemoryBackend, VectorMemoryConfig,
-    VectorPoint, VectorSearch, VectorSearchHit, VectorSearchSource, VectorStore,
-    VectorStoreCapabilities,
+    vector::{is_safe_field_path, must_string_eq, payload_matches_filter},
+    Distance, Filter, MemoryError, MemoryResult, PayloadIndex, VectorCollection,
+    VectorMemoryBackend, VectorMemoryConfig, VectorPoint, VectorSearch, VectorSearchHit,
+    VectorSearchSource, VectorStore, VectorStoreCapabilities,
 };
 
 pub type SqliteVecBackend = VectorMemoryBackend<SqliteVecVectorStore>;
@@ -484,19 +484,13 @@ fn scan(
     // the full-correctness backstop for conditions not pushed down.
     let mut clauses: Vec<String> = Vec::new();
     let mut binds: Vec<SqlValue> = Vec::new();
-    for condition in &filter.must {
-        if let FilterCondition::Eq {
-            field,
-            value: FilterValue::String(text),
-        } = condition
-        {
-            if field == "node_id" {
-                clauses.push("node_id = ?".to_string());
-                binds.push(SqlValue::Text(text.clone()));
-            } else if let Some(path) = json_field_path(field) {
-                clauses.push(format!("json_extract(payload, '{path}') = ?"));
-                binds.push(SqlValue::Text(text.clone()));
-            }
+    for (field, text) in must_string_eq(filter) {
+        if field == "node_id" {
+            clauses.push("node_id = ?".to_string());
+            binds.push(SqlValue::Text(text.to_string()));
+        } else if let Some(path) = json_field_path(field) {
+            clauses.push(format!("json_extract(payload, '{path}') = ?"));
+            binds.push(SqlValue::Text(text.to_string()));
         }
     }
     let pushed = !clauses.is_empty();
@@ -552,18 +546,10 @@ fn row_to_point(row: &rusqlite::Row<'_>) -> rusqlite::Result<VectorPoint> {
 }
 
 /// Map a filter field to a JSON path for `json_extract`, e.g. `metadata.parent_node`
-/// -> `$.metadata.parent_node`. Returns `None` for fields containing characters other
-/// than ASCII alphanumerics, `_`, or `.` (so the path is never an injection vector and
-/// the equality filter falls back to the in-Rust check).
+/// -> `$.metadata.parent_node`. Returns `None` for unsafe field shapes (so the path is
+/// never an injection vector and the equality filter falls back to the in-Rust check).
 fn json_field_path(field: &str) -> Option<String> {
-    if field.is_empty()
-        || !field
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.')
-    {
-        return None;
-    }
-    Some(format!("$.{field}"))
+    is_safe_field_path(field).then(|| format!("$.{field}"))
 }
 
 /// Sanitize a field into an identifier fragment for an index name (`.` -> `_`).
