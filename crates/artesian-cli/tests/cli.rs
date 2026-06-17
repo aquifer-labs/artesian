@@ -8,7 +8,7 @@ use artesian_test_support::TempDir;
 fn cli_memory_mode_round_trip_and_spawn_alias_work() {
     let tempdir = TempDir::new("cli");
     let home = tempdir.join("home");
-    let binary = env!("CARGO_BIN_EXE_brunnr");
+    let binary = env!("CARGO_BIN_EXE_artesian");
 
     let init = Command::new(binary)
         .arg("init")
@@ -93,7 +93,7 @@ fn cli_memory_mode_round_trip_and_spawn_alias_work() {
 #[test]
 fn cli_backfill_reports_bad_markdown_and_imports_tasks() {
     let tempdir = TempDir::new("cli-import");
-    let binary = env!("CARGO_BIN_EXE_brunnr");
+    let binary = env!("CARGO_BIN_EXE_artesian");
     let import_dir = tempdir.join("import");
     std::fs::create_dir_all(import_dir.join("tasks/todo")).expect("import dirs should exist");
     std::fs::write(

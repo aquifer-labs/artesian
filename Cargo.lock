@@ -151,8 +151,8 @@ dependencies = [
  "artesian-test-support",
  "basin",
  "clap",
- "culvert",
- "delta",
+ "flotilla",
+ "headrace",
  "sandbox",
  "serde",
  "serde_json",
@@ -174,6 +174,27 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "toml",
+]
+
+[[package]]
+name = "artesian-mcp"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "aquifer",
+ "artesian-core",
+ "artesian-process-agent",
+ "artesian-test-support",
+ "clap",
+ "flotilla",
+ "headrace",
+ "rmcp",
+ "schemars",
+ "serde",
+ "serde_json",
+ "tokio",
+ "toml",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -306,8 +327,8 @@ dependencies = [
  "artesian-core",
  "artesian-test-support",
  "chrono",
- "culvert",
  "futures-util",
+ "headrace",
  "sandbox",
  "serde",
  "serde_json",
@@ -650,23 +671,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "culvert"
-version = "0.1.0"
-dependencies = [
- "aquifer",
- "artesian-core",
- "artesian-test-support",
- "chrono",
- "futures-util",
- "serde",
- "serde_json",
- "serde_yaml",
- "sha2 0.10.9",
- "thiserror 2.0.18",
- "tokio",
-]
-
-[[package]]
 name = "darling"
 version = "0.20.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -742,22 +746,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8b1e3a325bc115f096c8b77bbf027a7c2592230e70be2d985be950d3d5e60ebe"
 dependencies = [
  "serde",
-]
-
-[[package]]
-name = "delta"
-version = "0.1.0"
-dependencies = [
- "artesian-core",
- "artesian-process-agent",
- "artesian-test-support",
- "chrono",
- "culvert",
- "serde",
- "serde_json",
- "serde_yaml",
- "thiserror 2.0.18",
- "tokio",
 ]
 
 [[package]]
@@ -962,6 +950,22 @@ checksum = "843fba2746e448b37e26a819579957415c8cef339bf08564fe8b7ddbd959573c"
 dependencies = [
  "crc32fast",
  "miniz_oxide",
+]
+
+[[package]]
+name = "flotilla"
+version = "0.1.0"
+dependencies = [
+ "artesian-core",
+ "artesian-process-agent",
+ "artesian-test-support",
+ "chrono",
+ "headrace",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "thiserror 2.0.18",
+ "tokio",
 ]
 
 [[package]]
@@ -1200,6 +1204,23 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a5081f264ed7adee96ea4b4778b6bb9da0a7228b084587aa3bd3ff05da7c5a3b"
 dependencies = [
  "hashbrown 0.17.1",
+]
+
+[[package]]
+name = "headrace"
+version = "0.1.0"
+dependencies = [
+ "aquifer",
+ "artesian-core",
+ "artesian-test-support",
+ "chrono",
+ "futures-util",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "sha2 0.10.9",
+ "thiserror 2.0.18",
+ "tokio",
 ]
 
 [[package]]
@@ -3008,27 +3029,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
-]
-
-[[package]]
-name = "tap"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "aquifer",
- "artesian-core",
- "artesian-process-agent",
- "artesian-test-support",
- "clap",
- "culvert",
- "delta",
- "rmcp",
- "schemars",
- "serde",
- "serde_json",
- "tokio",
- "toml",
- "tracing-subscriber",
 ]
 
 [[package]]

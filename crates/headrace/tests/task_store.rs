@@ -4,11 +4,11 @@ use std::sync::Arc;
 
 use aquifer::FilesBackend;
 use artesian_test_support::TempDir;
-use culvert::{
+use futures_util::{future::BoxFuture, FutureExt};
+use headrace::{
     ClaimRequest, FilesTaskStore, NewTask, Task, TaskKind, TaskStatus, TaskStore, VectorTaskStore,
     Verifier, VerifierGate, VerifierOutcome,
 };
-use futures_util::{future::BoxFuture, FutureExt};
 
 #[tokio::test]
 async fn files_task_store_claims_and_transitions_task() {
@@ -28,7 +28,7 @@ async fn files_task_store_claims_and_transitions_task() {
         .expect("claim should succeed")
         .expect("task should be claimed");
     let done = store
-        .transition(culvert::TransitionTask {
+        .transition(headrace::TransitionTask {
             id: created.id.clone(),
             status: TaskStatus::Done,
         })
@@ -156,7 +156,7 @@ async fn dag_blockers_control_dispatch_readiness() {
     assert!(blocked_claim.is_none());
 
     store
-        .transition(culvert::TransitionTask {
+        .transition(headrace::TransitionTask {
             id: "task-blocker".to_string(),
             status: TaskStatus::Done,
         })
@@ -274,7 +274,7 @@ impl Verifier for StaticVerifier {
         &self.name
     }
 
-    fn verify(&self, _task: &Task) -> BoxFuture<'_, culvert::TaskResult<VerifierOutcome>> {
+    fn verify(&self, _task: &Task) -> BoxFuture<'_, headrace::TaskResult<VerifierOutcome>> {
         async move {
             Ok(VerifierOutcome {
                 name: self.name.clone(),

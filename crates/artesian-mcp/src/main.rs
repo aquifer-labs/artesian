@@ -50,7 +50,7 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     let config = load_runtime_config(&args)?;
-    tap::run_stdio_with_brunnr_config(config.config).await
+    artesian_mcp::run_stdio_with_brunnr_config(config.config).await
 }
 
 struct RuntimeConfig {

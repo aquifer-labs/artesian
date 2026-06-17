@@ -24,11 +24,11 @@ use artesian_process_agent::{
     fallback_agent_catalog, load_or_refresh_agent_catalog, validate_binding_model, ProcessAgent,
     ProcessAgentConfig,
 };
-use culvert::{ClaimRequest, FilesTaskStore, NewTask, TaskStatus, TaskStore, TransitionTask};
-use delta::{
+use flotilla::{
     load_role_definitions, role_summaries, TeamCreate, TeamMessage, TeamMessageKind, TeamRuntime,
     TeamRuntimeConfig, TeamSpawn, TeamTaskAdd, TeamTaskClaim, TeamTaskComplete,
 };
+use headrace::{ClaimRequest, FilesTaskStore, NewTask, TaskStatus, TaskStore, TransitionTask};
 use rmcp::{
     handler::server::{
         router::tool::ToolRouter,
@@ -323,7 +323,7 @@ impl MemoryServer {
         &self,
         bindings: Vec<AgentBinding>,
         catalog: AgentCatalog,
-        definitions: Vec<delta::RoleDefinition>,
+        definitions: Vec<flotilla::RoleDefinition>,
     ) -> TeamRuntime {
         TeamRuntime::new(TeamRuntimeConfig {
             repo_root: self.repo_root.clone(),

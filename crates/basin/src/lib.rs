@@ -13,8 +13,10 @@ use artesian_core::{
     EventSender, EventType, Galdr, Mode, ResourceQuota, Role, SpawnRequest, TokenAccounting,
 };
 use chrono::Utc;
-use culvert::{ClaimRequest, Task, TaskError, TaskStatus, TaskStore, TransitionTask, VerifierGate};
 use futures_util::{future::BoxFuture, stream, FutureExt};
+use headrace::{
+    ClaimRequest, Task, TaskError, TaskStatus, TaskStore, TransitionTask, VerifierGate,
+};
 use sandbox::{WorkspaceError, WorkspaceProvider};
 use serde::{Deserialize, Serialize};
 use serde_json::json;

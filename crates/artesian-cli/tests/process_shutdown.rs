@@ -12,7 +12,7 @@ use artesian_core::{
     AgentBinding, BrunnrConfig, CoordinationConfig, MemoryBackendKind, MemoryConfig, Mode, Role,
 };
 use artesian_test_support::TempDir;
-use culvert::{FilesTaskStore, NewTask, TaskStore};
+use headrace::{FilesTaskStore, NewTask, TaskStore};
 
 #[tokio::test]
 async fn sigterm_to_orchestrator_kills_tracked_worker_process_group() {
@@ -73,7 +73,7 @@ async fn sigterm_to_orchestrator_kills_tracked_worker_process_group() {
         config.to_toml().expect("config should encode"),
     )
     .expect("config should write");
-    let mut brunnr = Command::new(env!("CARGO_BIN_EXE_brunnr"))
+    let mut brunnr = Command::new(env!("CARGO_BIN_EXE_artesian"))
         .arg("run")
         .arg("--config")
         .arg(&config_path)

@@ -11,7 +11,7 @@ use aquifer::{
     collect_memory_paths, parse_memory_path, stable_memory_id, BackfillFailure, FilesBackend,
     MemoryBackend, MemoryScope, StoreMemory,
 };
-use culvert::{FilesTaskStore, VectorTaskStore};
+use headrace::{FilesTaskStore, VectorTaskStore};
 use serde::Serialize;
 
 #[derive(Debug, Clone, Default, Serialize)]

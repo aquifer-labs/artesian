@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 [package]
-name = "culvert"
+name = "headrace"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

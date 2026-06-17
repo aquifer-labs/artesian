@@ -18,7 +18,7 @@ use aquifer::{
 use artesian_core::{Agent, AgentBinding, BrunnrConfig, MemoryBackendKind, MemoryConfig, Role};
 use artesian_process_agent::{ProcessAgent, ProcessAgentConfig, ProcessSupervisor};
 use basin::{DryRunAgent, Orchestrator, OrchestratorConfig};
-use culvert::{CommandVerifier, FilesTaskStore, Verifier, VerifierGate};
+use headrace::{CommandVerifier, FilesTaskStore, Verifier, VerifierGate};
 use sandbox::ScratchWorkspaceProvider;
 
 #[cfg(feature = "qdrant")]

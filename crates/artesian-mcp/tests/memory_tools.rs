@@ -11,14 +11,14 @@ use aquifer::{
     MemoryResult, SqliteVecVectorStore, TextEmbedder, VectorMemoryBackend, VectorMemoryConfig,
 };
 use artesian_core::{AgentBinding, AgentCatalog, AgentCatalogEntry, AgentModel, Mode, Role};
-use artesian_test_support::TempDir;
-use rmcp::handler::server::wrapper::Parameters;
-use tap::{
+use artesian_mcp::{
     AnchorSetRequest, BindRequest, DelegateRequest, FindRequest, MemoryServer, StoreRequest,
     TeamCreateRequest, TeamMessageKindRequest, TeamMessageRequest, TeamSpawnRequest,
     TeamStatusRequest, TeamTaskAddRequest, TeamTaskClaimRequest, TeamTaskCompleteRequest,
     ToolsFindRequest,
 };
+use artesian_test_support::TempDir;
+use rmcp::handler::server::wrapper::Parameters;
 
 #[tokio::test]
 async fn memory_tools_store_and_find_with_files_backend() {

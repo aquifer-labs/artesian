@@ -16,7 +16,7 @@ aquifer = { path = "../aquifer" }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
-culvert = { path = "../culvert" }
+headrace = { path = "../headrace" }
 tokio.workspace = true
 
 [dev-dependencies]

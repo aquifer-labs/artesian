@@ -18,7 +18,9 @@ use artesian_process_agent::{
     validate_binding_model, ProcessAgent, ProcessAgentConfig, ProcessSupervisor,
 };
 use chrono::Utc;
-use culvert::{ClaimRequest, FilesTaskStore, NewTask, Task, TaskStatus, TaskStore, TransitionTask};
+use headrace::{
+    ClaimRequest, FilesTaskStore, NewTask, Task, TaskStatus, TaskStore, TransitionTask,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -43,7 +45,7 @@ pub enum HirdError {
     #[error("agent failed: {0}")]
     Agent(String),
     #[error("task store failed: {0}")]
-    Task(#[from] culvert::TaskError),
+    Task(#[from] headrace::TaskError),
 }
 
 impl From<AgentError> for HirdError {
