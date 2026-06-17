@@ -42,9 +42,10 @@ struct Args {
     /// extra backfill cost. Enable for quality/ability tiers.
     #[arg(long, default_value_t = false)]
     signal_arms: bool,
-    /// Skip specific arms by ID (may be repeated). Use to exclude non-deterministic or
-    /// irrelevant arms for a given tier, e.g. --skip-arm B-reflection-consolidated for
-    /// large-source-run where reflection summaries produce near-identical ANN scores.
+    /// Skip specific arms by ID (may be repeated) for ad-hoc, focused runs. The committed
+    /// tiers run every arm: all arms are deterministic given a clean, serial run (the bench
+    /// isolates its lane locks per process), so this is a convenience, not a way to hide
+    /// unstable results.
     #[arg(long, value_name = "ARM_ID")]
     skip_arm: Vec<String>,
 }
@@ -410,6 +411,17 @@ async fn main() -> Result<()> {
     let args = Args::parse();
     if args.reps == 0 {
         bail!("--reps must be greater than zero");
+    }
+
+    // Isolate lane locks per bench process. The bench uses throwaway in-memory stores, so the
+    // shared on-disk lane-lock files (`.brunnr/locks`) only invite cross-run contention: a
+    // crashed or concurrent run leaves a stale lock that a later run blocks on, which looks like
+    // non-determinism. A unique per-process lock dir makes every run self-contained and
+    // reproducible. An explicit BRUNNR_LANE_LOCK_DIR override is honored.
+    if std::env::var_os("BRUNNR_LANE_LOCK_DIR").is_none() {
+        let lock_dir =
+            std::env::temp_dir().join(format!("brunnr-bench-locks-{}", std::process::id()));
+        std::env::set_var("BRUNNR_LANE_LOCK_DIR", &lock_dir);
     }
 
     let repo_root = std::env::current_dir().context("resolve current directory")?;

@@ -298,6 +298,48 @@
         }
       }
     },
+    "B-reflection-consolidated": {
+      "runs": 80,
+      "success_rate": 1.0,
+      "success_rate_ci95": 0.0,
+      "mean_total_tokens": 9340.225,
+      "total_tokens_variance": 190.227215,
+      "tokens_per_success": 9340.225,
+      "mean_retrieval_precision": 0.333333,
+      "mean_retrieval_recall": 1.0,
+      "by_difficulty": {
+        "easy": {
+          "runs": 27,
+          "success_rate": 1.0,
+          "success_rate_ci95": 0.0,
+          "mean_total_tokens": 9336.851852,
+          "total_tokens_variance": 146.438746,
+          "tokens_per_success": 9336.851852,
+          "mean_retrieval_precision": 0.333333,
+          "mean_retrieval_recall": 1.0
+        },
+        "hard": {
+          "runs": 26,
+          "success_rate": 1.0,
+          "success_rate_ci95": 0.0,
+          "mean_total_tokens": 9340.346154,
+          "total_tokens_variance": 208.955385,
+          "tokens_per_success": 9340.346154,
+          "mean_retrieval_precision": 0.333333,
+          "mean_retrieval_recall": 1.0
+        },
+        "medium": {
+          "runs": 27,
+          "success_rate": 1.0,
+          "success_rate_ci95": 0.0,
+          "mean_total_tokens": 9343.481481,
+          "total_tokens_variance": 207.797721,
+          "tokens_per_success": 9343.481481,
+          "mean_retrieval_precision": 0.333333,
+          "mean_retrieval_recall": 1.0
+        }
+      }
+    },
     "C-built-in-agent-memory": {
       "runs": 80,
       "success_rate": 0.8,
@@ -1667,6 +1709,13 @@
     },
     "B-plus-multi-query": {
       "tokens_per_success_delta_vs_b": 53.55,
+      "success_rate_delta_vs_b": 0.0,
+      "precision_delta_vs_b": 0.0,
+      "recall_delta_vs_b": 0.0,
+      "verdict": "skip by default; no measured quality gain over B-default in this sample"
+    },
+    "B-reflection-consolidated": {
+      "tokens_per_success_delta_vs_b": 8347.775,
       "success_rate_delta_vs_b": 0.0,
       "precision_delta_vs_b": 0.0,
       "recall_delta_vs_b": 0.0,

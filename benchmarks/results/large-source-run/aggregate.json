@@ -246,6 +246,28 @@
         }
       }
     },
+    "B-reflection-consolidated": {
+      "runs": 12,
+      "success_rate": 1.0,
+      "success_rate_ci95": 0.0,
+      "mean_total_tokens": 1998.166667,
+      "total_tokens_variance": 200.515152,
+      "tokens_per_success": 1998.166667,
+      "mean_retrieval_precision": 0.333333,
+      "mean_retrieval_recall": 1.0,
+      "by_difficulty": {
+        "hard": {
+          "runs": 12,
+          "success_rate": 1.0,
+          "success_rate_ci95": 0.0,
+          "mean_total_tokens": 1998.166667,
+          "total_tokens_variance": 200.515152,
+          "tokens_per_success": 1998.166667,
+          "mean_retrieval_precision": 0.333333,
+          "mean_retrieval_recall": 1.0
+        }
+      }
+    },
     "C-built-in-agent-memory": {
       "runs": 12,
       "success_rate": 1.0,
@@ -428,6 +450,13 @@
       "tokens_per_success_delta_vs_b": 2.0,
       "success_rate_delta_vs_b": 0.0,
       "precision_delta_vs_b": 0.0,
+      "recall_delta_vs_b": 0.0,
+      "verdict": "skip by default; no measured quality gain over B-default in this sample"
+    },
+    "B-reflection-consolidated": {
+      "tokens_per_success_delta_vs_b": 1285.5,
+      "success_rate_delta_vs_b": 0.0,
+      "precision_delta_vs_b": -0.111111,
       "recall_delta_vs_b": 0.0,
       "verdict": "skip by default; no measured quality gain over B-default in this sample"
     }

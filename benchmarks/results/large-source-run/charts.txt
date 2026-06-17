@@ -10,6 +10,7 @@ B-plus-hyde                              895.00 ################################
 B-plus-multi-query                       752.67 ##############################
 B-plus-supersession                      712.67 #############################
 B-plus-temporal-decay                    714.67 #############################
+B-reflection-consolidated               1998.17 ################################################################################
 C-built-in-agent-memory                   76.67 ###
 D-no-memory                                0.00 #
 E-md-okf-index-first                     713.67 #############################
@@ -30,6 +31,7 @@ B-plus-hyde: delta_tokens=Some(182.333333) delta_success=0 delta_precision=-0.05
 B-plus-multi-query: delta_tokens=Some(40.0) delta_success=0 delta_precision=0 delta_recall=0 skip by default; no measured quality gain over B-default in this sample
 B-plus-supersession: delta_tokens=Some(0.0) delta_success=0 delta_precision=0 delta_recall=0 skip by default; no measured quality gain over B-default in this sample
 B-plus-temporal-decay: delta_tokens=Some(2.0) delta_success=0 delta_precision=0 delta_recall=0 skip by default; no measured quality gain over B-default in this sample
+B-reflection-consolidated: delta_tokens=Some(1285.5) delta_success=0 delta_precision=-0.111111 delta_recall=0 skip by default; no measured quality gain over B-default in this sample
 
 Signal arm focused evaluation (ability-tagged tasks only)
 B-plus-entity-overlap [entity-disambiguation] n=0 delta_recall=+0.000 delta_precision=+0.000 → no ability-tagged tasks in this corpus; keeping OFF
