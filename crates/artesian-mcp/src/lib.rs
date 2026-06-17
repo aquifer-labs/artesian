@@ -28,6 +28,7 @@ use flotilla::{
     load_role_definitions, role_summaries, TeamCreate, TeamMessage, TeamMessageKind, TeamRuntime,
     TeamRuntimeConfig, TeamSpawn, TeamTaskAdd, TeamTaskClaim, TeamTaskComplete,
 };
+use headgate::{Headgate, HeadgateConfig, MemoryRecallStore, RecallStore};
 use headrace::{ClaimRequest, FilesTaskStore, NewTask, TaskStatus, TaskStore, TransitionTask};
 use rmcp::{
     handler::server::{
@@ -382,6 +383,29 @@ pub struct ContextRequest {
 pub struct ContextResponse {
     pub index: Option<String>,
     pub hits: Vec<FindHit>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct CommitRequest {
+    pub query: String,
+    pub budget_tokens: Option<usize>,
+    pub recall_limit: Option<usize>,
+    pub min_score: Option<f32>,
+}
+
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct CommitResponse {
+    /// The slot-grouped committed context the agent should read.
+    pub committed_context: String,
+    pub candidates: usize,
+    pub admitted: usize,
+    pub rejected_relevance: usize,
+    pub rejected_redundant: usize,
+    pub rejected_saturated: usize,
+    pub compressed: usize,
+    pub evicted: usize,
+    pub footprint_tokens: usize,
+    pub budget_tokens: usize,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -797,6 +821,42 @@ impl MemoryServer {
         Ok(Json(StoreResponse {
             id: record.id.to_string(),
             node_id: record.node_id,
+        }))
+    }
+
+    #[tool(
+        name = "memory.commit",
+        description = "Run one ACC commit-loop cycle: recall, qualify-gate, and admit relevant \
+non-redundant knowledge into a bounded, schema-governed committed context. Returns the committed \
+context to read plus per-cycle control metrics (admitted, rejected, footprint)."
+    )]
+    pub async fn memory_commit(
+        &self,
+        Parameters(request): Parameters<CommitRequest>,
+    ) -> Result<Json<CommitResponse>, ErrorData> {
+        let recall: Arc<dyn RecallStore> = Arc::new(MemoryRecallStore::new(self.backend.clone()));
+        let config = HeadgateConfig {
+            budget_tokens: request.budget_tokens.unwrap_or(2048),
+            recall_limit: request.recall_limit.unwrap_or(16),
+            min_score: request.min_score.unwrap_or(0.2),
+            ..HeadgateConfig::default()
+        };
+        let mut headgate = Headgate::new(recall, config);
+        let metrics = headgate
+            .cycle(&request.query)
+            .await
+            .map_err(|error| ErrorData::internal_error(error.to_string(), None))?;
+        Ok(Json(CommitResponse {
+            committed_context: headgate.render(),
+            candidates: metrics.candidates,
+            admitted: metrics.admitted,
+            rejected_relevance: metrics.rejected_relevance,
+            rejected_redundant: metrics.rejected_redundant,
+            rejected_saturated: metrics.rejected_saturated,
+            compressed: metrics.compressed,
+            evicted: metrics.evicted,
+            footprint_tokens: metrics.footprint_tokens,
+            budget_tokens: metrics.budget_tokens,
         }))
     }
 

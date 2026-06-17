@@ -192,6 +192,7 @@ dependencies = [
  "artesian-test-support",
  "clap",
  "flotilla",
+ "headgate",
  "headrace",
  "rmcp",
  "schemars",

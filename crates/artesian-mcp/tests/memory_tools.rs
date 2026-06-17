@@ -12,8 +12,8 @@ use aquifer::{
 };
 use artesian_core::{AgentBinding, AgentCatalog, AgentCatalogEntry, AgentModel, Mode, Role};
 use artesian_mcp::{
-    AnchorSetRequest, BindRequest, DelegateRequest, FindRequest, MemoryServer, StoreRequest,
-    TeamCreateRequest, TeamMessageKindRequest, TeamMessageRequest, TeamSpawnRequest,
+    AnchorSetRequest, BindRequest, CommitRequest, DelegateRequest, FindRequest, MemoryServer,
+    StoreRequest, TeamCreateRequest, TeamMessageKindRequest, TeamMessageRequest, TeamSpawnRequest,
     TeamStatusRequest, TeamTaskAddRequest, TeamTaskClaimRequest, TeamTaskCompleteRequest,
     ToolsFindRequest,
 };
@@ -59,6 +59,52 @@ async fn memory_tools_store_and_find_with_files_backend() {
     assert_eq!(found.hits.len(), 1);
     assert_eq!(found.hits[0].node_id, "node:mcp");
     assert_eq!(found.hits[0].content, "MCP memory tool round trip");
+}
+
+#[tokio::test]
+async fn memory_commit_runs_acc_cycle_with_files_backend() {
+    let tempdir = TempDir::new("mcp-commit");
+    let server = MemoryServer::new(tempdir.path());
+
+    for content in [
+        "the team chose Rust for the core crates",
+        "deployments run nightly on kubernetes",
+    ] {
+        server
+            .memory_store(Parameters(StoreRequest {
+                content: content.to_string(),
+                tags: None,
+                node_id: None,
+                scope: None,
+                agent_id: None,
+                session_id: None,
+                task_id: None,
+                user_id: None,
+            }))
+            .await
+            .expect("store should succeed");
+    }
+
+    let response = server
+        .memory_commit(Parameters(CommitRequest {
+            query: "rust deployment".to_string(),
+            budget_tokens: Some(256),
+            recall_limit: None,
+            min_score: None,
+        }))
+        .await
+        .expect("commit should succeed")
+        .0;
+
+    assert!(response.candidates >= 2);
+    assert!(response.admitted >= 1);
+    assert!(response.footprint_tokens <= response.budget_tokens);
+    assert!(
+        response.committed_context.contains("Rust")
+            || response.committed_context.contains("deployment"),
+        "{}",
+        response.committed_context
+    );
 }
 
 #[tokio::test]
