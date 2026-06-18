@@ -466,15 +466,16 @@ enum MemoryCommand {
         backend: Option<BackendArg>,
     },
     /// Run one ACC commit-loop cycle: recall, qualify-gate, and admit into the bounded
-    /// committed context state; print the committed context and the cycle metrics.
+    /// committed context state; print the committed context and the cycle metrics. Defaults
+    /// come from the `[acc]` block of artesian.toml; flags override per invocation.
     Commit {
         query: String,
-        #[arg(long, default_value_t = 2048)]
-        budget_tokens: usize,
-        #[arg(long, default_value_t = 16)]
-        recall_limit: usize,
-        #[arg(long, default_value_t = 0.2)]
-        min_score: f32,
+        #[arg(long)]
+        budget_tokens: Option<usize>,
+        #[arg(long)]
+        recall_limit: Option<usize>,
+        #[arg(long)]
+        min_score: Option<f32>,
         #[arg(long, default_value = DEFAULT_CONFIG)]
         config: PathBuf,
         #[arg(long, default_value = ".artesian")]
@@ -983,6 +984,7 @@ async fn init(options: InitOptions, _non_interactive: bool) -> Result<()> {
         },
         agents,
         coordination: Default::default(),
+        acc: Default::default(),
     };
     let config_path = Path::new(DEFAULT_CONFIG);
     if !config_path.exists() || options.project.is_some() {
@@ -1283,14 +1285,22 @@ async fn memory(command: MemoryCommand) -> Result<()> {
             root,
             backend,
         } => {
+            let acc = load_config(&config)
+                .map(|loaded| loaded.acc)
+                .unwrap_or_default();
+            let mut headgate_config = HeadgateConfig::from(&acc);
+            if let Some(budget) = budget_tokens {
+                headgate_config.budget_tokens = budget;
+            }
+            if let Some(limit) = recall_limit {
+                headgate_config.recall_limit = limit;
+            }
+            if let Some(score) = min_score {
+                headgate_config.min_score = score;
+            }
+            let budget_tokens = headgate_config.budget_tokens;
             let backend = open_backend_for_command(&config, root, backend)?;
             let recall: Arc<dyn RecallStore> = Arc::new(MemoryRecallStore::new(backend));
-            let headgate_config = HeadgateConfig {
-                budget_tokens,
-                recall_limit,
-                min_score,
-                ..HeadgateConfig::default()
-            };
             let mut headgate = Headgate::new(recall, headgate_config);
             let metrics = headgate.cycle(&query).await?;
             println!("# committed context (budget {budget_tokens} tokens)");

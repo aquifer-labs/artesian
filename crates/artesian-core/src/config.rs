@@ -106,13 +106,49 @@ pub struct VerifierCommandConfig {
     pub args: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+/// ACC (Agent Cognitive Compressor) control-plane settings, read by the CLI `memory commit`
+/// command and the MCP `memory.commit` tool. All fields have sensible defaults, so the block
+/// is optional in `artesian.toml`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct AccConfig {
+    /// Token budget for the committed state (the saturation bound).
+    #[serde(default = "default_acc_budget_tokens")]
+    pub budget_tokens: usize,
+    /// How many recall candidates to pull per cycle.
+    #[serde(default = "default_acc_recall_limit")]
+    pub recall_limit: usize,
+    /// Minimum candidate score to qualify (recall-store-relative scale).
+    #[serde(default = "default_acc_min_score")]
+    pub min_score: f32,
+    /// Token-overlap at or above which a candidate is rejected as redundant.
+    #[serde(default = "default_acc_redundancy_threshold")]
+    pub redundancy_threshold: f32,
+    /// Compress an admitted candidate to fit remaining headroom instead of rejecting it.
+    #[serde(default = "default_acc_compress_on_saturation")]
+    pub compress_on_saturation: bool,
+}
+
+impl Default for AccConfig {
+    fn default() -> Self {
+        Self {
+            budget_tokens: default_acc_budget_tokens(),
+            recall_limit: default_acc_recall_limit(),
+            min_score: default_acc_min_score(),
+            redundancy_threshold: default_acc_redundancy_threshold(),
+            compress_on_saturation: default_acc_compress_on_saturation(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct ArtesianConfig {
     pub mode: Mode,
     pub memory: MemoryConfig,
     pub agents: Vec<AgentBinding>,
     #[serde(default)]
     pub coordination: CoordinationConfig,
+    #[serde(default)]
+    pub acc: AccConfig,
 }
 
 impl ArtesianConfig {
@@ -134,6 +170,7 @@ impl ArtesianConfig {
             },
             agents,
             coordination: CoordinationConfig::default(),
+            acc: AccConfig::default(),
         }
     }
 
@@ -151,5 +188,25 @@ fn default_memory_collection() -> String {
 }
 
 fn default_local_rerank_enabled() -> bool {
+    true
+}
+
+fn default_acc_budget_tokens() -> usize {
+    2048
+}
+
+fn default_acc_recall_limit() -> usize {
+    16
+}
+
+fn default_acc_min_score() -> f32 {
+    0.2
+}
+
+fn default_acc_redundancy_threshold() -> f32 {
+    0.8
+}
+
+fn default_acc_compress_on_saturation() -> bool {
     true
 }

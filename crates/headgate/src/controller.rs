@@ -37,6 +37,18 @@ impl Default for HeadgateConfig {
     }
 }
 
+impl From<&artesian_core::AccConfig> for HeadgateConfig {
+    fn from(config: &artesian_core::AccConfig) -> Self {
+        Self {
+            budget_tokens: config.budget_tokens,
+            recall_limit: config.recall_limit,
+            min_score: config.min_score,
+            redundancy_threshold: config.redundancy_threshold,
+            compress_on_saturation: config.compress_on_saturation,
+        }
+    }
+}
+
 /// The ACC commit-loop controller.
 ///
 /// Each [`cycle`](Headgate::cycle) pulls recall candidates from the data plane, runs each

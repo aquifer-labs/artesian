@@ -16,6 +16,7 @@ llm = ["dep:reqwest", "dep:serde_json", "dep:tokio"]
 
 [dependencies]
 aquifer = { path = "../aquifer" }
+artesian-core = { path = "../artesian-core" }
 chrono.workspace = true
 futures-util.workspace = true
 serde.workspace = true

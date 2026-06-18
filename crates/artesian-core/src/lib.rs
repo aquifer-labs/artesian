@@ -14,8 +14,8 @@ pub use agent::{
     AgentSession, AgentUnreachableReason, SpawnRequest,
 };
 pub use config::{
-    AgentBinding, ArtesianConfig, CoordinationConfig, MemoryBackendKind, MemoryConfig, Mode,
-    ResourceQuotaConfig, VerifierCommandConfig,
+    AccConfig, AgentBinding, ArtesianConfig, CoordinationConfig, MemoryBackendKind, MemoryConfig,
+    Mode, ResourceQuotaConfig, VerifierCommandConfig,
 };
 pub use coordination::{Barrier, ResourceQuota, TokenAccounting};
 pub use event::{EventEnvelope, EventSender, EventType};

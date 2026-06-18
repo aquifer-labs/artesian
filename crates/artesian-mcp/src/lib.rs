@@ -17,7 +17,7 @@ use aquifer::{
     VectorMemoryBackend, VectorMemoryConfig,
 };
 use artesian_core::{
-    Agent, AgentBinding, AgentCatalog, AgentMessage, ArtesianConfig, MemoryBackendKind,
+    AccConfig, Agent, AgentBinding, AgentCatalog, AgentMessage, ArtesianConfig, MemoryBackendKind,
     MemoryConfig, Mode, Role, SpawnRequest,
 };
 use artesian_process_agent::{
@@ -79,6 +79,7 @@ pub struct MemoryServer {
     task_root: PathBuf,
     repo_root: PathBuf,
     process_defaults: ProcessDefaults,
+    acc: AccConfig,
     tool_router: ToolRouter<Self>,
 }
 
@@ -116,6 +117,7 @@ impl MemoryServer {
             task_root: PathBuf::from(".artesian").join("tasks"),
             repo_root: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
             process_defaults: ProcessDefaults::default(),
+            acc: AccConfig::default(),
             tool_router: Self::mode_tool_router(Mode::Memory),
         }
     }
@@ -132,6 +134,7 @@ impl MemoryServer {
 
     pub fn with_runtime_config(mut self, config: &ArtesianConfig) -> Self {
         self.mode = config.mode;
+        self.acc = config.acc.clone();
         self.bindings = Arc::new(Mutex::new(config.agents.clone()));
         let mut catalog = fallback_agent_catalog(&config.agents);
         self.task_root = PathBuf::from(&config.memory.root).join("tasks");
@@ -835,12 +838,16 @@ context to read plus per-cycle control metrics (admitted, rejected, footprint)."
         Parameters(request): Parameters<CommitRequest>,
     ) -> Result<Json<CommitResponse>, ErrorData> {
         let recall: Arc<dyn RecallStore> = Arc::new(MemoryRecallStore::new(self.backend.clone()));
-        let config = HeadgateConfig {
-            budget_tokens: request.budget_tokens.unwrap_or(2048),
-            recall_limit: request.recall_limit.unwrap_or(16),
-            min_score: request.min_score.unwrap_or(0.2),
-            ..HeadgateConfig::default()
-        };
+        let mut config = HeadgateConfig::from(&self.acc);
+        if let Some(budget) = request.budget_tokens {
+            config.budget_tokens = budget;
+        }
+        if let Some(limit) = request.recall_limit {
+            config.recall_limit = limit;
+        }
+        if let Some(score) = request.min_score {
+            config.min_score = score;
+        }
         let mut headgate = Headgate::new(recall, config);
         let metrics = headgate
             .cycle(&request.query)

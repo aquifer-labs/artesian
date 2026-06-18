@@ -88,6 +88,7 @@ fn load_runtime_config(args: &Args) -> anyhow::Result<RuntimeConfig> {
             },
             agents: Vec::new(),
             coordination: Default::default(),
+            acc: Default::default(),
         },
     })
 }
