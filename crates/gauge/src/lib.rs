@@ -1,6 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 
-//! Gauge TUI / observability crate placeholder.
+//! Gauge — Artesian observability: the ACC control-quality benchmark (drift / hallucination /
+//! footprint) plus a TUI status placeholder.
+
+pub mod bench;
+
+pub use bench::{
+    demo_case, render_markdown, run_bench, run_default_arm, BenchCase, BenchResult, FactLabel,
+    LabeledFact,
+};
 
 use serde::{Deserialize, Serialize};
 

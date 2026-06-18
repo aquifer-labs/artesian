@@ -24,7 +24,7 @@ This page is the map; each concern has its own doc.
 | `headrace` | task tracking: `TaskStore` (Files/Vector/External), the task DAG |
 | `artesian-mcp` | exposes tools over MCP (`memory.*`, `tools.find`, task tools); the agent integration point |
 | `artesian-cli` / `artesiand` | user entrypoint + optional daemon (init, memory ops, spawn, pooling) |
-| `gauge` | TUI control surface · `sandbox` optional Docker sandbox · `tray` optional macOS tray |
+| `gauge` | observability: the ACC control-quality benchmark (footprint / drift / hallucination, see [acc-bench.md](acc-bench.md)) + TUI placeholder · `sandbox` optional Docker sandbox · `tray` optional macOS tray |
 
 Engine/agent/tracker specifics live behind traits (`VectorStore`, `Agent`, `TaskStore`,
 `MemoryBackend`, `RecallStore`, `QualifyGate`, `Compressor`) so adding a backend, agent, tracker,
