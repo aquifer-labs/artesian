@@ -232,15 +232,28 @@ Question: {question}\nGold: {gold}\nPredicted: {predicted}\nCorrect (yes/no):"
     #[cfg(feature = "vector")]
     pub struct VectorRecall {
         embedder: Arc<dyn aquifer::TextEmbedder>,
+        reranker: Option<Arc<dyn aquifer::Reranker>>,
+        rerank_candidates: usize,
     }
 
     #[cfg(feature = "vector")]
     impl VectorRecall {
-        pub fn new() -> headgate::HeadgateResult<Self> {
+        /// `rerank_candidates > 0` attaches a cross-encoder reranker (BGE) and fuses that many
+        /// candidates, reranking down to the recall limit; `0` keeps plain hybrid-RRF recall.
+        pub fn new(rerank_candidates: usize) -> headgate::HeadgateResult<Self> {
             let embedder = aquifer::FastembedTextEmbedder::new()
                 .map_err(|error| headgate::HeadgateError::Recall(error.to_string()))?;
+            let reranker: Option<Arc<dyn aquifer::Reranker>> = if rerank_candidates > 0 {
+                Some(Arc::new(aquifer::FastembedReranker::new().map_err(
+                    |error| headgate::HeadgateError::Recall(error.to_string()),
+                )?))
+            } else {
+                None
+            };
             Ok(Self {
                 embedder: Arc::new(embedder),
+                reranker,
+                rerank_candidates,
             })
         }
     }
@@ -257,6 +270,8 @@ Question: {question}\nGold: {gold}\nPredicted: {predicted}\nCorrect (yes/no):"
             use headgate::{HeadgateError, MemoryRecallStore};
 
             let embedder = self.embedder.clone();
+            let reranker = self.reranker.clone();
+            let rerank_candidates = self.rerank_candidates;
             let facts = case.facts.clone();
             async move {
                 let dir = std::env::temp_dir().join(format!(
@@ -272,11 +287,15 @@ Question: {question}\nGold: {gold}\nPredicted: {predicted}\nCorrect (yes/no):"
                 let store = aquifer::SqliteVecVectorStore::open(
                     aquifer::SqliteVecVectorStoreConfig::new(dir.join("eval.sqlite3")),
                 )?;
-                let backend = aquifer::VectorMemoryBackend::with_embedder(
+                let mut backend = aquifer::VectorMemoryBackend::with_embedder(
                     store,
-                    aquifer::VectorMemoryConfig::new("eval"),
+                    aquifer::VectorMemoryConfig::new("eval")
+                        .with_rerank_candidates(rerank_candidates),
                     embedder,
                 )?;
+                if let Some(reranker) = reranker {
+                    backend = backend.with_reranker(reranker);
+                }
                 for fact in &facts {
                     backend
                         .store(aquifer::StoreMemory::atom(fact.clone()))

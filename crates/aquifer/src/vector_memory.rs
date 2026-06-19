@@ -136,6 +136,13 @@ pub struct VectorMemoryConfig {
     /// of an oversized parent stays reachable via `get_node` drill-down.
     #[serde(default = "default_parent_context_max_chars")]
     pub parent_context_max_chars: usize,
+
+    /// Reranking candidate pool. When `> query.limit` **and** a reranker is attached
+    /// (`with_reranker`), retrieval fuses this many candidates and reranks them down to
+    /// `query.limit` before small-to-big expansion — surfacing the most relevant facts into
+    /// the same downstream budget. `0` (default) disables reranking.
+    #[serde(default)]
+    pub rerank_candidates: usize,
 }
 
 fn default_episode_threshold() -> f32 {
@@ -169,7 +176,14 @@ impl VectorMemoryConfig {
             parent_context_chars: default_parent_context_chars(),
             parent_context_auto: true,
             parent_context_max_chars: default_parent_context_max_chars(),
+            rerank_candidates: 0,
         }
+    }
+
+    /// Set the reranking candidate pool (`0` disables reranking).
+    pub fn with_rerank_candidates(mut self, candidates: usize) -> Self {
+        self.rerank_candidates = candidates;
+        self
     }
 
     pub fn with_entity_linking(mut self, enabled: bool) -> Self {
@@ -215,6 +229,7 @@ pub struct VectorMemoryBackend<V: VectorStore> {
     store: V,
     config: VectorMemoryConfig,
     embedder: Arc<dyn TextEmbedder>,
+    reranker: Option<Arc<dyn crate::Reranker>>,
     entity_index: Arc<Mutex<EntityIndex>>,
     episode_index: Arc<Mutex<EpisodeIndex>>,
     parent_samples: Arc<Mutex<ParentSizeSamples>>,
@@ -234,10 +249,18 @@ impl<V: VectorStore> VectorMemoryBackend<V> {
             store,
             config,
             embedder,
+            reranker: None,
             entity_index: Arc::new(Mutex::new(EntityIndex::new())),
             episode_index: Arc::new(Mutex::new(EpisodeIndex::new())),
             parent_samples: Arc::new(Mutex::new(ParentSizeSamples::default())),
         })
+    }
+
+    /// Attach a reranker; combined with `config.rerank_candidates > 0`, retrieval reranks a
+    /// larger candidate pool down to the requested limit.
+    pub fn with_reranker(mut self, reranker: Arc<dyn crate::Reranker>) -> Self {
+        self.reranker = Some(reranker);
+        self
     }
 
     pub fn vector_store(&self) -> &V {
@@ -743,8 +766,19 @@ fn build_parent_window(
 impl<V: VectorStore> MemoryBackend for VectorMemoryBackend<V> {
     fn find(&self, query: MemoryQuery) -> BoxFuture<'_, MemoryResult<Vec<SearchHit>>> {
         async move {
+            // When a reranker is attached, fuse a larger candidate pool and rerank it down to
+            // `query.limit` before small-to-big — better precision into the same budget.
+            let rerank_active =
+                self.reranker.is_some() && self.config.rerank_candidates > query.limit;
+            let pool_limit = if rerank_active {
+                self.config.rerank_candidates
+            } else {
+                query.limit
+            };
+            let mut pool_query = query.clone();
+            pool_query.limit = pool_limit;
             let options = RrfOptions {
-                limit: query.limit,
+                limit: pool_limit,
                 ..RrfOptions::default()
             };
 
@@ -753,16 +787,16 @@ impl<V: VectorStore> MemoryBackend for VectorMemoryBackend<V> {
                 || self.config.knowledge_update_supersession
                 || self.config.episode_context_window > 0;
 
-            let raw_hits = if !signals_active {
+            let mut raw_hits = if !signals_active {
                 // Fast path: existing 2-channel hybrid RRF (uses server-side if available).
-                self.hybrid_rrf(query.clone(), query.clone(), options)
+                self.hybrid_rrf(pool_query.clone(), pool_query.clone(), options)
                     .await?
             } else {
                 // Signal path: client-side multi-channel RRF + post-processing.
                 self.ensure_ready().await?;
                 let mut channels: Vec<Vec<SearchHit>> = vec![
-                    self.keyword_hits(query.clone()).await?,
-                    self.vector_hits(query.clone()).await?,
+                    self.keyword_hits(pool_query.clone()).await?,
+                    self.vector_hits(pool_query.clone()).await?,
                 ];
 
                 if self.config.entity_linking {
@@ -770,7 +804,7 @@ impl<V: VectorStore> MemoryBackend for VectorMemoryBackend<V> {
                         .entity_index
                         .lock()
                         .map_err(|e| MemoryError::Database(e.to_string()))?;
-                    let entity_hits = guard.entity_hits(&query.text, query.limit);
+                    let entity_hits = guard.entity_hits(&pool_query.text, pool_limit);
                     if !entity_hits.is_empty() {
                         channels.push(entity_hits);
                     }
@@ -794,11 +828,17 @@ impl<V: VectorStore> MemoryBackend for VectorMemoryBackend<V> {
                     hits = self
                         .expand_episode_context(hits, self.config.episode_context_window)
                         .await?;
-                    hits.truncate(query.limit);
+                    hits.truncate(pool_limit);
                 }
 
                 hits
             };
+
+            if rerank_active {
+                if let Some(reranker) = &self.reranker {
+                    raw_hits = reranker.rerank(&query.text, raw_hits, query.limit)?;
+                }
+            }
 
             // Small-to-big: expand each chunk hit to its bounded parent-section
             // context and collapse same-parent hits. A no-op when disabled or when

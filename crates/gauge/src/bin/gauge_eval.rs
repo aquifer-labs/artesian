@@ -35,6 +35,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut limit: Option<usize> = None;
     let mut llm_command = "benchmarks/comparison/codex-complete".to_string();
     let mut recall = "lexical".to_string();
+    let mut rerank_candidates: usize = 0;
+    let mut recall_limit: Option<usize> = None;
+    let mut budget: Option<usize> = None;
     let mut json = false;
     let rest: Vec<String> = args.collect();
     let mut iter = rest.iter();
@@ -46,6 +49,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     recall = value.clone();
                 }
             }
+            "--rerank" => rerank_candidates = iter.next().and_then(|v| v.parse().ok()).unwrap_or(0),
+            "--recall-limit" => recall_limit = iter.next().and_then(|v| v.parse().ok()),
+            "--budget" => budget = iter.next().and_then(|v| v.parse().ok()),
             "--llm-command" => {
                 if let Some(value) = iter.next() {
                     llm_command = value.clone();
@@ -85,11 +91,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "vector" => {
             #[cfg(feature = "vector")]
             {
-                eprintln!("loading embedder for vector recall...");
-                Box::new(gauge::VectorRecall::new()?)
+                eprintln!(
+                    "loading embedder for vector recall (rerank pool = {rerank_candidates})..."
+                );
+                Box::new(gauge::VectorRecall::new(rerank_candidates)?)
             }
             #[cfg(not(feature = "vector"))]
             {
+                let _ = rerank_candidates;
                 eprintln!("vector recall requires building gauge with --features vector");
                 std::process::exit(2);
             }
@@ -101,10 +110,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     // The qualify-gate's min_score is recall-store-relative: keyword scores are match counts
-    // (≥1), but a vector backend returns small RRF-fused scores, so drop the floor for vector.
+    // (≥1), vector RRF scores are ~0.02, and a cross-encoder reranker emits logits that can be
+    // negative. The backend (and reranker) already rank by relevance, so for vector recall the
+    // gate's relevance floor is turned off entirely — it only dedups and enforces the budget.
     let mut config = HeadgateConfig::default();
     if recall == "vector" {
-        config.min_score = 0.0;
+        config.min_score = f32::MIN;
+    }
+    if let Some(recall_limit) = recall_limit {
+        config.recall_limit = recall_limit;
+    }
+    if let Some(budget) = budget {
+        config.budget_tokens = budget;
     }
 
     // The wrapper reads the prompt from stdin, so no {prompt} placeholder.
