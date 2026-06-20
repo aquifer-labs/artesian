@@ -132,6 +132,22 @@ cargo run -p artesian-cli -- spawn judge gemini
 - `full`: memory, orchestration, and sandboxing.
 - `advanced`: bring your own existing memory or context layout.
 
+## Composes with
+
+Artesian is the **control plane** for agent memory — it decides what enters bounded state, when to
+evict, and how to survive compaction. It is designed to compose with complementary layers rather than
+absorb them:
+
+| Layer | What it does | How it composes |
+|---|---|---|
+| **headroom** | Data-plane compression — shrinks artifact bytes before a fact is qualified | Enable the `headroom` feature in `headgate`; wrap any `Compressor` with `HeadroomCompressor`. headroom runs under the ACC gate; Artesian still controls admission. |
+| **Ollama / LM Studio / mlx_lm.server** | Local LLM inference — zero token cost, private | Named as `provider: "ollama"` / `"lm-studio"` / `"mlx"` in `AccLlmConfig`. Drop-in for the judge and compressor. |
+| **Any OpenAI-compatible endpoint** | Hosted or self-hosted LLM | `provider: "openai-compatible"` + `base_url`. |
+| **Any agent CLI** | Codex / Claude Code / Gemini / opencode | `provider: "command"` — shelled out via stdin/stdout. |
+
+The principle: Artesian owns the *control plane* (what, when, why); you choose the *data plane*
+(how much to compress, which model scores, which store retrieves).
+
 ## License
 
 Artesian is licensed under Apache-2.0. Contributions must include a DCO sign-off.

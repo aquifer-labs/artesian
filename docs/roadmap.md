@@ -172,7 +172,7 @@ the moat. Optional steps (6–7) are in scope. Step 8 is the final documentation
     synthesizes; falls back to majority vote if arbiter fails; fails closed below quorum. 4 council
     tests green with `--features llm`. All workspace tests green; fmt clean.
 
-### Step 7 — headroom as an optional compressor (complementarity, optional, in scope)
+### Step 7 — headroom as an optional compressor (complementarity, optional, in scope) ✓ DONE
 
 - **Goal:** integrate headroom (the data-plane compression layer) as **one optional pluggable
   `Compressor`/transform** under the ACC control plane, and document the complementarity: Artesian
@@ -183,6 +183,13 @@ the moat. Optional steps (6–7) are in scope. Step 8 is the final documentation
 - **Acceptance:** headroom can be enabled as a compressor via config; with it off, behavior is
   unchanged; the README clearly frames "control plane (us) over compression (headroom)" as a
   supported, optional path.
+- **Status:** `headgate::HeadroomCompressor<C>` wraps any inner `Compressor`; the `headroom`
+  feature flag controls compilation; when feature is off, behavior is identical to the inner
+  compressor (zero-overhead passthrough). 3 headroom tests green (passthrough, None endpoint,
+  Some-endpoint fallback). `headgate/Cargo.toml` gains `headroom = []` feature. README gains
+  "Composes with" table covering headroom, Ollama/LM Studio/mlx, OpenAI-compatible, and agent CLI.
+  The seam for the concrete headroom HTTP API is marked with a `NOTE:` comment — will be wired once
+  headroom's public API stabilizes. All workspace tests green; fmt clean.
 
 ### Step 8 — Documentation sweep (refine everything, do not bloat)
 

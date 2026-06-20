@@ -13,6 +13,11 @@ default = []
 # talking to OpenAI-compatible local servers (Ollama / LM Studio / mlx_lm.server)
 # or an agent CLI. The deterministic core needs none of this.
 llm = ["dep:reqwest", "dep:serde_json", "dep:tokio"]
+# headroom data-plane compression adapter. Enables HeadroomCompressor, which wraps any
+# inner Compressor and exposes the seam for integrating headroom (Apache-2.0) as the
+# byte-level compression layer under the ACC control plane.
+# Default build does not depend on headroom; behavior is unchanged when this is off.
+headroom = []
 
 [dependencies]
 aquifer = { path = "../aquifer" }

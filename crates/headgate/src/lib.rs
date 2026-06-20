@@ -36,6 +36,8 @@ mod controller;
 #[cfg(feature = "llm")]
 mod council;
 mod gate;
+#[cfg(feature = "headroom")]
+mod headroom;
 #[cfg(feature = "llm")]
 mod judge;
 #[cfg(feature = "llm")]
@@ -54,6 +56,8 @@ pub use recall::{MemoryRecallStore, RecallItem, RecallStore, StaticRecallStore};
 pub use compressor::LlmCompressor;
 #[cfg(feature = "llm")]
 pub use council::CouncilJudge;
+#[cfg(feature = "headroom")]
+pub use headroom::HeadroomCompressor;
 #[cfg(feature = "llm")]
 pub use judge::{JudgeQualifyGate, JudgeVerdict};
 #[cfg(feature = "llm")]
