@@ -77,6 +77,7 @@ n = 200 (LoCoMo), `--rerank 100 --recall-limit 12 --signals`:
 | LoCoMo | vector (baseline) | 0.370 (74/200) | 534 | 0.039 |
 | LoCoMo | + rerank | 0.475 (95/200) | 662 | 0.049 |
 | LoCoMo | **+ rerank, tuned** | **0.475** (94/198) | **505** | **0.037** |
+| LoCoMo | + rerank, tuned, + HyDE/multi-query | 0.467 (93/199) | 505 | 0.037 |
 | LongMemEval (oracle) | vector (baseline, n=500) | 0.699 (348/498) | 1944 | 0.343 |
 | LongMemEval (oracle) | + rerank (n=500) | 0.691 (344/498) | 1948 | 0.343 |
 | LongMemEval (oracle) | **+ rerank, tuned** (n=200) | **0.698** (139/199) | 2027 | — |
@@ -91,6 +92,10 @@ n = 200 (LoCoMo), `--rerank 100 --recall-limit 12 --signals`:
   directly comparable to the n=500 rows; committed tokens/query are.)
 - The free retrieval signals (`--signals`: entity-linking + episode-context) did not move
   accuracy here; the win is reranking plus the recall-limit trim.
+- **Query expansion did not help** (honest negative). `--hyde --multi-query 3` was flat-to-lower
+  on LoCoMo (0.475 → 0.467, within noise) at the same footprint but ~2× the runtime (extra LLM
+  calls per question). Reranking already surfaces the evidence the paraphrases would; the extra
+  candidate lists add cost, not recall. Kept available behind flags, off by the default.
 
 ### Recall ablation (n = 30, shows the lexical→vector lift)
 
