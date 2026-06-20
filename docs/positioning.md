@@ -2,6 +2,34 @@
 
 # Why Artesian — and how it compares
 
+## The problem: three gaps the field has named but no OSS system closes together
+
+**Gap 1 — Recall ≠ use.** Systems that *saturate* recall benchmarks still fail when memory must
+*guide action*. The question is not *"can you recall attempt 12?"* but *"given attempts 1–46, what
+do you do on 47?"* (MemoryArena, arXiv:2602.16313). Recall is necessary; it is not sufficient.
+Artesian is the first OSS system that benchmarks both recall quality (LoCoMo / LongMemEval) and
+memory-guides-action (the agentic task eval in `gauge`).
+
+**Gap 2 — Shared state without corruption.** Naive file coordination silently corrupts under
+concurrent writes; the moment you add locking, atomic writes, indexing, and metadata discipline
+"you are no longer just using files — you are rebuilding a database" (Oracle, *File Systems vs
+Databases for Agent Memory*). Cursor's flat file-lock model degraded "20 agents to the throughput
+of 2–3" before they moved to optimistic concurrency. The owned, self-hosted version of this does
+not exist in OSS. Artesian provides it: a transactional, multi-writer substrate with per-scope
+isolation enforced by the system, not by convention.
+
+**Gap 3 — Context survival across auto-compaction and disconnect.** Everyone calls memory "the
+durable spine" of a loop, then implements it as "write to a markdown file." No system does real
+self-repair: detect the compaction / reconnect boundary → re-anchor + targeted recall *before* the
+next action. Artesian's `headgate` self-repair hook does this deterministically — see
+[docs/self-repair.md](self-repair.md).
+
+**The one-line positioning:** Artesian is the **memory control plane for agent loops** — the
+qualify-gate, bounded committed state, and drift/footprint measurement that turn a retrieval store
+into durable, action-guiding, owner-controlled memory.
+
+---
+
 ## Memory CONTROL: the wedge
 
 Most agent memory systems solve retrieval: surface relevant records so the agent has more context.

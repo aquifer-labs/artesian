@@ -2,14 +2,28 @@
 
 # Artesian
 
-**Open, local-first memory your AI agents own.** Artesian gives your agents durable, semantic memory —
-the decisions, facts, and context they accumulate across sessions — so a new session or a different
-agent starts with the right context instead of re-reading everything. It is a Rust workspace: a
-non-intrusive memory layer first, with optional orchestration and agent teams on top. MCP-first, with
-pluggable agents and pluggable memory backends.
+**Memory control plane for agent loops.** Long-running agent loops fail not because the model is
+weak — they fail because the agent **forgets**. Artesian is the memory control plane that keeps the
+working context small, high-signal, and survivable across compaction and disconnects, so memory
+**guides the next action** (not just recalls a fact), **compounds** across runs, and is **owned by
+you** — portable across any model and any retrieval store.
 
-It is **not** a cloud memory service you rent, and **not** a code-structure index — it is the
-knowledge layer you keep, in plain files you can read, that plugs into whatever agent you already use.
+**Recall ≠ use.** Systems that saturate recall benchmarks still fail when memory must guide action:
+not *can you recall attempt 12*, but *given attempts 1–46, what do you do on 47?* (MemoryArena,
+arXiv:2602.16313). Artesian is the first OSS memory system that benchmarks both: recall quality
+(LoCoMo / LongMemEval) and memory-guides-action (agentic task eval — see
+[benchmarks](benchmarks/README.md)).
+
+**Own your learning loop.** Swap the model, keep the company veteran. Artesian keeps durable
+knowledge in portable [Open Knowledge Format](docs/backends.md) markdown you can read, edit, and
+`git` — white-box, yours. Not a cloud service you rent, not a black box you can't inspect. Run
+locally with zero infrastructure, no per-write LLM call, nothing leaving your machine.
+
+We are **not** "another memory store" — we are the control plane that sits over one. The
+[Agent Cognitive Compressor](docs/positioning.md) qualify-gate and bounded committed state are the
+trust boundary between raw recall and what the agent actually acts on. Architecture is
+**interface ≠ substrate**: human-readable OKF files as the interface, a transactional,
+semantically-indexed, multi-writer substrate underneath — in one Rust binary.
 
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 &nbsp;status: bootstrap
