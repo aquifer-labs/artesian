@@ -28,7 +28,10 @@ use flotilla::{
     load_role_definitions, role_summaries, TeamCreate, TeamMessage, TeamMessageKind, TeamRuntime,
     TeamRuntimeConfig, TeamSpawn, TeamTaskAdd, TeamTaskClaim, TeamTaskComplete,
 };
-use headgate::{count_tokens, Headgate, HeadgateConfig, MemoryRecallStore, RecallStore};
+use headgate::{
+    count_tokens, Headgate, HeadgateConfig, LifecycleEntry, MemoryRecallStore, RecallStore,
+    SnapshotEntry, WorkingContextBundle, WorkingContextSnapshot,
+};
 use headrace::{
     ClaimRequest, CommandVerifier, FilesTaskStore, NewTask, TaskKind, TaskStore, VectorTaskStore,
     Verifier, VerifierGate,
@@ -555,13 +558,33 @@ enum KitCommand {
         #[arg(long, default_value = ".artesian")]
         root: PathBuf,
     },
-    /// Export the kit as a single portable markdown bundle (stdout or --output file).
+    /// Export the kit: a single markdown file (default), or a portable working-context bundle
+    /// directory (`--format bundle`) another runtime can import to resume.
     Export {
         #[arg(long, default_value = ".artesian")]
         root: PathBuf,
         #[arg(long)]
         output: Option<PathBuf>,
+        #[arg(long, value_enum, default_value_t = KitFormat::Markdown)]
+        format: KitFormat,
     },
+    /// Import a portable working-context bundle directory: validate it and print the committed
+    /// working context an agent would resume from.
+    Import {
+        /// Bundle directory written by `kit export --format bundle`.
+        input: PathBuf,
+        #[arg(long, default_value = ".artesian")]
+        root: PathBuf,
+    },
+}
+
+/// Output shape for `kit export`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum KitFormat {
+    /// A single human-readable markdown file (anchors concatenated).
+    Markdown,
+    /// A portable working-context bundle directory (manifest + snapshot + lifecycle log).
+    Bundle,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -1508,34 +1531,130 @@ This kit works identically in Codex and Claude Code: the MCP tools (`memory.anch
                 println!("\n=== last anchor ===\n(none set)");
             }
         }
-        KitCommand::Export { root, output } => {
-            let kit_dir = root.join("kit");
-            let mut bundle = String::new();
-            for name in &["index.md", "vision.md", "agents.md"] {
-                let path = kit_dir.join(name);
-                if path.exists() {
-                    bundle.push_str(&format!("# {name}\n\n"));
-                    bundle.push_str(&fs::read_to_string(&path)?);
-                    bundle.push_str("\n\n---\n\n");
+        KitCommand::Export {
+            root,
+            output,
+            format,
+        } => match format {
+            KitFormat::Markdown => {
+                let kit_dir = root.join("kit");
+                let mut bundle = String::new();
+                for name in &["index.md", "vision.md", "agents.md"] {
+                    let path = kit_dir.join(name);
+                    if path.exists() {
+                        bundle.push_str(&format!("# {name}\n\n"));
+                        bundle.push_str(&fs::read_to_string(&path)?);
+                        bundle.push_str("\n\n---\n\n");
+                    }
+                }
+                let anchor_store = AnchorAnchorStore::new(&root);
+                if let Some(anchor) = anchor_store.get().await? {
+                    bundle.push_str("# last-anchor\n\n");
+                    bundle.push_str(&serde_json::to_string_pretty(&anchor)?);
+                    bundle.push('\n');
+                }
+                match output {
+                    Some(path) => {
+                        fs::write(&path, &bundle)
+                            .with_context(|| format!("write kit bundle to {}", path.display()))?;
+                        println!("kit exported to {}", path.display());
+                    }
+                    None => print!("{bundle}"),
                 }
             }
-            let anchor_store = AnchorAnchorStore::new(&root);
-            if let Some(anchor) = anchor_store.get().await? {
-                bundle.push_str("# last-anchor\n\n");
-                bundle.push_str(&serde_json::to_string_pretty(&anchor)?);
-                bundle.push('\n');
+            KitFormat::Bundle => {
+                let kit_dir = root.join("kit");
+                let anchor = AnchorAnchorStore::new(&root).get().await?;
+                let wc_bundle = build_kit_bundle(&kit_dir, anchor.as_ref())?;
+                wc_bundle
+                    .validate()
+                    .context("built an invalid working-context bundle")?;
+                let out = output.context("--output <dir> is required for --format bundle")?;
+                wc_bundle.write_dir(&out).with_context(|| {
+                    format!("write working-context bundle to {}", out.display())
+                })?;
+                println!(
+                    "working-context bundle written to {} ({} entries, {} tokens)",
+                    out.display(),
+                    wc_bundle.snapshot.entries.len(),
+                    wc_bundle.snapshot.token_count
+                );
             }
-            match output {
-                Some(path) => {
-                    fs::write(&path, &bundle)
-                        .with_context(|| format!("write kit bundle to {}", path.display()))?;
-                    println!("kit exported to {}", path.display());
-                }
-                None => print!("{bundle}"),
-            }
+        },
+        KitCommand::Import { input, root: _root } => {
+            let wc_bundle = WorkingContextBundle::read_dir(&input)
+                .with_context(|| format!("read/validate bundle at {}", input.display()))?;
+            println!(
+                "=== bundle: {} v{} (units: {}) ===",
+                wc_bundle.manifest.format,
+                wc_bundle.manifest.version,
+                wc_bundle.manifest.unit_source
+            );
+            println!(
+                "committed working context: {} entries, {} / {} tokens, {} lifecycle event(s)\n",
+                wc_bundle.snapshot.entries.len(),
+                wc_bundle.snapshot.token_count,
+                wc_bundle.snapshot.budget_tokens,
+                wc_bundle.lifecycle.len()
+            );
+            println!("{}", wc_bundle.snapshot.render_markdown());
         }
     }
     Ok(())
+}
+
+/// Build a portable working-context bundle from the on-disk kit (anchors + last session anchor).
+/// This is the reference path that turns Artesian's loop memory into the portable layer other
+/// runtimes can import; a live ACC session can produce a richer snapshot via
+/// `WorkingContextSnapshot::from_ccs`.
+fn build_kit_bundle(
+    kit_dir: &Path,
+    anchor: Option<&SessionAnchor>,
+) -> Result<WorkingContextBundle> {
+    let mut entries: Vec<SnapshotEntry> = Vec::new();
+    for (name, id, slot) in [
+        ("vision.md", "vision", "decision"),
+        ("agents.md", "agents", "constraint"),
+        ("index.md", "index", "task-state"),
+    ] {
+        let path = kit_dir.join(name);
+        if path.exists() {
+            let content = fs::read_to_string(&path)
+                .with_context(|| format!("read {}", path.display()))?
+                .trim()
+                .to_string();
+            if !content.is_empty() {
+                entries.push(SnapshotEntry::now(id, slot, content, 1.0));
+            }
+        }
+    }
+    if let Some(anchor) = anchor {
+        let task = anchor.current_task.trim();
+        if !task.is_empty() {
+            entries.push(SnapshotEntry::now("anchor-task", "task-state", task, 1.0));
+        }
+        let next = anchor.next_step.trim();
+        if !next.is_empty() {
+            entries.push(SnapshotEntry::now("anchor-next", "task-state", next, 1.0));
+        }
+    }
+    let token_count = entries.iter().map(|entry| entry.tokens).sum();
+    let lifecycle = entries
+        .iter()
+        .map(|entry| LifecycleEntry::commit(entry.id.as_str()))
+        .collect();
+    let snapshot = WorkingContextSnapshot {
+        schema: vec![
+            "decision".to_string(),
+            "constraint".to_string(),
+            "fact".to_string(),
+            "task-state".to_string(),
+        ],
+        budget_tokens: 4096,
+        token_count,
+        entries,
+    };
+    Ok(WorkingContextBundle::new(snapshot, lifecycle))
 }
 
 async fn backfill(

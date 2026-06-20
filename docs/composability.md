@@ -56,4 +56,16 @@ replace — what you already run:
   of a large artifact before it is qualified.
 - **Agents:** any MCP-speaking agent (Codex, Claude Code, Zed, opencode).
 
+## Portability — resume, not just recall
+
+Artesian can export its committed *working context* (what the agent holds in force now) plus a
+lifecycle log as a portable [working-context bundle](kit-format.md), so another runtime can *resume*
+the loop instead of re-deriving it. The bundle owns only that layer and references your unit store —
+it composes with the memory-unit formats you already use rather than replacing them.
+
+```sh
+artesian kit export --format bundle --output ./wc
+artesian kit import ./wc
+```
+
 Take one brick or the whole set. That is the point.

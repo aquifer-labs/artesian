@@ -30,6 +30,7 @@
 //! # }
 //! ```
 
+mod bundle;
 mod ccs;
 mod compressor;
 mod controller;
@@ -45,6 +46,11 @@ mod llm;
 mod metrics;
 mod recall;
 
+pub use bundle::{
+    BundleError, BundleManifest, Decision, LifecycleEntry, LifecycleReason, Resolution,
+    SnapshotEntry, Status, WorkingContextBundle, WorkingContextSnapshot, BUNDLE_FORMAT,
+    BUNDLE_VERSION,
+};
 pub use ccs::{CcsSchema, CommittedContextState, CommittedEntry};
 pub use compressor::{Compressor, ExtractiveCompressor, NoopCompressor};
 pub use controller::{Headgate, HeadgateConfig};

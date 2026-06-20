@@ -12,7 +12,7 @@ default = []
 # LLM-backed ACC components: the judge-eval qualify-gate and LLM compressors,
 # talking to OpenAI-compatible local servers (Ollama / LM Studio / mlx_lm.server)
 # or an agent CLI. The deterministic core needs none of this.
-llm = ["dep:reqwest", "dep:serde_json", "dep:tokio"]
+llm = ["dep:reqwest", "dep:tokio"]
 # headroom data-plane compression adapter. Enables HeadroomCompressor, which wraps any
 # inner Compressor and exposes the seam for integrating headroom (Apache-2.0) as the
 # byte-level compression layer under the ACC control plane.
@@ -27,8 +27,8 @@ futures-util.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 tiktoken-rs.workspace = true
+serde_json.workspace = true
 reqwest = { workspace = true, optional = true }
-serde_json = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true }
 
 [dev-dependencies]
