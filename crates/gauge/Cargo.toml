@@ -29,6 +29,10 @@ path = "src/bin/gauge_bench.rs"
 name = "gauge-eval"
 path = "src/bin/gauge_eval.rs"
 
+[[bin]]
+name = "gauge-agent"
+path = "src/bin/gauge_agent.rs"
+
 [dev-dependencies]
 futures-util.workspace = true
 

@@ -1,6 +1,15 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 
-# Competitor-comparable QA benchmark (LoCoMo / LongMemEval, vs mem0)
+# Artesian retrieval + agentic benchmark
+
+Two complementary benchmarks: **recall quality** (LoCoMo / LongMemEval, comparable to mem0) and
+**memory-guides-action** (agentic task eval — does the agent *do the right thing* given accumulated
+memory?). Recall ≠ use (MemoryArena, arXiv:2602.16313): the agentic eval is the one the field
+has been missing.
+
+---
+
+## Part 1 — Competitor-comparable QA benchmark (LoCoMo / LongMemEval, vs mem0)
 
 This harness produces the **Artesian** side of a head-to-head on the two public agent-memory
 QA datasets the literature reports — **LoCoMo** and **LongMemEval** — in the same shape mem0
@@ -132,3 +141,80 @@ footprint_ratio:     0.797
 ```
 
 This only proves the harness runs end to end; real numbers come from the full datasets above.
+
+---
+
+## Part 2 — Agentic task eval (memory-guides-action)
+
+### Why this benchmark exists
+
+Recall benchmarks (LoCoMo / LongMemEval) test whether the agent can *retrieve* a fact. They do not
+test whether the accumulated memory causes the agent to *act differently and better* — the crucial
+question for long-running loops. MemoryArena (arXiv:2602.16313) calls this the gap: "not *can you
+recall attempt 12*, but *given attempts 1–46, what do you do on 47*?"
+
+Artesian is the first OSS memory system to benchmark both sides. The agentic eval closes the gap.
+
+### Protocol
+
+Each `AgentTask` contains:
+- **Sessions** (ordered): facts / conversation turns accumulated across N prior runs.
+- **Query**: posed after all sessions — "given everything you know, what is your next step?"
+- **Correct action** + **distractor actions**: plausible alternatives the agent should *not* choose
+  (they are plausible without the evidence but wrong given it).
+
+The runner:
+1. Loads all session facts into a fresh recall store (lexical by default; substitute vector for
+   production runs).
+2. Runs one ACC cycle to build the committed context.
+3. Asks the LLM to pick the correct action from the presented choices.
+4. Grades: correct = chose the right action. No partial credit.
+
+### Honesty notes
+
+- Distractor actions are designed to be plausible without memory (random guessing would score
+  ~25–33%); the accuracy floor without memory is explicit.
+- Fixture tasks are hand-authored, not data-set-mined. MemoryArena's full dataset
+  (arXiv:2602.16313) is the external gold standard; a same-protocol head-to-head on that
+  dataset is future work.
+- Report the judge model, recall strategy, and n alongside any published accuracy number.
+
+### Scale lane
+
+Memory guidance is weakest at scale ("almost nobody benchmarks 1M–10M tokens" — roadmap). The
+`ScaleLane` field on each task classifies it by total accumulated fact tokens:
+
+| Lane | Token range | Notes |
+|---|---|---|
+| Small | < 10k | typical toy / smoke test |
+| Medium | 10k – 100k | multi-session realistic history |
+| Large | 100k – 1M | long-running project memory |
+| XLarge | 1M – 10M | the honest gap the field misses |
+| Extreme | > 10M | future |
+
+Report accuracy per lane to show degradation honestly.
+
+### Running
+
+```shell
+# Build with llm feature; the answering LLM is reached via codex-complete by default.
+cargo build -p gauge --features llm --bin gauge-agent
+
+./target/debug/gauge-agent benchmarks/comparison/samples/agent-smoke.json
+./target/debug/gauge-agent benchmarks/comparison/samples/agent-smoke.json --json
+```
+
+### Smoke test (not a benchmark result)
+
+A 2-task hand-authored fixture (`samples/agent-smoke.json`) validates the pipeline:
+
+```
+dataset:               agent-smoke
+tasks:                 2
+graded:                2
+accuracy:              (depends on judge — perfect memory should yield 1.000)
+mean tokens/query:     (small tasks — low token count expected)
+```
+
+This only proves the harness runs end to end; real numbers require running against the LLM
+with a real recall strategy.

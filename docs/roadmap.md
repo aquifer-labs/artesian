@@ -94,7 +94,7 @@ the moat. Optional steps (6–7) are in scope. Step 8 is the final documentation
 - **Status:** README headline → "Memory control plane for agent loops"; positioning.md leads with
   the three gaps (recall≠use / shared-state-corruption / context-survival) before the ACC section.
 
-### Step 2 — Measure *use*, not just recall (agentic benchmark)
+### Step 2 — Measure *use*, not just recall (agentic benchmark) ✓ DONE
 
 - **Goal:** become the only OSS memory system that benchmarks *memory-guides-action*. Keep
   LoCoMo/LongMemEval as the recall floor; add a MemoryArena-style interdependent multi-session task
@@ -103,6 +103,10 @@ the moat. Optional steps (6–7) are in scope. Step 8 is the final documentation
 - **Where:** `gauge` (eval), `benchmarks/comparison/`.
 - **Acceptance:** a reproducible agentic-task score reported alongside recall; methodology +
   honesty notes in `benchmarks/comparison/README.md`; mem0/competitors cited only from their papers.
+- **Status:** `gauge/src/agentic.rs` — `AgentTask`, `TaskSession`, `ScaleLane`, `run_agentic_eval`;
+  `gauge-agent` binary; fixture at `benchmarks/comparison/samples/agent-smoke.json`;
+  `benchmarks/comparison/README.md` extended with Part 2 agentic methodology + scale lane + honesty
+  notes. 15/15 tests green with `--features llm`.
 
 ### Step 3 — Self-repair (survive compaction *and* disconnect)
 

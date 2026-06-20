@@ -1,0 +1,68 @@
+[
+  {
+    "id": "agent-smoke-1",
+    "sessions": [
+      {
+        "id": "session-1",
+        "facts": [
+          "user: I tried using the REST endpoint /api/v1/data but got a 401 error.",
+          "assistant: The 401 means authentication failed. Did you include the API key header?",
+          "user: I used X-Api-Key but it still failed.",
+          "assistant: That endpoint requires Authorization: Bearer <token>, not X-Api-Key."
+        ]
+      },
+      {
+        "id": "session-2",
+        "facts": [
+          "user: I switched to Authorization: Bearer and the /api/v1/data call succeeded.",
+          "assistant: Great. The data endpoint returns a JSON object with a `results` array.",
+          "user: I see the results array. Now I need to write those results to our database.",
+          "assistant: Use a bulk INSERT with ON CONFLICT DO NOTHING for idempotency."
+        ]
+      },
+      {
+        "id": "session-3",
+        "facts": [
+          "user: The bulk INSERT is working. But we are getting duplicate rows for records where status changed.",
+          "assistant: Change ON CONFLICT DO NOTHING to ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status.",
+          "user: Done. Duplicates are resolved. The pipeline ran cleanly for 1000 records."
+        ]
+      }
+    ],
+    "query": "Given the history of this integration project, what is the correct next step?",
+    "correct_action": "Run the pipeline against the full production dataset and monitor for status update conflicts",
+    "distractor_actions": [
+      "Switch back to the X-Api-Key header to simplify auth",
+      "Replace the bulk INSERT with individual row inserts for safety",
+      "Revert to ON CONFLICT DO NOTHING to avoid overwriting status changes"
+    ]
+  },
+  {
+    "id": "agent-smoke-2",
+    "sessions": [
+      {
+        "id": "session-1",
+        "facts": [
+          "We benchmarked approach A (lexical recall) and got accuracy 0.103 on LoCoMo.",
+          "We benchmarked approach B (vector recall) and got accuracy 0.276 on LoCoMo.",
+          "Vector recall is significantly better than lexical on this dataset."
+        ]
+      },
+      {
+        "id": "session-2",
+        "facts": [
+          "We added reranking on top of vector recall and accuracy jumped to 0.475 (+28%).",
+          "Query expansion (HyDE + multi-query) added no accuracy but doubled runtime.",
+          "The decision was made to use reranking and not query expansion for the default pipeline."
+        ]
+      }
+    ],
+    "query": "What retrieval configuration should we use for the next evaluation run?",
+    "correct_action": "vector recall with reranking, without query expansion",
+    "distractor_actions": [
+      "lexical recall (fastest, no dependencies)",
+      "vector recall with HyDE and multi-query expansion",
+      "vector recall without reranking to reduce latency"
+    ]
+  }
+]
