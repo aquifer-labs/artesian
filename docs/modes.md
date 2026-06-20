@@ -31,6 +31,36 @@ For power users who already have a memory layout. Point Artesian at an **existin
 rewriting your schema: it reads your structure, serves retrieval over it, and adds Artesian
 capabilities on top. You keep full control of your data model; Artesian meets it where it is.
 
+## Loop memory kit (portable across agents)
+
+The **loop memory kit** is the anchor-set bundle that makes Artesian portable across Codex and
+Claude Code (or any MCP-compatible agent). It lives in `.artesian/kit/` and contains:
+
+- `vision.md` — project purpose, goals, current phase.
+- `agents.md` — agent roster, roles, capabilities.
+- `kit/index.md` — manifest + session-start recipe.
+
+```sh
+# Create the kit (once per project):
+artesian kit init --vision "Build a memory control plane for agent loops"
+
+# At session start (any agent, any model):
+artesian memory anchor recover    # restore last anchor + targeted recall
+artesian kit status               # print vision + anchor summary
+
+# Export the full kit as a single markdown bundle:
+artesian kit export               # stdout
+artesian kit export --output kit-bundle.md
+```
+
+Over MCP the same kit is available as:
+- `memory.kit.get` — returns vision, agents.md, and last anchor in one call (load at session start).
+- `memory.kit.set` — updates the vision (call when the phase changes).
+
+The kit works identically in Codex and Claude Code. Swap the model; keep the kit. This is the
+"own your learning loop" principle: the company-veteran context travels with the project, not
+with the agent.
+
 ---
 
 Switching modes never requires re-architecting your project. Start in `memory` mode for the token

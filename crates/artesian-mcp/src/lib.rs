@@ -471,6 +471,20 @@ pub struct AnchorPayload {
     pub updated_at: String,
 }
 
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct KitGetResponse {
+    pub vision: Option<String>,
+    pub agents: Option<String>,
+    pub anchor: Option<AnchorPayload>,
+    pub kit_initialized: bool,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct KitSetRequest {
+    /// Updated vision content to write to kit/vision.md.
+    pub vision: Option<String>,
+}
+
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ToolsFindRequest {
     pub task: String,
@@ -916,6 +930,88 @@ context to read plus per-cycle control metrics (admitted, rejected, footprint)."
             .map_err(|error| ErrorData::internal_error(error.to_string(), None))?;
         Ok(Json(AnchorGetResponse {
             anchor: Some(AnchorPayload::from(anchor)),
+        }))
+    }
+
+    #[tool(
+        name = "memory.kit.get",
+        description = "Return the loop memory kit: vision.md, agents.md, and last session anchor. \
+Load at session start so the agent has immediate context without re-reading all memory."
+    )]
+    pub async fn memory_kit_get(&self) -> Result<Json<KitGetResponse>, ErrorData> {
+        let kit_root = self
+            .okf_root
+            .as_deref()
+            .map(|r| r.join("kit"))
+            .or_else(|| Some(std::path::PathBuf::from(".artesian").join("kit")));
+        let kit_root = kit_root.unwrap();
+
+        let vision = kit_root
+            .join("vision.md")
+            .exists()
+            .then(|| std::fs::read_to_string(kit_root.join("vision.md")).ok())
+            .flatten();
+        let agents = kit_root
+            .join("agents.md")
+            .exists()
+            .then(|| std::fs::read_to_string(kit_root.join("agents.md")).ok())
+            .flatten();
+        let kit_initialized = vision.is_some() || agents.is_some();
+
+        let anchor = if let Some(store) = &self.anchor_store {
+            store.get().await.ok().flatten().map(AnchorPayload::from)
+        } else {
+            None
+        };
+
+        Ok(Json(KitGetResponse {
+            vision,
+            agents,
+            anchor,
+            kit_initialized,
+        }))
+    }
+
+    #[tool(
+        name = "memory.kit.set",
+        description = "Update the loop memory kit vision (writes kit/vision.md). \
+Call when the project vision or current phase changes."
+    )]
+    pub async fn memory_kit_set(
+        &self,
+        Parameters(request): Parameters<KitSetRequest>,
+    ) -> Result<Json<KitGetResponse>, ErrorData> {
+        let kit_root = self
+            .okf_root
+            .as_deref()
+            .map(|r| r.join("kit"))
+            .or_else(|| Some(std::path::PathBuf::from(".artesian").join("kit")));
+        let kit_root = kit_root.unwrap();
+
+        std::fs::create_dir_all(&kit_root)
+            .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
+
+        if let Some(vision) = &request.vision {
+            std::fs::write(kit_root.join("vision.md"), vision)
+                .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
+        }
+
+        // Re-read and return the current kit state.
+        let vision = kit_root
+            .join("vision.md")
+            .exists()
+            .then(|| std::fs::read_to_string(kit_root.join("vision.md")).ok())
+            .flatten();
+        let agents = kit_root
+            .join("agents.md")
+            .exists()
+            .then(|| std::fs::read_to_string(kit_root.join("agents.md")).ok())
+            .flatten();
+        Ok(Json(KitGetResponse {
+            kit_initialized: vision.is_some(),
+            vision,
+            agents,
+            anchor: None,
         }))
     }
 

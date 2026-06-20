@@ -189,6 +189,12 @@ enum Command {
         #[command(subcommand)]
         command: OkfCommand,
     },
+    /// Loop memory kit: initialize and export the anchor-set bundle (vision / prompt / memory /
+    /// skills), portable across Codex and Claude Code.
+    Kit {
+        #[command(subcommand)]
+        command: KitCommand,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -523,6 +529,31 @@ enum AnchorCommand {
     },
 }
 
+#[derive(Debug, Subcommand)]
+enum KitCommand {
+    /// Initialize the loop memory kit in the memory root: writes vision.md, agents.md, and
+    /// kit/index.md so a new session or a different model can load context in one step.
+    Init {
+        #[arg(long, default_value = ".artesian")]
+        root: PathBuf,
+        /// One-line description of the project vision (written to vision.md).
+        #[arg(long)]
+        vision: Option<String>,
+    },
+    /// Print the current kit: vision summary + most-recent session anchor.
+    Status {
+        #[arg(long, default_value = ".artesian")]
+        root: PathBuf,
+    },
+    /// Export the kit as a single portable markdown bundle (stdout or --output file).
+    Export {
+        #[arg(long, default_value = ".artesian")]
+        root: PathBuf,
+        #[arg(long)]
+        output: Option<PathBuf>,
+    },
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 enum BackendArg {
     Files,
@@ -673,6 +704,7 @@ async fn main() -> Result<()> {
             collection,
         } => snapshot(config, output_dir, collection).await,
         Command::Okf { command } => okf(command),
+        Command::Kit { command } => kit(command).await,
     }
 }
 
@@ -1367,6 +1399,125 @@ async fn anchor(command: AnchorCommand) -> Result<()> {
             let recovered =
                 recover_after_compaction(&anchor_store, backend.as_ref(), limit).await?;
             println!("{}", serde_json::to_string_pretty(&recovered)?);
+        }
+    }
+    Ok(())
+}
+
+async fn kit(command: KitCommand) -> Result<()> {
+    match command {
+        KitCommand::Init { root, vision } => {
+            let kit_dir = root.join("kit");
+            fs::create_dir_all(&kit_dir).context("create kit directory")?;
+
+            let vision_text = vision
+                .as_deref()
+                .unwrap_or("(describe the project vision here)");
+            let vision_path = kit_dir.join("vision.md");
+            if !vision_path.exists() {
+                fs::write(
+                    &vision_path,
+                    format!(
+                        "<!-- SPDX-License-Identifier: Apache-2.0 -->\n\n\
+# Vision\n\n{vision_text}\n\n\
+## Goals\n\n- (list goals here)\n\n\
+## Current Phase\n\n- (describe current phase)\n"
+                    ),
+                )
+                .context("write vision.md")?;
+            }
+
+            let agents_path = kit_dir.join("agents.md");
+            if !agents_path.exists() {
+                fs::write(
+                    &agents_path,
+                    "<!-- SPDX-License-Identifier: Apache-2.0 -->\n\n\
+# Agent Roster\n\n\
+| Role | Agent | Capabilities |\n\
+|---|---|---|\n\
+| master | (name) | orchestrate, plan |\n\
+| worker | (name) | implement, test |\n\
+| judge  | (name) | verify, review |\n",
+                )
+                .context("write agents.md")?;
+            }
+
+            let index_path = kit_dir.join("index.md");
+            fs::write(
+                &index_path,
+                "<!-- SPDX-License-Identifier: Apache-2.0 -->\n\n\
+# Loop Memory Kit\n\n\
+This kit is the portable anchor-set for this agent loop. Load it at the start of any session.\n\n\
+## Contents\n\n\
+- [vision.md](vision.md) — project purpose, goals, current phase\n\
+- [agents.md](agents.md) — agent roster, roles, capabilities\n\n\
+## At session start\n\n\
+```sh\n\
+artesian memory anchor recover   # restore last anchor + targeted recall\n\
+artesian kit status              # print vision + anchor summary\n\
+```\n\n\
+## Portable across agents\n\n\
+This kit works identically in Codex and Claude Code: the MCP tools (`memory.anchor.get`,\n\
+`memory.find`) are agent-agnostic. Swap the model; keep the kit.\n",
+            )
+            .context("write kit/index.md")?;
+
+            println!("kit initialized at {}", kit_dir.display());
+            println!("  {}", vision_path.display());
+            println!("  {}", agents_path.display());
+            println!("  {}", index_path.display());
+        }
+        KitCommand::Status { root } => {
+            let kit_dir = root.join("kit");
+            let index_path = kit_dir.join("index.md");
+            let vision_path = kit_dir.join("vision.md");
+            if vision_path.exists() {
+                let text = fs::read_to_string(&vision_path)?;
+                let summary: String = text.lines().take(5).collect::<Vec<_>>().join("\n");
+                println!("=== vision ===\n{summary}");
+            } else {
+                println!("kit not initialized — run: artesian kit init");
+                return Ok(());
+            }
+            if index_path.exists() {
+                println!("\n=== kit index ===");
+                println!("{}", index_path.display());
+            }
+            let anchor_store = AnchorAnchorStore::new(&root);
+            if let Some(anchor) = anchor_store.get().await? {
+                println!(
+                    "\n=== last anchor ===\ntask: {}\nnext: {}",
+                    anchor.current_task, anchor.next_step
+                );
+            } else {
+                println!("\n=== last anchor ===\n(none set)");
+            }
+        }
+        KitCommand::Export { root, output } => {
+            let kit_dir = root.join("kit");
+            let mut bundle = String::new();
+            for name in &["index.md", "vision.md", "agents.md"] {
+                let path = kit_dir.join(name);
+                if path.exists() {
+                    bundle.push_str(&format!("# {name}\n\n"));
+                    bundle.push_str(&fs::read_to_string(&path)?);
+                    bundle.push_str("\n\n---\n\n");
+                }
+            }
+            let anchor_store = AnchorAnchorStore::new(&root);
+            if let Some(anchor) = anchor_store.get().await? {
+                bundle.push_str("# last-anchor\n\n");
+                bundle.push_str(&serde_json::to_string_pretty(&anchor)?);
+                bundle.push('\n');
+            }
+            match output {
+                Some(path) => {
+                    fs::write(&path, &bundle)
+                        .with_context(|| format!("write kit bundle to {}", path.display()))?;
+                    println!("kit exported to {}", path.display());
+                }
+                None => print!("{bundle}"),
+            }
         }
     }
     Ok(())

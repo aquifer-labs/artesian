@@ -136,7 +136,7 @@ the moat. Optional steps (6–7) are in scope. Step 8 is the final documentation
   corruption, exact tenant isolation) — all 7 concurrency tests green. `docs/concurrency.md`
   extended with the transactional model and acceptance evidence.
 
-### Step 5 — Loop-native packaging (portable across agents)
+### Step 5 — Loop-native packaging (portable across agents) ✓ DONE
 
 - **Goal:** ship a "loop memory kit" — the stabilized anchor set (vision / per-iteration prompt /
   accumulated memory / skills) + MCP wiring, **portable across Codex and Claude Code** (the vendor
@@ -144,6 +144,10 @@ the moat. Optional steps (6–7) are in scope. Step 8 is the final documentation
 - **Where:** `artesian-cli` (`init`/kit), `artesian-mcp`, `docs/modes.md`.
 - **Acceptance:** a single command wires Artesian memory into a Codex *and* a Claude Code loop with
   identical behavior; the loop's run N reads what runs 1..N-1 committed.
+- **Status:** `artesian kit init/status/export` CLI subcommand writes `.artesian/kit/` bundle
+  (vision.md / agents.md / index.md); `memory.kit.get` and `memory.kit.set` MCP tools serve and
+  update the kit over the model context protocol; `docs/modes.md` documents the kit with CLI + MCP
+  examples. All 100% workspace tests green; fmt clean.
 
 ### Step 6 — Rust storage moat + local/council compressor (optional, in scope)
 
