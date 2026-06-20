@@ -59,7 +59,10 @@ per your config and connect a project, non-destructively). Why Artesian vs other
 
 ## Status
 
-This repository is in bootstrap. The working path is `memory` mode with local Files or SqliteVec backends, optional Qdrant integration, and an MCP server exposing `memory.find` and `memory.store`.
+The core `memory` mode is working end-to-end: Files and SqliteVec backends, optional Qdrant
+integration, an ACC control plane (qualify-gate, bounded CCS, council judge, local LLM providers),
+int8 scalar quantization (4× storage reduction), transactional multi-writer substrate, loop memory
+kit, self-repair after compaction, and an MCP server exposing the full memory API.
 
 ## Install
 
@@ -118,9 +121,10 @@ cargo run -p artesian-cli -- spawn judge gemini
 ## Workspace
 
 - `artesian-core`: role, queue, config, and agent adapter traits.
-- `aquifer`: memory trait, Files backend, generic vector memory backend, SqliteVec vector store, RRF seam, and feature-gated Qdrant vector store.
+- `aquifer`: memory trait, Files backend, generic vector memory backend, SqliteVec vector store (with int8 quantization), RRF seam, feature-gated Qdrant and pgvector backends, transactional multi-writer commit-log.
+- `headgate`: ACC control plane — qualify-gate, bounded CCS, commit-loop, LLM judge + compressor (local providers + council), headroom adapter.
 - `sandbox`: optional sandbox runtime seam.
-- `gauge`: future TUI crate.
+- `gauge`: evaluation harness — LoCoMo/LongMemEval recall benchmarks + agentic task scoring.
 - `artesian-mcp`: MCP server for memory tools.
 - `artesian-cli`: CLI entrypoint.
 - `artesian-test-support`: shared helpers for crate-level integration tests.

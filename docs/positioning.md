@@ -147,8 +147,9 @@ These solve the same core problem — durable memory for agents — and are the 
 Honest take: these are well-funded and benchmark-strong. Artesian does not try to out-platform
 them — it wins on **ownership, simplicity, zero-cost local writes, freedom to integrate**, and
 on being the first to implement the ACC control-plane model: a qualify gate, bounded committed
-state, and drift/hallucination/footprint measurement as first-class features. A standardized
-comparison on LongMemEval / LoCoMo is planned (see [benchmarks](../benchmarks/README.md)).
+state, and drift/hallucination/footprint measurement as first-class features. Published benchmarks — LoCoMo ≈ 0.475 (vector + reranking), LongMemEval-oracle ≈ 0.70 — are in
+[benchmarks/README.md](../benchmarks/README.md). An agentic task score (memory-guides-action, not
+just recall) ships in the `gauge` eval harness.
 
 ## Adjacent / related projects
 

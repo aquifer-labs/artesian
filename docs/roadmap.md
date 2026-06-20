@@ -191,12 +191,25 @@ the moat. Optional steps (6–7) are in scope. Step 8 is the final documentation
   The seam for the concrete headroom HTTP API is marked with a `NOTE:` comment — will be wired once
   headroom's public API stabilizes. All workspace tests green; fmt clean.
 
-### Step 8 — Documentation sweep (refine everything, do not bloat)
+### Step 8 — Documentation sweep (refine everything, do not bloat) ✓ DONE
 
 - **Goal:** after Steps 1–7 ship, align *all* docs with the delivered features — refine, clarify,
   de-duplicate, remove drift. No padding.
 - **Where:** `README.md`, all of `docs/`, per-crate doc-comments, diagrams.
 - **Acceptance:** every doc matches shipped behavior; no stale claims; concise.
+- **Status:**
+  - `README.md` — Status section updated (end-to-end feature list, not "bootstrap");
+    Workspace crate descriptions updated to match delivered crates (headgate, gauge, aquifer);
+    "Composes with" table added (Step 7).
+  - `docs/backends.md` — SqliteVec section gains honest int8 quantization note (4× reduction,
+    not LEANN's 97%).
+  - `docs/architecture.md` — headgate row updated to include CouncilJudge + local providers +
+    headroom; gauge row drops "TUI placeholder," now describes eval harness.
+  - `docs/positioning.md` — stale "comparison planned" line replaced with published benchmark
+    numbers and pointer to agentic eval.
+  - All roadmap steps updated to ✓ DONE with substantive status details.
+  - No stale claims found in other docs; [planned] tags in memory.md remain correct (those
+    features genuinely have not shipped).
 
 ---
 

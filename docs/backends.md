@@ -86,6 +86,11 @@ Hybrid behavior:
 - Artesian runs FTS5 BM25 keyword search and sqlite-vec vector search separately.
 - Results are fused by Artesian RRF.
 
+**Storage quantization:** set `quantization: "int8"` on a `VectorCollection` to store vectors as
+signed 8-bit integers (1 byte/dim) instead of float32 (4 bytes/dim). This is honest int8 scalar
+quantization — a 4× storage reduction. LEANN's 97% figure requires pruned-graph recomputation
+and is not claimed here. Float32 remains the default; existing collections are not affected.
+
 Default CLI config stores the SQLite file at `.artesian/memory.sqlite3` when `backend = "sqlite-vec"`.
 
 ## QdrantBackend
