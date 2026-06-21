@@ -226,6 +226,10 @@ enum Command {
         poll: bool,
         #[arg(long, default_value = ".artesian")]
         root: PathBuf,
+        /// Project config; its memory backend is used for per-turn recall/commit. Falls back to a
+        /// local files backend under `root` when the file is absent.
+        #[arg(long, default_value = DEFAULT_CONFIG)]
+        config: PathBuf,
     },
     /// Replicate a Qdrant collection between two endpoints (e.g. a LAN instance and a local Docker
     /// instance) — scroll + upsert, merging by point id. Pass your own URLs/keys; the endpoints
@@ -805,7 +809,8 @@ async fn main() -> Result<()> {
             max_turns,
             poll,
             root,
-        } => run_loop(goal, worker_cmd, max_turns, poll, root).await,
+            config,
+        } => run_loop(goal, worker_cmd, max_turns, poll, root, config).await,
         Command::Replicate {
             from_url,
             to_url,
@@ -833,35 +838,127 @@ async fn main() -> Result<()> {
 
 /// Run a shell command, returning whether it exited successfully (exit code 0).
 fn run_shell(cmd: &str) -> Result<bool> {
-    let status = std::process::Command::new("sh")
-        .arg("-c")
-        .arg(cmd)
+    run_shell_with_env(cmd, &[])
+}
+
+/// Run a shell command with extra environment variables exported to it.
+fn run_shell_with_env(cmd: &str, env: &[(&str, &str)]) -> Result<bool> {
+    let mut command = std::process::Command::new("sh");
+    command.arg("-c").arg(cmd);
+    for (key, value) in env {
+        command.env(key, value);
+    }
+    let status = command
         .status()
         .with_context(|| format!("run command: {cmd}"))?;
     Ok(status.success())
 }
 
-/// An autonomous memory-first loop: repeat the worker action until the goal command succeeds,
-/// writing a resume anchor each turn. Bounded by `max_turns`.
+/// Per-turn recall limit injected into the worker (kept small to stay token-cheap).
+const LOOP_RECALL_LIMIT: usize = 5;
+
+/// Search the backend for memory relevant to the goal and render a compact recall block.
+async fn loop_recall(backend: &dyn MemoryBackend, goal: &str) -> String {
+    let Ok(hits) = backend
+        .find(MemoryQuery::new(goal).with_limit(LOOP_RECALL_LIMIT))
+        .await
+    else {
+        return String::new();
+    };
+    let mut lines = Vec::new();
+    for hit in hits {
+        let content = hit.record.content.replace('\n', " ");
+        let trimmed: String = content.chars().take(280).collect();
+        lines.push(format!("- {trimmed}"));
+    }
+    lines.join("\n")
+}
+
+/// Commit a concise, run-scoped atom recording this turn's outcome, so the loop's
+/// working state survives compaction and a later sweep can reclaim it by run id.
+async fn loop_commit_turn(
+    backend: &dyn MemoryBackend,
+    run_id: &str,
+    turn: u32,
+    goal: &str,
+    worker_cmd: Option<&str>,
+    goal_met: bool,
+) {
+    let status = if goal_met { "goal met" } else { "goal not met" };
+    let action = worker_cmd.unwrap_or("(poll)");
+    let mut memory = StoreMemory::atom(format!(
+        "loop {run_id} turn {turn}: ran `{action}` to verify `{goal}` -> {status}"
+    ));
+    memory.tier = MemoryTier::L0Raw;
+    memory.tags = vec![
+        "loop".to_string(),
+        run_id.to_string(),
+        format!("turn-{turn}"),
+        if goal_met { "goal-met" } else { "goal-unmet" }.to_string(),
+    ];
+    memory.scope = Some(MemoryScope::Session);
+    memory.session_id = Some(run_id.to_string());
+    let _ = backend.store(memory).await;
+}
+
+/// An autonomous memory-first loop: each turn recalls goal-relevant memory, runs the worker
+/// action (with that recall in `ARTESIAN_RECALL`), writes a resume anchor, verifies the goal,
+/// and commits a run-scoped record of the turn. Bounded by `max_turns`.
 async fn run_loop(
     goal: String,
     worker_cmd: Option<String>,
     max_turns: u32,
     poll: bool,
     root: PathBuf,
+    config: PathBuf,
 ) -> Result<()> {
     let anchor_store = AnchorAnchorStore::new(&root);
-    println!("loop: goal = {goal:?}, max-turns = {max_turns}");
+    // Use the project's configured memory backend when present; otherwise a local files backend
+    // under the loop root. Recall/commit degrade to a no-op if the backend cannot be opened.
+    let memory_config = load_config(&config)
+        .map(|cfg| cfg.memory)
+        .unwrap_or_else(|_| {
+            ArtesianConfig::memory_files(root.join("memory").display().to_string(), Vec::new())
+                .memory
+        });
+    let backend = match open_memory_backend(&memory_config) {
+        Ok(backend) => Some(backend),
+        Err(error) => {
+            eprintln!("  note: memory recall/commit disabled ({error})");
+            None
+        }
+    };
+    let run_id = format!(
+        "loop-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|elapsed| elapsed.as_millis())
+            .unwrap_or(0)
+    );
+    println!("loop: goal = {goal:?}, max-turns = {max_turns}, run = {run_id}");
     if run_shell(&goal)? {
         println!("✓ goal already holds (0 turns)");
         return Ok(());
     }
     for turn in 1..=max_turns {
+        let recall = match &backend {
+            Some(backend) => loop_recall(backend.as_ref(), &goal).await,
+            None => String::new(),
+        };
+        if !recall.is_empty() {
+            println!("  recall ({} relevant):\n{recall}", recall.lines().count());
+        }
         if poll {
             tokio::time::sleep(Duration::from_millis(500)).await;
         } else if let Some(cmd) = &worker_cmd {
             println!("── turn {turn}/{max_turns}: worker ─ {cmd}");
-            if !run_shell(cmd)? {
+            let env = [
+                ("ARTESIAN_RECALL", recall.as_str()),
+                ("ARTESIAN_GOAL", goal.as_str()),
+                ("ARTESIAN_RUN_ID", run_id.as_str()),
+                ("ARTESIAN_TURN", &turn.to_string()),
+            ];
+            if !run_shell_with_env(cmd, &env)? {
                 eprintln!("  worker exited non-zero on turn {turn}");
             }
         }
@@ -874,7 +971,19 @@ async fn run_loop(
                 format!("verify goal: {goal}"),
             ))
             .await;
-        if run_shell(&goal)? {
+        let goal_met = run_shell(&goal)?;
+        if let Some(backend) = &backend {
+            loop_commit_turn(
+                backend.as_ref(),
+                &run_id,
+                turn,
+                &goal,
+                worker_cmd.as_deref(),
+                goal_met,
+            )
+            .await;
+        }
+        if goal_met {
             println!("✓ goal holds after {turn} turn(s)");
             return Ok(());
         }

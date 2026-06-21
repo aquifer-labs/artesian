@@ -91,13 +91,26 @@ For a single bounded subtask you do not need a wellfield — `orchestrate.delega
 worker under the judge gate.
 
 > **`artesian loop` (available now).** A convenience command drives this cycle directly — it repeats
-> the worker action until the goal command exits 0 (the verifier gate), writing a resume anchor to
-> memory each turn, bounded by `--max-turns`:
+> the worker action until the goal command exits 0 (the verifier gate), bounded by `--max-turns`:
 >
 > `artesian loop --goal "cargo test" --worker-cmd "codex exec 'fix the failing tests'" --max-turns 10`
 >
+> Each turn is memory-first end to end:
+>
+> 1. **recall** — the loop searches the configured backend for goal-relevant memory and passes the
+>    top hits to the worker in `ARTESIAN_RECALL` (alongside `ARTESIAN_GOAL`, `ARTESIAN_RUN_ID`, and
+>    `ARTESIAN_TURN`). A worker prompt can fold `$ARTESIAN_RECALL` in so each pass starts from what
+>    the last pass learned.
+> 2. **anchor** — a resume anchor is written so a crash or compaction mid-loop is recoverable.
+> 3. **verify + commit** — after the goal check, the turn's outcome is committed as a concise atom
+>    **scoped to the run** (`session` scope, `session_id = <run id>`, tagged `loop`/`turn-N`). Run
+>    scoping keeps the working trail out of your durable memory and lets a later sweep reclaim it by
+>    run id, so loops never clog the store.
+>
 > The worker is any shell command — a script or an agent CLI (`codex exec`, `claude -p`, …), so you
-> can drive a different model per loop. `--poll` re-checks the goal each turn without a worker.
+> can drive a different model per loop. `--config` selects the project's memory backend for
+> recall/commit (it falls back to a local files backend under `--root`); `--poll` re-checks the goal
+> each turn without a worker.
 
 ## Why memory-first
 
