@@ -1,0 +1,59 @@
+# SPDX-License-Identifier: Apache-2.0
+# Build dependency-free release binaries for each platform and attach them to the GitHub release,
+# so `brew install` (and direct downloads) never need the Rust toolchain.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to build and upload (e.g. v0.1.2)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            target: aarch64-apple-darwin
+          - os: macos-13
+            target: x86_64-apple-darwin
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - name: Build release binaries
+        run: |
+          cargo build --release --locked --target ${{ matrix.target }} -p artesian-cli --features "qdrant,llm"
+          cargo build --release --locked --target ${{ matrix.target }} -p artesian-mcp --features "qdrant,llm,http"
+      - name: Package + checksum
+        shell: bash
+        run: |
+          tag="${{ inputs.tag || github.ref_name }}"
+          version="${tag#v}"
+          name="artesian-${version}-${{ matrix.target }}"
+          bin="target/${{ matrix.target }}/release"
+          mkdir -p "$name"
+          cp "$bin/artesian" "$bin/artesian-mcp" "$bin/artesiand" "$name/"
+          strip "$name/artesian" "$name/artesian-mcp" "$name/artesiand" || true
+          tar -czf "${name}.tar.gz" -C "$name" artesian artesian-mcp artesiand
+          shasum -a 256 "${name}.tar.gz" | tee "${name}.tar.gz.sha256"
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag || github.ref_name }}
+          files: |
+            artesian-*.tar.gz
+            artesian-*.tar.gz.sha256

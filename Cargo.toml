@@ -65,3 +65,7 @@ unsafe_code = "forbid"
 derive_partial_eq_without_eq = "warn"
 large_futures = "warn"
 manual_let_else = "warn"
+
+# Ship lean release binaries: strip symbols so a brew/binary install stays small.
+[profile.release]
+strip = true
