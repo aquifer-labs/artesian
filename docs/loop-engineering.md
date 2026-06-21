@@ -110,6 +110,11 @@ worker under the judge gate.
 >    **scoped to the run** (`session` scope, `session_id = <run id>`, tagged `loop`/`turn-N`). Run
 >    scoping keeps the working trail out of your durable memory and lets a later sweep reclaim it by
 >    run id, so loops never clog the store.
+> 4. **verified skill** — on success, the worker approach is stored as a durable, **verified** skill
+>    (tagged `skill`) — admitted only because the goal verifier just passed (verify-before-store). A
+>    later run of the same or a similar goal surfaces it in the packet's **Known approach (verified)**
+>    section, so the agent reuses a known-good solution; the goal verifier still gates each turn, so a
+>    stale skill simply falls back to a fresh attempt.
 >
 > The worker is any shell command — a script or an agent CLI (`codex exec`, `claude -p`, …), so you
 > can drive a different model per loop. `--config` selects the project's memory backend for

@@ -888,12 +888,39 @@ const LOOP_RECALL_LIMIT: usize = 5;
 const INVARIANT_TAG: &str = "invariant";
 /// Cap on invariants injected into a goal packet (ranked by goal relevance).
 const GOAL_INVARIANT_LIMIT: usize = 8;
+/// Tag that marks a memory as a verified skill — a previously goal-verified loop approach.
+const SKILL_TAG: &str = "skill";
+/// Cap on verified skills surfaced in a goal packet (the closest prior approaches).
+const GOAL_SKILL_LIMIT: usize = 2;
 /// Cap on the captured "last failed check" detail carried into the next turn.
 const LAST_CHECK_CHARS: usize = 800;
 
-/// Assemble a bounded, goal-scoped context packet — the goal, the invariants that must hold, the
-/// last failed verifier check, and the most relevant memory — rather than a flat recall dump. This
-/// is the "hand the agent just the goal, invariants, and last failed check" packet.
+/// Render a goal packet section from the records carrying `tag`, ranked by goal relevance.
+async fn packet_tag_section(
+    backend: &dyn MemoryBackend,
+    goal: &str,
+    tag: &str,
+    limit: usize,
+    title: &str,
+) -> Option<String> {
+    let mut query = MemoryQuery::new(goal).with_limit(limit);
+    query.tags = vec![tag.to_string()];
+    match backend.find(query).await {
+        Ok(hits) if !hits.is_empty() => {
+            let lines: Vec<String> = hits
+                .iter()
+                .map(|hit| format!("- {}", hit.record.content.replace('\n', " ")))
+                .collect();
+            Some(format!("# {title}\n{}", lines.join("\n")))
+        }
+        _ => None,
+    }
+}
+
+/// Assemble a bounded, goal-scoped context packet — the goal, the invariants that must hold, any
+/// verified prior approach, the last failed verifier check, and the most relevant memory — rather
+/// than a flat recall dump. This is the "hand the agent just the goal, invariants, and last failed
+/// check" packet.
 async fn assemble_goal_packet(
     backend: Option<&dyn MemoryBackend>,
     goal: &str,
@@ -903,17 +930,29 @@ async fn assemble_goal_packet(
     let mut sections = vec![format!("# Goal\n{goal}")];
 
     if let Some(backend) = backend {
-        // Invariants: always injected (tag-filtered), ranked by goal relevance.
-        let mut query = MemoryQuery::new(goal).with_limit(GOAL_INVARIANT_LIMIT);
-        query.tags = vec![INVARIANT_TAG.to_string()];
-        if let Ok(hits) = backend.find(query).await {
-            if !hits.is_empty() {
-                let lines: Vec<String> = hits
-                    .iter()
-                    .map(|hit| format!("- {}", hit.record.content.replace('\n', " ")))
-                    .collect();
-                sections.push(format!("# Invariants (must hold)\n{}", lines.join("\n")));
-            }
+        // Invariants are always injected (tag-filtered); the verified skill is the prior approach
+        // that already passed this goal's verifier — reuse it, the verifier still gates each turn.
+        if let Some(section) = packet_tag_section(
+            backend,
+            goal,
+            INVARIANT_TAG,
+            GOAL_INVARIANT_LIMIT,
+            "Invariants (must hold)",
+        )
+        .await
+        {
+            sections.push(section);
+        }
+        if let Some(section) = packet_tag_section(
+            backend,
+            goal,
+            SKILL_TAG,
+            GOAL_SKILL_LIMIT,
+            "Known approach (verified)",
+        )
+        .await
+        {
+            sections.push(section);
         }
     }
 
@@ -970,6 +1009,18 @@ async fn loop_commit_turn(
     ];
     memory.scope = Some(MemoryScope::Session);
     memory.session_id = Some(run_id.to_string());
+    let _ = backend.store(memory).await;
+}
+
+/// On a successful loop, store the worker approach as a verified skill — admitted only because the
+/// goal verifier passed (PreAct's verify-before-store, provided by the loop by construction).
+/// Durable (not run-scoped) and content-deduped, so future goal packets can reuse the approach.
+async fn loop_store_skill(backend: &dyn MemoryBackend, goal: &str, worker_cmd: &str, turns: u32) {
+    let mut memory = StoreMemory::atom(format!(
+        "verified approach for `{goal}`: run `{worker_cmd}` (passed in {turns} turn(s))"
+    ));
+    memory.tier = MemoryTier::L2Scenario;
+    memory.tags = vec![SKILL_TAG.to_string(), "verified".to_string()];
     let _ = backend.store(memory).await;
 }
 
@@ -1069,6 +1120,11 @@ async fn run_loop(
             .await;
         }
         if goal_met {
+            // Verified-skill memory: the goal verifier just passed, so the worker approach is
+            // verified by construction — store it (durable) for reuse in future goal packets.
+            if let (Some(backend), Some(cmd)) = (&backend, &worker_cmd) {
+                loop_store_skill(backend.as_ref(), &goal, cmd, turn).await;
+            }
             println!("✓ goal holds after {turn} turn(s)");
             return Ok(());
         }
