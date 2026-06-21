@@ -7,8 +7,9 @@ use artesian_core::Mode;
 use clap::Parser;
 use serde_json::json;
 
-mod runtime;
-use runtime::{build_orchestrator, load_config, process_supervisor_from_config, shutdown_signal};
+use crate::runtime::{
+    build_orchestrator, load_config, process_supervisor_from_config, shutdown_signal,
+};
 
 const DEFAULT_CONFIG: &str = "artesian.toml";
 
@@ -27,8 +28,8 @@ struct Cli {
     interval_millis: u64,
 }
 
-#[tokio::main]
-async fn main() -> Result<()> {
+/// Run the orchestration daemon (the `artesiand` entry point of the multi-call binary).
+pub async fn run() -> Result<()> {
     let cli = Cli::parse();
     let config = load_config(&cli.config)?;
     if !matches!(config.mode, Mode::Orchestrate | Mode::Full) {

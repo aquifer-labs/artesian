@@ -35,10 +35,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
-      - name: Build release binaries
-        run: |
-          cargo build --release --locked --target ${{ matrix.target }} -p artesian-cli --features "qdrant,llm"
-          cargo build --release --locked --target ${{ matrix.target }} -p artesian-mcp --features "qdrant,llm,http"
+      - name: Build the unified binary
+        # One multi-call binary serves the CLI, the MCP server, and the daemon.
+        run: cargo build --release --locked --target ${{ matrix.target }} -p artesian-cli --features "qdrant,llm,http"
       - name: Package + checksum
         shell: bash
         run: |
@@ -47,9 +46,9 @@ jobs:
           name="artesian-${version}-${{ matrix.target }}"
           bin="target/${{ matrix.target }}/release"
           mkdir -p "$name"
-          cp "$bin/artesian" "$bin/artesian-mcp" "$bin/artesiand" "$name/"
-          strip "$name/artesian" "$name/artesian-mcp" "$name/artesiand" || true
-          tar -czf "${name}.tar.gz" -C "$name" artesian artesian-mcp artesiand
+          cp "$bin/artesian" "$name/"
+          strip "$name/artesian" || true
+          tar -czf "${name}.tar.gz" -C "$name" artesian
           shasum -a 256 "${name}.tar.gz" | tee "${name}.tar.gz.sha256"
       - uses: softprops/action-gh-release@v2
         with:

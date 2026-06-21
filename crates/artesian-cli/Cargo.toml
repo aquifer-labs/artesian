@@ -16,6 +16,7 @@ clap.workspace = true
 wellfield.workspace = true
 sandbox = { path = "../sandbox" }
 aquifer = { path = "../aquifer" }
+artesian-mcp = { path = "../artesian-mcp" }
 serde.workspace = true
 serde_json.workspace = true
 headrace = { path = "../headrace" }
@@ -26,16 +27,17 @@ toml_edit.workspace = true
 basin = { path = "../basin" }
 
 [features]
-qdrant = ["aquifer/qdrant"]
-llm = ["headgate/llm"]
+qdrant = ["aquifer/qdrant", "artesian-mcp/qdrant"]
+llm = ["headgate/llm", "artesian-mcp/llm"]
+# The unified `artesian` binary also serves the MCP server (invoked as `artesian-mcp`); `http`
+# forwards to enable its streamable-HTTP transport.
+http = ["artesian-mcp/http"]
 
+# Single multi-call binary: dispatches to the CLI, the MCP server (`artesian-mcp`), and the daemon
+# (`artesiand`) by invocation name, so they share one copy of the runtime instead of three.
 [[bin]]
 name = "artesian"
 path = "src/main.rs"
-
-[[bin]]
-name = "artesiand"
-path = "src/artesiand.rs"
 
 [dev-dependencies]
 artesian-test-support.workspace = true

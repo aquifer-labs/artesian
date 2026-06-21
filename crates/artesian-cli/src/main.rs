@@ -44,6 +44,7 @@ const MCP_SERVER_NAME: &str = "artesian-memory";
 const MCP_TOOL_HINT: &str =
     "ALWAYS search the project memory before non-trivial work; store durable, reusable learnings.";
 
+mod artesiand;
 mod import;
 mod runtime;
 use import::{import_directory, ImportOptions};
@@ -741,8 +742,24 @@ impl From<BackendArg> for MemoryBackendKind {
     }
 }
 
+/// The basename this binary was invoked as, for multi-call dispatch.
+fn invoked_as() -> Option<String> {
+    std::env::args_os().next().and_then(|arg0| {
+        std::path::Path::new(&arg0)
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+    })
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Multi-call binary: a single executable installed once and symlinked, so the MCP server and
+    // the daemon don't each ship a second copy of the runtime (and ONNX Runtime).
+    match invoked_as().as_deref() {
+        Some("artesian-mcp") => return artesian_mcp::cli::run().await,
+        Some("artesiand") => return artesiand::run().await,
+        _ => {}
+    }
     let cli = Cli::parse();
     match cli.command {
         Command::Init {

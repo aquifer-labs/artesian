@@ -66,6 +66,10 @@ derive_partial_eq_without_eq = "warn"
 large_futures = "warn"
 manual_let_else = "warn"
 
-# Ship lean release binaries: strip symbols so a brew/binary install stays small.
+# Ship lean release binaries: strip symbols, optimize for size, and let LTO drop cross-crate dead
+# code so a brew/binary install stays small (the ONNX Runtime is the irreducible floor).
 [profile.release]
 strip = true
+lto = true
+codegen-units = 1
+opt-level = "s"
