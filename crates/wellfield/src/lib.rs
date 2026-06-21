@@ -15,8 +15,10 @@ use artesian_core::{
     EventEnvelope, EventSender, EventType, Role, SpawnRequest,
 };
 use artesian_process_agent::{
-    validate_binding_model, ProcessAgent, ProcessAgentConfig, ProcessSupervisor,
+    validate_binding_model, GcOptions, ProcessAgent, ProcessAgentConfig, ProcessSupervisor,
+    ReapReport,
 };
+pub use artesian_process_agent::{GcOptions as TeamGcOptions, ReapReport as TeamReapReport};
 use chrono::Utc;
 use headrace::{
     ClaimRequest, FilesTaskStore, NewTask, Task, TaskStatus, TaskStore, TransitionTask,
@@ -454,6 +456,11 @@ impl TeamRuntime {
     }
 
     pub async fn spawn_teammate(&mut self, request: TeamSpawn) -> WellfieldResult<TeammateRecord> {
+        // Opportunistically reclaim orphaned spawns from a prior crashed owner so
+        // the registry never accumulates abandoned workers. Best-effort: the
+        // current owner's live spawns are never touched, so a failure here must
+        // not block a legitimate spawn.
+        let _ = self.gc(GcOptions::default());
         let definition = self.definition(&request.definition)?.clone();
         let binding = self.binding_for_definition(&definition)?;
         let team = self.team(&request.team_id)?;
@@ -656,6 +663,19 @@ impl TeamRuntime {
         }
         team.status = TeamStatus::CleanedUp;
         Ok(team.record())
+    }
+
+    /// Registry-wide garbage collection across every tracked teammate, not just
+    /// one team: reclaim orphaned process groups (dead owner), spawns past the
+    /// TTL, and heartbeat-stale (hung) spawns. Safe to call on a timer so a
+    /// crashed or abandoned worker never lingers and clogs the host.
+    pub fn gc(&self, options: GcOptions) -> WellfieldResult<ReapReport> {
+        let supervisor = ProcessSupervisor::new(&self.config.registry_dir)
+            .with_termination_grace(self.config.termination_grace)
+            .with_max_concurrent_spawns(self.config.max_concurrent_spawns);
+        supervisor
+            .gc(options)
+            .map_err(|error| WellfieldError::Agent(error.to_string()))
     }
 
     async fn execute_teammate(

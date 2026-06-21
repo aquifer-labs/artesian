@@ -642,6 +642,8 @@ pub struct SpawnRegistryEntry {
     pub pgid: i32,
     pub task_id: Option<String>,
     pub started_at_unix_ms: u128,
+    #[serde(default)]
+    pub last_heartbeat_unix_ms: Option<u128>,
     pub command: Vec<String>,
     pub working_dir: Option<String>,
 }
@@ -652,6 +654,34 @@ pub struct ReapReport {
     pub terminated: usize,
     pub removed: usize,
     pub skipped_unverified: usize,
+    /// Of the reaped entries, how many were reaped because they exceeded the
+    /// TTL or went heartbeat-stale (as opposed to having a dead owner).
+    pub expired: usize,
+}
+
+/// Tunables for [`ProcessSupervisor::gc`]. Each bound is opt-in: `None` disables
+/// that reaping rule, so a bare `GcOptions::default()` reaps only orphans
+/// (entries whose owner process is gone) plus dead registry entries.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct GcOptions {
+    /// Maximum wall-clock age of a spawn before it is reclaimed, regardless of
+    /// liveness — a guard against runaway workers that never exit.
+    pub ttl: Option<Duration>,
+    /// Maximum time without a heartbeat before a spawn is considered hung and
+    /// reclaimed. Only applies to entries that have recorded a heartbeat.
+    pub heartbeat_timeout: Option<Duration>,
+}
+
+impl GcOptions {
+    pub fn with_ttl(mut self, ttl: Duration) -> Self {
+        self.ttl = Some(ttl);
+        self
+    }
+
+    pub fn with_heartbeat_timeout(mut self, heartbeat_timeout: Duration) -> Self {
+        self.heartbeat_timeout = Some(heartbeat_timeout);
+        self
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -718,6 +748,66 @@ impl ProcessSupervisor {
             report.removed += 1;
         }
         Ok(report)
+    }
+
+    /// Registry-wide garbage collection. Reclaims, in one pass:
+    /// - dead registry entries (the process group is already gone);
+    /// - orphans (the owner process that spawned them has exited);
+    /// - spawns older than `options.ttl` (runaway guard);
+    /// - spawns whose last heartbeat is older than `options.heartbeat_timeout` (hung guard).
+    ///
+    /// Live, owned, fresh spawns are left untouched, so this is safe to call on
+    /// a timer or before every spawn without disturbing healthy workers.
+    pub fn gc(&self, options: GcOptions) -> io::Result<ReapReport> {
+        let mut report = ReapReport::default();
+        let now = now_unix_ms();
+        for entry in self.entries()? {
+            report.scanned += 1;
+            let alive = self.verified_alive(&entry);
+            if !alive {
+                // The process group is gone; just drop the stale record.
+                self.remove_entry(&entry)?;
+                report.removed += 1;
+                continue;
+            }
+            let ttl_expired = options
+                .ttl
+                .is_some_and(|ttl| age_since(now, entry.started_at_unix_ms) > ttl);
+            let heartbeat_stale = match (options.heartbeat_timeout, entry.last_heartbeat_unix_ms) {
+                (Some(timeout), Some(beat)) => age_since(now, beat) > timeout,
+                _ => false,
+            };
+            let orphaned = !owner_alive(&entry);
+            if orphaned || ttl_expired || heartbeat_stale {
+                self.terminate_group(entry.pgid)?;
+                report.terminated += 1;
+                self.remove_entry(&entry)?;
+                report.removed += 1;
+                if ttl_expired || heartbeat_stale {
+                    report.expired += 1;
+                }
+            }
+        }
+        Ok(report)
+    }
+
+    /// Refresh the heartbeat timestamp on a tracked spawn so [`gc`](Self::gc)
+    /// with a `heartbeat_timeout` does not reclaim it. Returns `false` when no
+    /// entry with that id exists (already reaped or never registered).
+    pub fn record_heartbeat(&self, id: &str) -> io::Result<bool> {
+        let Some(mut entry) = self.entry_by_id(id)? else {
+            return Ok(false);
+        };
+        entry.last_heartbeat_unix_ms = Some(now_unix_ms());
+        let path = self.entry_path(&entry);
+        let temporary = path.with_extension("json.tmp");
+        fs::write(&temporary, serde_json::to_vec_pretty(&entry)?)?;
+        fs::rename(temporary, path)?;
+        Ok(true)
+    }
+
+    fn entry_by_id(&self, id: &str) -> io::Result<Option<SpawnRegistryEntry>> {
+        Ok(self.entries()?.into_iter().find(|entry| entry.id == id))
     }
 
     pub fn terminate_all_tracked(&self) -> io::Result<ReapReport> {
@@ -809,15 +899,17 @@ impl ProcessSupervisor {
         working_dir: Option<String>,
     ) -> io::Result<ManagedProcessGuard> {
         fs::create_dir_all(&self.registry_dir)?;
+        let now = now_unix_ms();
         let entry = SpawnRegistryEntry {
             version: REGISTRY_VERSION,
-            id: format!("spawn-{pid}-{}", now_unix_ms()),
+            id: format!("spawn-{pid}-{now}"),
             owner_pid: std::process::id(),
             owner_exe: current_exe_name(),
             pid,
             pgid,
             task_id,
-            started_at_unix_ms: now_unix_ms(),
+            started_at_unix_ms: now,
+            last_heartbeat_unix_ms: Some(now),
             command,
             working_dir,
         };
@@ -1006,6 +1098,12 @@ fn now_unix_ms() -> u128 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |duration| duration.as_millis())
+}
+
+/// Saturating wall-clock age between two unix-millisecond stamps, clamped to the
+/// `Duration` millisecond range so a clock skew can never panic the reaper.
+fn age_since(now_ms: u128, then_ms: u128) -> Duration {
+    Duration::from_millis(now_ms.saturating_sub(then_ms).min(u64::MAX as u128) as u64)
 }
 
 fn command_line(config: &ProcessAgentConfig) -> Vec<String> {
@@ -1723,6 +1821,7 @@ mod tests {
             pgid: pid as i32,
             task_id: Some("task-restart".to_string()),
             started_at_unix_ms: now_unix_ms(),
+            last_heartbeat_unix_ms: Some(now_unix_ms()),
             command: vec!["sh".to_string()],
             working_dir: None,
         };
@@ -1749,6 +1848,174 @@ mod tests {
                 .is_empty(),
             "reaper should remove stale registry entry"
         );
+    }
+
+    #[cfg(unix)]
+    fn spawn_tracked_group(pid_file: &Path) -> std::process::Child {
+        let mut command = std::process::Command::new("sh");
+        command.process_group(0);
+        command
+            .arg("-c")
+            .arg(format!("sleep 30 & echo $! > {}; wait", pid_file.display()));
+        let child = command.spawn().expect("test process should spawn");
+        wait_for_file_sync(pid_file);
+        child
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn gc_reaps_ttl_expired_spawn() {
+        let tempdir = TempDir::new("process-agent-gc-ttl");
+        let registry = tempdir.join("spawns");
+        fs::create_dir_all(&registry).expect("registry should be created");
+        let child_pid_file = tempdir.join("child.pid");
+        let mut child = spawn_tracked_group(&child_pid_file);
+        let pid = child.id();
+        // Owner is the live current process (NOT an orphan), but the spawn is old.
+        let entry = SpawnRegistryEntry {
+            version: REGISTRY_VERSION,
+            id: format!("spawn-{pid}-ttl"),
+            owner_pid: std::process::id(),
+            owner_exe: current_exe_name(),
+            pid,
+            pgid: pid as i32,
+            task_id: None,
+            started_at_unix_ms: now_unix_ms().saturating_sub(10_000),
+            last_heartbeat_unix_ms: Some(now_unix_ms()),
+            command: vec!["sh".to_string()],
+            working_dir: None,
+        };
+        fs::write(
+            registry.join(format!("{}.json", entry.id)),
+            serde_json::to_vec_pretty(&entry).expect("entry should serialize"),
+        )
+        .expect("registry entry should write");
+
+        let report = ProcessSupervisor::new(&registry)
+            .with_termination_grace(Duration::from_millis(50))
+            .gc(GcOptions::default().with_ttl(Duration::from_millis(1)))
+            .expect("gc should run");
+        let grandchild_pid = read_pid(&child_pid_file);
+        let _ = child.wait();
+
+        assert_eq!(
+            report.terminated, 1,
+            "ttl-expired spawn should be terminated"
+        );
+        assert_eq!(report.expired, 1, "ttl reap should count as expired");
+        assert_pid_gone(pid);
+        assert_pid_gone(grandchild_pid);
+        assert!(
+            ProcessSupervisor::new(&registry)
+                .entries()
+                .expect("registry should read")
+                .is_empty(),
+            "gc should remove the reaped entry"
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn gc_reaps_heartbeat_stale_spawn() {
+        let tempdir = TempDir::new("process-agent-gc-heartbeat");
+        let registry = tempdir.join("spawns");
+        fs::create_dir_all(&registry).expect("registry should be created");
+        let child_pid_file = tempdir.join("child.pid");
+        let mut child = spawn_tracked_group(&child_pid_file);
+        let pid = child.id();
+        // Fresh age, live owner, but the heartbeat went stale (hung worker).
+        let entry = SpawnRegistryEntry {
+            version: REGISTRY_VERSION,
+            id: format!("spawn-{pid}-heartbeat"),
+            owner_pid: std::process::id(),
+            owner_exe: current_exe_name(),
+            pid,
+            pgid: pid as i32,
+            task_id: None,
+            started_at_unix_ms: now_unix_ms(),
+            last_heartbeat_unix_ms: Some(now_unix_ms().saturating_sub(10_000)),
+            command: vec!["sh".to_string()],
+            working_dir: None,
+        };
+        fs::write(
+            registry.join(format!("{}.json", entry.id)),
+            serde_json::to_vec_pretty(&entry).expect("entry should serialize"),
+        )
+        .expect("registry entry should write");
+
+        let report = ProcessSupervisor::new(&registry)
+            .with_termination_grace(Duration::from_millis(50))
+            .gc(GcOptions::default().with_heartbeat_timeout(Duration::from_millis(1)))
+            .expect("gc should run");
+        let _ = child.wait();
+
+        assert_eq!(report.terminated, 1, "hung spawn should be terminated");
+        assert_eq!(report.expired, 1, "heartbeat reap should count as expired");
+        assert_pid_gone(pid);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn gc_keeps_fresh_spawn_and_record_heartbeat_refreshes() {
+        let tempdir = TempDir::new("process-agent-gc-keep");
+        let registry = tempdir.join("spawns");
+        fs::create_dir_all(&registry).expect("registry should be created");
+        let child_pid_file = tempdir.join("child.pid");
+        let mut child = spawn_tracked_group(&child_pid_file);
+        let pid = child.id();
+        let id = format!("spawn-{pid}-keep");
+        let stale_beat = now_unix_ms().saturating_sub(5_000);
+        let entry = SpawnRegistryEntry {
+            version: REGISTRY_VERSION,
+            id: id.clone(),
+            owner_pid: std::process::id(),
+            owner_exe: current_exe_name(),
+            pid,
+            pgid: pid as i32,
+            task_id: None,
+            started_at_unix_ms: now_unix_ms(),
+            last_heartbeat_unix_ms: Some(stale_beat),
+            command: vec!["sh".to_string()],
+            working_dir: None,
+        };
+        fs::write(
+            registry.join(format!("{id}.json")),
+            serde_json::to_vec_pretty(&entry).expect("entry should serialize"),
+        )
+        .expect("registry entry should write");
+
+        let supervisor =
+            ProcessSupervisor::new(&registry).with_termination_grace(Duration::from_millis(50));
+        // Default GC (no ttl, no heartbeat bound) must not touch a live, owned spawn.
+        let report = supervisor.gc(GcOptions::default()).expect("gc should run");
+        assert_eq!(report.scanned, 1);
+        assert_eq!(report.terminated, 0, "fresh owned spawn must survive");
+        assert_eq!(report.removed, 0);
+
+        // record_heartbeat advances the timestamp so a heartbeat bound would spare it.
+        assert!(supervisor
+            .record_heartbeat(&id)
+            .expect("heartbeat should write"));
+        let refreshed = supervisor
+            .entries()
+            .expect("registry should read")
+            .into_iter()
+            .next()
+            .expect("entry should remain");
+        assert!(
+            refreshed.last_heartbeat_unix_ms.unwrap() > stale_beat,
+            "heartbeat should advance"
+        );
+        assert!(
+            !supervisor
+                .record_heartbeat("spawn-missing")
+                .expect("missing heartbeat is ok"),
+            "record_heartbeat returns false for an unknown id"
+        );
+
+        supervisor.terminate_group(pid as i32).ok();
+        let _ = child.wait();
+        assert_pid_gone(pid);
     }
 
     fn shell_agent(

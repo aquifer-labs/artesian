@@ -39,8 +39,8 @@ use rmcp::{
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex as AsyncMutex;
 use wellfield::{
-    load_role_definitions, role_summaries, TeamCreate, TeamMessage, TeamMessageKind, TeamRuntime,
-    TeamRuntimeConfig, TeamSpawn, TeamTaskAdd, TeamTaskClaim, TeamTaskComplete,
+    load_role_definitions, role_summaries, TeamCreate, TeamGcOptions, TeamMessage, TeamMessageKind,
+    TeamRuntime, TeamRuntimeConfig, TeamSpawn, TeamTaskAdd, TeamTaskClaim, TeamTaskComplete,
 };
 
 #[cfg(feature = "qdrant")]
@@ -63,6 +63,7 @@ const ORCHESTRATION_TOOLS: &[&str] = &[
     "team.message",
     "team.status",
     "team.cleanup",
+    "team.gc",
 ];
 
 #[derive(Clone)]
@@ -727,6 +728,25 @@ pub struct TeamMessageResponse {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct TeamStatusRequest {
     pub team_id: String,
+}
+
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
+pub struct TeamGcRequest {
+    /// Reclaim spawns older than this many seconds, regardless of liveness
+    /// (runaway-worker guard). Omit to disable the age bound.
+    pub ttl_secs: Option<u64>,
+    /// Reclaim spawns whose last heartbeat is older than this many seconds
+    /// (hung-worker guard). Omit to disable the heartbeat bound.
+    pub heartbeat_timeout_secs: Option<u64>,
+}
+
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct TeamGcResponse {
+    pub scanned: usize,
+    pub terminated: usize,
+    pub removed: usize,
+    pub expired: usize,
+    pub skipped_unverified: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1488,6 +1508,35 @@ Call when the project vision or current phase changes."
                 .map_err(|error| ErrorData::internal_error(error.to_string(), None))?,
         }))
     }
+
+    #[tool(
+        name = "team.gc",
+        description = "Garbage-collect orphaned, expired, or hung teammate process groups across the whole registry (not scoped to one team). Reclaims spawns whose owner has exited, whose age exceeds ttl_secs, or whose last heartbeat is older than heartbeat_timeout_secs. Call it on a timer or after a run so abandoned workers never linger and clog the host."
+    )]
+    pub async fn team_gc(
+        &self,
+        Parameters(request): Parameters<TeamGcRequest>,
+    ) -> Result<Json<TeamGcResponse>, ErrorData> {
+        self.ensure_orchestration_enabled()?;
+        let runtime = self.team_runtime.lock().await;
+        let mut options = TeamGcOptions::default();
+        if let Some(secs) = request.ttl_secs {
+            options = options.with_ttl(Duration::from_secs(secs));
+        }
+        if let Some(secs) = request.heartbeat_timeout_secs {
+            options = options.with_heartbeat_timeout(Duration::from_secs(secs));
+        }
+        let report = runtime
+            .gc(options)
+            .map_err(|error| ErrorData::internal_error(error.to_string(), None))?;
+        Ok(Json(TeamGcResponse {
+            scanned: report.scanned,
+            terminated: report.terminated,
+            removed: report.removed,
+            expired: report.expired,
+            skipped_unverified: report.skipped_unverified,
+        }))
+    }
 }
 
 #[tool_handler(router = self.tool_router)]
@@ -1707,6 +1756,10 @@ fn tool_registry() -> &'static [RegisteredTool] {
         RegisteredTool {
             name: "team.cleanup",
             description: "Clean up tracked teammate process groups and mark a team cleaned up.",
+        },
+        RegisteredTool {
+            name: "team.gc",
+            description: "Garbage-collect orphaned, expired, or hung teammate process groups across the registry.",
         },
     ]
 }
