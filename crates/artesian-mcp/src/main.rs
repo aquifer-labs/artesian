@@ -22,6 +22,19 @@ struct Args {
     qdrant_rest_url: Option<String>,
     #[arg(long, default_value = "QDRANT_API_KEY")]
     qdrant_api_key_env: String,
+    /// Transport: `stdio` (default, for one local client) or `http` (streamable HTTP, for shared /
+    /// networked memory; requires a build with `--features http`).
+    #[arg(long, value_enum, default_value_t = TransportArg::Stdio)]
+    transport: TransportArg,
+    /// Address to bind when `--transport http`. Bind to a trusted interface only.
+    #[arg(long, default_value = "127.0.0.1:8080")]
+    bind: String,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum TransportArg {
+    Stdio,
+    Http,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -50,7 +63,23 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     let config = load_runtime_config(&args)?;
-    artesian_mcp::run_stdio_with_artesian_config(config.config).await
+    match args.transport {
+        TransportArg::Stdio => artesian_mcp::run_stdio_with_artesian_config(config.config).await,
+        TransportArg::Http => run_http_transport(config.config, &args.bind).await,
+    }
+}
+
+#[cfg(feature = "http")]
+async fn run_http_transport(config: ArtesianConfig, bind: &str) -> anyhow::Result<()> {
+    let addr: std::net::SocketAddr = bind
+        .parse()
+        .map_err(|error| anyhow::anyhow!("invalid --bind {bind:?}: {error}"))?;
+    artesian_mcp::run_http(config, addr).await
+}
+
+#[cfg(not(feature = "http"))]
+async fn run_http_transport(_config: ArtesianConfig, _bind: &str) -> anyhow::Result<()> {
+    anyhow::bail!("--transport http requires building artesian-mcp with --features http")
 }
 
 struct RuntimeConfig {

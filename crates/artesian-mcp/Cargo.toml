@@ -14,6 +14,7 @@ artesian-process-agent = { path = "../artesian-process-agent" }
 clap.workspace = true
 wellfield.workspace = true
 aquifer = { path = "../aquifer" }
+axum = { workspace = true, optional = true }
 rmcp = { workspace = true, features = ["transport-io"] }
 schemars.workspace = true
 serde.workspace = true
@@ -27,6 +28,8 @@ tracing-subscriber.workspace = true
 [features]
 qdrant = ["aquifer/qdrant"]
 llm = ["headgate/llm"]
+# Serve MCP over streamable HTTP (networked / shared memory) in addition to stdio.
+http = ["dep:axum", "rmcp/transport-streamable-http-server"]
 
 [dev-dependencies]
 artesian-test-support.workspace = true

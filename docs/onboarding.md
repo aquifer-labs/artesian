@@ -100,6 +100,18 @@ artesian replicate --from-url http://localhost:6333 --to-url http://HOST:6333 --
 artesian replicate --from-url http://HOST:6333 --to-url http://localhost:6333 --collection my-project --status
 ```
 
+**Shared memory over the network.** By default `artesian-mcp` speaks MCP over stdio (one local
+client). Built with `--features http`, it can also serve **streamable HTTP** so several machines on
+a LAN share one memory server:
+
+```shell
+artesian-mcp --transport http --bind 0.0.0.0:8080 --backend qdrant --collection my-project
+# clients connect to http://HOST:8080/mcp
+```
+
+Bind to a trusted interface only — no auth is enforced at this layer; front it with your own
+reverse proxy / network policy if exposed.
+
 **More vector engines.** `qdrant` and `sqlite-vec` are the wired-in `--backend` choices; any other
 vector store (e.g. PostgreSQL + `pgvector`) is a thin feature-gated `VectorStore` adapter that
 inherits the same chunk-on-store, hybrid RRF, and tenancy. See

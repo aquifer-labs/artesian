@@ -1629,6 +1629,32 @@ pub async fn run_stdio_with_artesian_config(config: ArtesianConfig) -> anyhow::R
     Ok(())
 }
 
+/// Serve the MCP memory tools over streamable HTTP at `bind` (path `/mcp`), so memory can be shared
+/// across machines on a LAN instead of by a single stdio client. Each session gets a fresh memory
+/// server built from `config`. Bind to a trusted interface only (no auth is enforced here).
+#[cfg(feature = "http")]
+pub async fn run_http(config: ArtesianConfig, bind: std::net::SocketAddr) -> anyhow::Result<()> {
+    use rmcp::transport::streamable_http_server::{
+        session::local::LocalSessionManager, StreamableHttpService,
+    };
+    let memory_config = config.memory.clone();
+    let router_enabled = config.coordination.router_enabled;
+    let service = StreamableHttpService::new(
+        move || {
+            MemoryServer::from_config(&memory_config)
+                .map(|server| server.with_router_enabled(router_enabled))
+                .map_err(std::io::Error::other)
+        },
+        std::sync::Arc::new(LocalSessionManager::default()),
+        Default::default(),
+    );
+    let app = axum::Router::new().nest_service("/mcp", service);
+    let listener = tokio::net::TcpListener::bind(bind).await?;
+    eprintln!("artesian-mcp serving MCP over HTTP at http://{bind}/mcp");
+    axum::serve(listener, app).await?;
+    Ok(())
+}
+
 pub fn open_memory_backend(config: &MemoryConfig) -> anyhow::Result<Arc<dyn MemoryBackend>> {
     match config.backend {
         MemoryBackendKind::Files => Ok(Arc::new(FilesBackend::new(&config.root))),
