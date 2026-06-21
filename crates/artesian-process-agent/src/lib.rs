@@ -1015,10 +1015,15 @@ async fn run_process(
 
     if !prompt_was_arg && !prompt.is_empty() {
         if let Some(mut stdin) = child.stdin.take() {
-            stdin
-                .write_all(prompt.as_bytes())
-                .await
-                .map_err(|error| AgentError::Session(error.to_string()))?;
+            // A failing one-shot worker can exit before reading its prompt, closing the
+            // stdin read end; the resulting broken pipe is benign and OS-timing dependent
+            // (it races worker startup vs. this write). Tolerate it so we still capture and
+            // redact the worker's stderr/exit status instead of aborting with a bare pipe error.
+            match stdin.write_all(prompt.as_bytes()).await {
+                Ok(()) => {}
+                Err(error) if error.kind() == io::ErrorKind::BrokenPipe => {}
+                Err(error) => return Err(AgentError::Session(error.to_string())),
+            }
         }
     }
     drop(child.stdin.take());

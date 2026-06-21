@@ -383,6 +383,51 @@ async fn orchestrate_delegate_error_redacts_process_secrets() {
     assert!(text.contains("[REDACTED]"));
 }
 
+/// Deterministic regression for the OS-timing flake: a worker that exits without reading
+/// its prompt closes the stdin read end, so writing the prompt hits a broken pipe. A prompt
+/// larger than the OS pipe buffer forces that path on every platform. Delegation must still
+/// capture and redact the worker's stderr rather than aborting with a bare pipe error.
+#[tokio::test]
+#[cfg(unix)]
+async fn orchestrate_delegate_tolerates_unread_stdin_and_redacts() {
+    let tempdir = TempDir::new("mcp-delegate-broken-stdin");
+    let secret = "sk-mcp-unread-stdin-secret-7890";
+    let script = format!("printf 'api_key={secret}\\n' 1>&2; exit 9");
+    let server = MemoryServer::new(tempdir.join("memory"))
+        .with_mode(Mode::Orchestrate)
+        .with_task_root(tempdir.join("tasks"))
+        .with_repo_root(tempdir.path())
+        .with_process_registry_dir(tempdir.join("spawns"))
+        .with_bindings(vec![AgentBinding {
+            role: Role::Worker,
+            agent: "codex".to_string(),
+            model: Some("gpt-5.5".to_string()),
+            command: Some("sh".to_string()),
+            args: vec!["-c".to_string(), script],
+            timeout_seconds: Some(5),
+        }]);
+
+    // Larger than any OS pipe buffer (64 KiB on Linux), so the prompt write blocks and then
+    // breaks when the worker exits unread — exercising the broken-pipe path deterministically.
+    let big_task = "x".repeat(256 * 1024);
+    let result = server
+        .orchestrate_delegate(Parameters(DelegateRequest {
+            role: "worker".to_string(),
+            task: big_task,
+        }))
+        .await;
+    let Err(error) = result else {
+        panic!("delegation should fail");
+    };
+    let text = error.to_string();
+
+    assert!(!text.contains(secret), "raw secret must not leak: {text}");
+    assert!(
+        text.contains("[REDACTED]"),
+        "worker stderr must be captured and redacted, got: {text}"
+    );
+}
+
 #[tokio::test]
 async fn team_lifecycle_uses_definitions_plan_gate_and_cleanup() {
     let tempdir = TempDir::new("mcp-team-lifecycle");
