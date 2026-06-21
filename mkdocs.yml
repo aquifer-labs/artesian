@@ -3,8 +3,10 @@
 # Nav is intentionally minimal and is finalized during the documentation sweep.
 site_name: Artesian
 site_description: Memory control plane for agent loops.
+site_url: https://aquifer-labs.github.io/artesian/
 repo_url: https://github.com/aquifer-labs/artesian
 repo_name: aquifer-labs/artesian
+edit_uri: edit/main/docs/
 docs_dir: docs
 
 theme:
@@ -33,13 +35,29 @@ markdown_extensions:
       permalink: true
 
 nav:
-  - Home: onboarding.md
-  - Why Artesian: positioning.md
-  - Roadmap: roadmap.md
-  - Architecture: architecture.md
-  - Composability (LEGO): composability.md
-  - Why Rust: why-rust.md
-  - Backends: backends.md
-  - Modes: modes.md
-  - Self-repair: self-repair.md
-  - Concurrency: concurrency.md
+  - Home: README.md
+  - Start:
+      - Onboarding: onboarding.md
+      - Why Artesian: positioning.md
+      - Why Rust: why-rust.md
+      - Roadmap: roadmap.md
+  - Concepts:
+      - Architecture: architecture.md
+      - Modes: modes.md
+      - Composability (LEGO): composability.md
+      - Context tree: context-tree.md
+      - Self-repair: self-repair.md
+  - Memory:
+      - Memory model: memory.md
+      - Backends: backends.md
+      - Loop engineering: loop-engineering.md
+      - Kit format: kit-format.md
+      - ACC benchmark: acc-bench.md
+  - Orchestration:
+      - Orchestration: orchestration.md
+      - Teams: teams.md
+      - Task tracking: task-tracking.md
+      - Concurrency: concurrency.md
+  - Operations:
+      - Upgrades: upgrades.md
+      - Development: development.md
