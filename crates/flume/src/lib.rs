@@ -2,7 +2,13 @@
 
 //! Artesian-native agent teams (Flume).
 
+pub mod lane;
 pub mod loop_core;
+
+pub use lane::{
+    Lane, LaneBudget, LaneContract, LaneCoordinator, LaneError, LaneSummary, PresenceSnapshot,
+    TeammatePresence,
+};
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -143,6 +149,10 @@ pub enum FlumeError {
     Agent(String),
     #[error("task store failed: {0}")]
     Task(#[from] headrace::TaskError),
+    #[error("lane duplicate task: {0}")]
+    LaneDuplicate(String),
+    #[error("lane budget exceeded: {0}")]
+    LaneBudget(String),
 }
 
 impl From<AgentError> for FlumeError {
@@ -453,6 +463,23 @@ pub struct TeamTaskAdd {
     pub blockers: Vec<String>,
 }
 
+/// Request to register a [`Lane`] with a team.  The coordinator starts tracking the lane
+/// immediately; tasks are assigned to the lane via [`TeamRuntime::assign_task_to_lane`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TeamLaneAdd {
+    pub team_id: String,
+    pub lane: Lane,
+}
+
+/// Request to assign a task to a lane, enforcing dedup and budget.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TeamLaneAssignTask {
+    pub team_id: String,
+    pub lane_name: String,
+    pub task_id: String,
+    pub task_title: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TeamTaskClaim {
     pub team_id: String,
@@ -556,6 +583,7 @@ impl TeamRuntime {
             events: Vec::new(),
             task_definitions: BTreeMap::new(),
             approved_plans: BTreeSet::new(),
+            lane_coordinator: LaneCoordinator::new(),
         };
         let record = team.record();
         self.teams.insert(id, team);
@@ -802,6 +830,118 @@ impl TeamRuntime {
         supervisor
             .gc(options)
             .map_err(|error| FlumeError::Agent(error.to_string()))
+    }
+
+    // ── Lane / Coordinator ─────────────────────────────────────────────────────────────────────
+
+    /// Register a [`Lane`] with a team's coordinator.  The lane's contract is stored immediately;
+    /// tasks are assigned to lanes separately via [`assign_task_to_lane`].
+    pub fn add_lane(&mut self, request: TeamLaneAdd) -> FlumeResult<LaneSummary> {
+        let team = self.team_mut(&request.team_id)?;
+        let summary = LaneSummary {
+            name: request.lane.name.clone(),
+            definition: request.lane.definition.clone(),
+            contract: request.lane.contract.clone(),
+            active_task_ids: Vec::new(),
+            turns_used: 0,
+            tokens_used: 0,
+        };
+        team.lane_coordinator.register_lane(request.lane);
+        Ok(summary)
+    }
+
+    /// Attempt to assign a task to a named lane, enforcing dedup across all lanes in the team.
+    ///
+    /// Returns [`FlumeError::LaneDuplicate`] if another lane is already working on the same
+    /// task id or canonical title.  Returns [`FlumeError::LaneBudget`] if the lane's
+    /// concurrent-task cap is exhausted.
+    pub fn assign_task_to_lane(&mut self, request: TeamLaneAssignTask) -> FlumeResult<LaneSummary> {
+        let team = self.team_mut(&request.team_id)?;
+        team.lane_coordinator
+            .assign_task(&request.lane_name, &request.task_id, &request.task_title)
+            .map_err(|error| match &error {
+                LaneError::DuplicateTask { .. } => FlumeError::LaneDuplicate(error.to_string()),
+                LaneError::BudgetExceeded(_) => FlumeError::LaneBudget(error.to_string()),
+                LaneError::LaneNotFound(_) => FlumeError::InvalidDefinition(error.to_string()),
+            })?;
+        team.lane_coordinator
+            .lane_summaries()
+            .into_iter()
+            .find(|s| s.name == request.lane_name)
+            .ok_or_else(|| {
+                FlumeError::InvalidDefinition(format!(
+                    "lane '{}' disappeared after assignment",
+                    request.lane_name
+                ))
+            })
+    }
+
+    /// Return the coordinator's lane summaries for a team (without the full teammate list).
+    pub fn lane_summaries(&self, team_id: &str) -> FlumeResult<Vec<LaneSummary>> {
+        Ok(self.team(team_id)?.lane_coordinator.lane_summaries())
+    }
+
+    // ── Presence ───────────────────────────────────────────────────────────────────────────────
+
+    /// Return a live [`PresenceSnapshot`] for a team: which lane/agent is active on what task,
+    /// current load vs. global cap.  Reuses the existing heartbeat / registry infrastructure —
+    /// the presence view is derived from in-memory state with no additional I/O.
+    pub fn presence(&self, team_id: &str) -> FlumeResult<PresenceSnapshot> {
+        let team = self.team(team_id)?;
+        let supervisor = ProcessSupervisor::new(&self.config.registry_dir)
+            .with_termination_grace(self.config.termination_grace)
+            .with_max_concurrent_spawns(self.config.max_concurrent_spawns);
+        let spawns_active = supervisor
+            .entries()
+            .map(|entries| {
+                entries
+                    .into_iter()
+                    .filter(|e| supervisor.group_alive(e.pgid))
+                    .count()
+            })
+            .unwrap_or(0);
+
+        let lane_summaries = team.lane_coordinator.lane_summaries();
+
+        // Build a per-lane index of active task ids for teammate matching.
+        let lane_tasks: std::collections::HashMap<String, Vec<String>> = lane_summaries
+            .iter()
+            .map(|s| (s.name.clone(), s.active_task_ids.clone()))
+            .collect();
+
+        let teammates = team
+            .teammates
+            .iter()
+            .map(|(name, state)| {
+                // Find which lane this teammate is associated with (by definition name).
+                let lane = lane_summaries
+                    .iter()
+                    .find(|s| s.definition == state.definition.name)
+                    .map(|s| s.name.clone());
+                let active_task_ids = lane
+                    .as_ref()
+                    .and_then(|l| lane_tasks.get(l))
+                    .cloned()
+                    .unwrap_or_default();
+                TeammatePresence {
+                    name: name.clone(),
+                    lane,
+                    status: format!("{:?}", state.status).to_ascii_lowercase(),
+                    active_task_ids,
+                }
+            })
+            .collect::<Vec<_>>();
+
+        let total_active_tasks = lane_summaries.iter().map(|s| s.active_task_ids.len()).sum();
+
+        Ok(PresenceSnapshot {
+            team_id: team_id.to_string(),
+            lanes: lane_summaries,
+            teammates,
+            total_active_tasks,
+            spawns_active,
+            spawns_cap: self.config.max_concurrent_spawns,
+        })
     }
 
     async fn execute_teammate(
@@ -1082,6 +1222,8 @@ struct TeamState {
     events: Vec<EventEnvelope>,
     task_definitions: BTreeMap<String, String>,
     approved_plans: BTreeSet<String>,
+    /// Lane coordinator: tracks parallel specialist lanes and enforces dedup.
+    lane_coordinator: LaneCoordinator,
 }
 
 impl TeamState {

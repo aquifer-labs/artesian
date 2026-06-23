@@ -120,8 +120,10 @@ orchestration tools are off outside `orchestrate` / `full`, so this is the defau
 ## Surfaces
 
 - **MCP team tools:** `team.create`, `team.spawn`, `team.task.add` / `claim` / `complete`,
-  `team.message`, `team.status`, `team.cleanup` — over the same supervised engine.
-- **CLI:** `artesian team …` exposes the same operations for foreground/local use.
+  `team.message`, `team.status`, `team.presence`, `team.lane.add`, `team.lane.assign`,
+  `team.cleanup` — over the same supervised engine.
+- **CLI:** `artesian team …` exposes the same operations for foreground/local use, including
+  `artesian team presence <team-id>` for a live snapshot.
 - **Lead role-skill:** a short instruction `artesian init` writes so an in-session lead drives the team
   natively (read the catalog, recall via `memory.context`, delegate, gate via the judge).
 
@@ -147,6 +149,9 @@ full agentic loop entirely through the Artesian MCP server, without a separate C
 | `team.task.complete` | Complete or block a task through the judge/master gate |
 | `team.message` | Post typed messages (ASK / RESULT / REVIEW / DONE) to the EventEnvelope pool |
 | `team.status` | Inspect team lifecycle, teammates, and redacted message pool |
+| `team.presence` | Live presence snapshot: active lanes/tasks/owners/load vs. cap |
+| `team.lane.add` | Register a specialist lane with a written contract (scope, non-goals, budget, handoff) |
+| `team.lane.assign` | Assign a task to a lane, enforcing dedup and budget |
 | `team.cleanup` | Terminate tracked teammate process groups and mark the team cleaned up |
 | `team.gc` | Garbage-collect orphaned, expired, or hung teammate process groups |
 
@@ -213,6 +218,225 @@ The outcome report:
 agent-teams) is driving the loop, keep Artesian in `memory` or `advanced` mode so its orchestration
 tools stay off. The `team.*` and `orchestrate.*` tools are disabled outside `orchestrate` / `full`
 mode by design.
+
+## Parallel specialist lanes
+
+**Openclaw's key lesson:** parallelism in multi-agent systems is a *scarce-resource* problem — not
+"more agents = more throughput". The bottlenecks are session locks, model capacity, tool
+availability, context limits, and especially **ownership ambiguity**: two agents picking up the same
+task wastes both turns and produces conflicting state.
+
+Flume addresses this with **lane contracts**.
+
+### Lane / LaneContract
+
+A `Lane` is a named specialist with a written contract that declares exactly:
+
+| Field | Meaning |
+|---|---|
+| `name` | Stable lane identifier (`"security"`, `"test-runner"`) |
+| `definition` | Role definition file this lane uses |
+| `owned_scope` | Human-readable description of what this lane owns |
+| `non_goals` | What it must NOT do (prevents scope overlap with sibling lanes) |
+| `budget.max_concurrent_tasks` | Max tasks active simultaneously (within global cap) |
+| `budget.max_turns` | Max total worker invocations across all tasks |
+| `budget.token_cap` | Advisory soft cap (recorded, not enforced) |
+| `handoff_to` | Lane or teammate to receive handoff summaries on completion |
+| `allowed_tools` | Tools this lane may call (empty = no additional restriction) |
+| `agent_constraint` | Agent CLI this lane uses (optional) |
+
+Lanes run in parallel under the **existing global `max_concurrent_spawns` cap** — the cap is never
+increased, just made legible across specialist domains.
+
+### Coordinator deduplication
+
+The `LaneCoordinator` lives inside `TeamRuntime` and enforces two properties:
+
+1. **Dedup** — the same task (matched by id OR canonical title) cannot be active in two lanes
+   simultaneously. A second assignment to the same task is rejected with a clear error.
+2. **Budget** — each lane's concurrent-task cap is enforced before assignment.
+
+The coordinator is small and synchronous — no async, no I/O. Coordination state is handled by the
+surrounding `TeamRuntime` mutex, the same lock that already serialises team mutation.
+
+### MCP tools
+
+```json
+// Register a specialist lane
+{
+  "tool": "team.lane.add",
+  "params": {
+    "team_id": "patch-team",
+    "name": "security",
+    "definition": "security-reviewer",
+    "owned_scope": "Authentication, token handling, session management",
+    "non_goals": ["UI testing", "performance benchmarks"],
+    "max_concurrent_tasks": 2,
+    "max_turns": 20,
+    "handoff_to": "judge"
+  }
+}
+
+// Assign a task to a lane (dedup enforced)
+{
+  "tool": "team.lane.assign",
+  "params": {
+    "team_id": "patch-team",
+    "lane_name": "security",
+    "task_id": "task-42",
+    "task_title": "Review auth.rs"
+  }
+}
+```
+
+### CLI
+
+```
+artesian team lane add  <team-id> --name security --definition security-reviewer \
+  --owned-scope "auth and token handling" --max-concurrent-tasks 2
+artesian team lane assign <team-id> --lane-name security --task-id task-42 --task-title "Review auth.rs"
+```
+
+---
+
+## Presence — live state visibility
+
+Before spawning or assigning work, an orchestrator (or a human operator) needs to see what is
+already active to avoid stepping on an in-flight lane.  `team.presence` returns a live snapshot:
+
+```json
+{
+  "tool": "team.presence",
+  "params": { "team_id": "patch-team" }
+}
+```
+
+Response:
+
+```json
+{
+  "presence": {
+    "team_id": "patch-team",
+    "lanes": [
+      {
+        "name": "security",
+        "definition": "security-reviewer",
+        "active_task_ids": ["task-42"],
+        "turns_used": 3,
+        "tokens_used": 0
+      }
+    ],
+    "teammates": [
+      {
+        "name": "security-reviewer",
+        "lane": "security",
+        "status": "active",
+        "active_task_ids": ["task-42"]
+      }
+    ],
+    "total_active_tasks": 1,
+    "spawns_active": 1,
+    "spawns_cap": 4
+  }
+}
+```
+
+Presence reuses the existing heartbeat/registry infrastructure — it is derived from in-memory state
+with no additional I/O overhead.  The CLI equivalent: `artesian team presence <team-id>`.
+
+---
+
+## Runtime trait — the model-loop seam
+
+The per-agent invocation shape (claude / codex / gemini / opencode / generic) is now also available
+through a clean `AgentRuntime` trait in `artesian-process-agent`:
+
+```rust
+pub trait AgentRuntime: Send + Sync {
+    fn agent_id(&self) -> &str;
+    fn spawn_session(&self, request: SpawnRequest) -> BoxFuture<AgentResult<AgentSession>>;
+    fn send_message(
+        &self, session: &AgentSession,
+        message: AgentMessage,
+        event_sender: Option<UnboundedSender<WorkerEvent>>,
+    ) -> BoxFuture<AgentResult<String>>;
+}
+```
+
+**Contract:**
+- `spawn_session` is cheap: allocates bookkeeping, no process launched.
+- `send_message` is the heavy path: spawns the process, pipes the prompt, streams events,
+  returns the response.
+- The per-agent argv (claude: `-p … --output-format stream-json --verbose --permission-mode
+  acceptEdits`, codex: `exec --json --dangerously-bypass-approvals-and-sandbox`, etc.) is
+  **byte-identical** to the existing `build_invocation` path — nothing changes for existing
+  callers.
+
+`ProcessAgentRuntime` is the built-in impl.  Adding a new runtime (API-based, mock for tests,
+alternative model provider) is a small `impl AgentRuntime`:
+
+```rust
+let runtime: Box<dyn AgentRuntime> = Box::new(ProcessAgentRuntime::from_config(config));
+let session = runtime.spawn_session(SpawnRequest { role: Role::Worker, .. }).await?;
+let content = runtime.send_message(&session, AgentMessage { content: prompt }, None).await?;
+```
+
+The trait boundary is stable and clean enough that `flume` could be extracted as a standalone
+product without changing callers: the `AgentRuntime` contract is the only seam that matters.
+
+---
+
+## End-to-end example: lanes + presence + loop
+
+```json
+// 1. Create team
+{ "tool": "team.create", "params": { "name": "patch-team" } }
+
+// 2. Register specialist lanes with contracts
+{
+  "tool": "team.lane.add",
+  "params": {
+    "team_id": "patch-team", "name": "security", "definition": "security-reviewer",
+    "owned_scope": "auth, tokens, session", "non_goals": ["ui", "perf"],
+    "max_concurrent_tasks": 1, "handoff_to": "judge"
+  }
+}
+{
+  "tool": "team.lane.add",
+  "params": {
+    "team_id": "patch-team", "name": "test-runner", "definition": "test-writer",
+    "owned_scope": "unit and integration tests", "non_goals": ["security review"],
+    "max_concurrent_tasks": 2
+  }
+}
+
+// 3. Check presence before assigning (see what's already active)
+{ "tool": "team.presence", "params": { "team_id": "patch-team" } }
+
+// 4. Add a task and assign it to the security lane (dedup enforced)
+{ "tool": "team.task.add", "params": { "team_id": "patch-team", "title": "Review auth.rs" } }
+{
+  "tool": "team.lane.assign",
+  "params": {
+    "team_id": "patch-team", "lane_name": "security",
+    "task_id": "<id>", "task_title": "Review auth.rs"
+  }
+}
+// Attempting to assign the same task to test-runner returns LaneDuplicate error.
+
+// 5. Spawn the lane worker and run the loop
+{ "tool": "team.spawn", "params": { "team_id": "patch-team", "definition": "security-reviewer" } }
+{
+  "tool": "orchestrate.loop",
+  "params": {
+    "goal": "cargo clippy --workspace -- -D warnings 2>&1 | grep -c error | grep -q '^0$'",
+    "worker": "claude -p \"$ARTESIAN_PACKET\" --permission-mode acceptEdits",
+    "max_turns": 6
+  }
+}
+```
+
+---
 
 ## Prior art and naming
 

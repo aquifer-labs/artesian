@@ -538,6 +538,12 @@ enum TeamCommand {
         #[arg(long, default_value = DEFAULT_CONFIG)]
         config: PathBuf,
     },
+    /// Show live presence: which lane/agent is active on what task, current load vs. global cap.
+    Presence {
+        team_id: String,
+        #[arg(long, default_value = DEFAULT_CONFIG)]
+        config: PathBuf,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -1870,6 +1876,12 @@ async fn team(command: TeamCommand) -> Result<()> {
                     "skipped_unverified": report.skipped_unverified,
                 }))?
             );
+        }
+        TeamCommand::Presence { team_id, config } => {
+            let mut runtime = team_runtime(&config).await?;
+            ensure_ephemeral_team(&mut runtime, &team_id);
+            let snapshot = runtime.presence(&team_id)?;
+            println!("{}", serde_json::to_string_pretty(&snapshot)?);
         }
     }
     Ok(())

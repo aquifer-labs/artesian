@@ -68,7 +68,6 @@ pub struct EvictionPolicy {
     pub decay_config: DecayConfig,
 }
 
-
 /// Result of an eviction pass.
 #[derive(Debug, Clone, Default)]
 pub struct EvictionReport {
@@ -248,8 +247,8 @@ pub fn append_eviction_log(entries: &[EvictionLogEntry]) -> std::io::Result<()> 
         .append(true)
         .open(&log_path)?;
     for entry in entries {
-        let line = serde_json::to_string(entry)
-            .map_err(|e| std::io::Error::other(e.to_string()))?;
+        let line =
+            serde_json::to_string(entry).map_err(|e| std::io::Error::other(e.to_string()))?;
         writeln!(file, "{line}")?;
     }
     Ok(())

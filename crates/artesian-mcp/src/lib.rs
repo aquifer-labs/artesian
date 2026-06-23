@@ -28,9 +28,9 @@ use artesian_process_agent::{
     ProcessAgentConfig,
 };
 use flume::{
-    load_role_definitions, loop_core, role_summaries, TeamCreate, TeamGcOptions, TeamMessage,
-    TeamMessageKind, TeamRuntime, TeamRuntimeConfig, TeamSpawn, TeamTaskAdd, TeamTaskClaim,
-    TeamTaskComplete,
+    load_role_definitions, loop_core, role_summaries, Lane, LaneBudget, LaneContract, TeamCreate,
+    TeamGcOptions, TeamLaneAdd, TeamLaneAssignTask, TeamMessage, TeamMessageKind, TeamRuntime,
+    TeamRuntimeConfig, TeamSpawn, TeamTaskAdd, TeamTaskClaim, TeamTaskComplete,
 };
 use headgate::{
     count_tokens, Headgate, HeadgateConfig, LifecycleEntry, MemoryRecallStore, RecallStore,
@@ -72,6 +72,9 @@ const ORCHESTRATION_TOOLS: &[&str] = &[
     "team.task.complete",
     "team.message",
     "team.status",
+    "team.presence",
+    "team.lane.add",
+    "team.lane.assign",
     "team.cleanup",
     "team.gc",
 ];
@@ -1208,6 +1211,56 @@ pub struct TeamGcResponse {
     pub skipped_unverified: usize,
 }
 
+// ── team.presence / team.lane.* ───────────────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct TeamPresenceRequest {
+    pub team_id: String,
+}
+
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct TeamPresenceResponse {
+    pub presence: serde_json::Value,
+}
+
+/// Request to register a lane with a team.
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct TeamLaneAddRequest {
+    pub team_id: String,
+    /// Stable unique lane name (e.g. `"security"`, `"test-runner"`).
+    pub name: String,
+    /// Role definition name this lane uses (must match a `.agent/agents` or `.claude/agents` file).
+    pub definition: String,
+    /// Human-readable description of what this lane owns.
+    pub owned_scope: String,
+    /// Things this lane must NOT do (non-goals prevent scope overlap).
+    #[serde(default)]
+    pub non_goals: Vec<String>,
+    /// Maximum tasks this lane may run concurrently (within the global cap).
+    pub max_concurrent_tasks: Option<usize>,
+    /// Maximum total worker-turn budget across all tasks in this lane.
+    pub max_turns: Option<u32>,
+    /// Name of the lane (or teammate) to receive handoff summaries on task completion.
+    pub handoff_to: Option<String>,
+    /// Agent/tool names allowed in this lane (empty = no additional restriction).
+    #[serde(default)]
+    pub allowed_tools: Vec<String>,
+}
+
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct TeamLaneResponse {
+    pub lane: serde_json::Value,
+}
+
+/// Request to assign a task to a lane (enforcing dedup and budget).
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct TeamLaneAssignRequest {
+    pub team_id: String,
+    pub lane_name: String,
+    pub task_id: String,
+    pub task_title: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct DelegateRecord {
     status: String,
@@ -2268,6 +2321,87 @@ verified skill + spec + auto-invariants to memory. Brakes: max_turns (default 10
     }
 
     #[tool(
+        name = "team.presence",
+        description = "Return a live presence snapshot for a Flume team: which lane/agent is active on what task right now, current load vs. global spawn cap, and per-lane budget usage. Use this before spawning or assigning work to avoid stepping on an already-active lane."
+    )]
+    pub async fn team_presence(
+        &self,
+        Parameters(request): Parameters<TeamPresenceRequest>,
+    ) -> Result<Json<TeamPresenceResponse>, ErrorData> {
+        self.ensure_orchestration_enabled()?;
+        let runtime = self.team_runtime.lock().await;
+        let snapshot = runtime
+            .presence(&request.team_id)
+            .map_err(|error| ErrorData::internal_error(error.to_string(), None))?;
+        Ok(Json(TeamPresenceResponse {
+            presence: serde_json::to_value(snapshot)
+                .map_err(|error| ErrorData::internal_error(error.to_string(), None))?,
+        }))
+    }
+
+    #[tool(
+        name = "team.lane.add",
+        description = "Register a named specialist lane with a team's coordinator. A lane has a written contract (owned scope, non-goals, budget, handoff target) that makes parallelism legible and prevents scope overlap. Lanes run under the existing global concurrency cap — this does not increase it."
+    )]
+    pub async fn team_lane_add(
+        &self,
+        Parameters(request): Parameters<TeamLaneAddRequest>,
+    ) -> Result<Json<TeamLaneResponse>, ErrorData> {
+        self.ensure_orchestration_enabled()?;
+        let mut runtime = self.team_runtime.lock().await;
+        let lane = Lane::new(
+            request.name,
+            request.definition,
+            LaneContract {
+                owned_scope: request.owned_scope,
+                non_goals: request.non_goals,
+                budget: LaneBudget {
+                    max_concurrent_tasks: request.max_concurrent_tasks,
+                    max_turns: request.max_turns,
+                    token_cap: None,
+                },
+                handoff_to: request.handoff_to,
+                allowed_tools: request.allowed_tools,
+                agent_constraint: None,
+            },
+        );
+        let summary = runtime
+            .add_lane(TeamLaneAdd {
+                team_id: request.team_id,
+                lane,
+            })
+            .map_err(|error| ErrorData::internal_error(error.to_string(), None))?;
+        Ok(Json(TeamLaneResponse {
+            lane: serde_json::to_value(summary)
+                .map_err(|error| ErrorData::internal_error(error.to_string(), None))?,
+        }))
+    }
+
+    #[tool(
+        name = "team.lane.assign",
+        description = "Assign a headrace task to a named lane, enforcing deduplication (same task cannot be active in two lanes simultaneously) and the lane's concurrent-task budget. Returns the updated lane summary."
+    )]
+    pub async fn team_lane_assign(
+        &self,
+        Parameters(request): Parameters<TeamLaneAssignRequest>,
+    ) -> Result<Json<TeamLaneResponse>, ErrorData> {
+        self.ensure_orchestration_enabled()?;
+        let mut runtime = self.team_runtime.lock().await;
+        let summary = runtime
+            .assign_task_to_lane(TeamLaneAssignTask {
+                team_id: request.team_id,
+                lane_name: request.lane_name,
+                task_id: request.task_id,
+                task_title: request.task_title,
+            })
+            .map_err(|error| ErrorData::internal_error(error.to_string(), None))?;
+        Ok(Json(TeamLaneResponse {
+            lane: serde_json::to_value(summary)
+                .map_err(|error| ErrorData::internal_error(error.to_string(), None))?,
+        }))
+    }
+
+    #[tool(
         name = "memory.dream",
         description = "Bundle-to-bundle OCF memory consolidation: read all committed records, \
 score by access signals (access_count / last_access / recency / richness), and write a new \
@@ -2607,6 +2741,18 @@ fn tool_registry() -> &'static [RegisteredTool] {
         RegisteredTool {
             name: "team.status",
             description: "Inspect team lifecycle state, teammates, and redacted message pool.",
+        },
+        RegisteredTool {
+            name: "team.presence",
+            description: "Live presence snapshot: which lane/agent is active on what task, load vs. cap.",
+        },
+        RegisteredTool {
+            name: "team.lane.add",
+            description: "Register a specialist lane with a contract (scope, non-goals, budget, handoff).",
+        },
+        RegisteredTool {
+            name: "team.lane.assign",
+            description: "Assign a task to a lane, enforcing dedup and budget across all lanes.",
         },
         RegisteredTool {
             name: "team.cleanup",

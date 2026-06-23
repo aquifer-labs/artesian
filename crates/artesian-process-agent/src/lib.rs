@@ -2,6 +2,9 @@
 
 //! Process-backed [`artesian_core::Agent`] adapter.
 
+pub mod runtime;
+pub use runtime::{AgentRuntime, ProcessAgentRuntime};
+
 use std::{
     collections::HashMap,
     fs, io,
