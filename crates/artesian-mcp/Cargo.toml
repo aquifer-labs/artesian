@@ -11,6 +11,7 @@ license.workspace = true
 anyhow.workspace = true
 artesian-core = { path = "../artesian-core" }
 artesian-process-agent = { path = "../artesian-process-agent" }
+chrono.workspace = true
 clap.workspace = true
 flume.workspace = true
 aquifer = { path = "../aquifer" }

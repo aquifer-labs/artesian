@@ -47,6 +47,7 @@ mod judge;
 mod llm;
 mod metrics;
 mod recall;
+mod savings;
 
 pub use bundle::{
     BundleError, BundleManifest, Decision, LifecycleEntry, LifecycleReason, OcfSession,
@@ -59,6 +60,10 @@ pub use controller::{Headgate, HeadgateConfig};
 pub use gate::{DefaultQualifyGate, QualifyDecision, QualifyGate};
 pub use metrics::{count_tokens, GaugeMetrics};
 pub use recall::{MemoryRecallStore, RecallItem, RecallStore, StaticRecallStore};
+pub use savings::{
+    load_savings_rollup, record_savings, stats_dir, OpSavings, TokenSavingsEntry,
+    TokenSavingsRollup, ARTESIAN_STATS_DIR_ENV,
+};
 
 #[cfg(feature = "llm")]
 pub use compressor::LlmCompressor;

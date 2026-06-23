@@ -112,6 +112,7 @@ fn load_runtime_config(args: &Args) -> anyhow::Result<ArtesianConfig> {
             llm_consolidation_enabled: false,
             semantic_cache: Default::default(),
             track_access: true,
+            track_savings: true,
         },
         agents: Vec::new(),
         coordination: Default::default(),

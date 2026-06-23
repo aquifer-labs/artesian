@@ -53,6 +53,12 @@ pub struct MemoryConfig {
     /// cost of losing reinforcement signals for dreams/decay.
     #[serde(default = "default_track_access")]
     pub track_access: bool,
+    /// When `true` (the default), targeted recalls append one JSON line to
+    /// `~/.artesian/token_savings.jsonl` and update `~/.artesian/token_savings.json` with
+    /// cumulative totals.  Path overridable via `ARTESIAN_STATS_DIR`.  Set to `false` to
+    /// disable stats collection entirely; failures are always silent and non-blocking.
+    #[serde(default = "default_track_savings")]
+    pub track_savings: bool,
 }
 
 /// Settings for the semantic query cache (see `aquifer::SemanticCache`).
@@ -246,6 +252,7 @@ impl ArtesianConfig {
                 llm_consolidation_enabled: false,
                 semantic_cache: SemanticCacheConfig::default(),
                 track_access: default_track_access(),
+                track_savings: default_track_savings(),
             },
             agents,
             coordination: CoordinationConfig::default(),
@@ -300,5 +307,9 @@ fn default_cache_min_similarity() -> f32 {
 }
 
 fn default_track_access() -> bool {
+    true
+}
+
+fn default_track_savings() -> bool {
     true
 }

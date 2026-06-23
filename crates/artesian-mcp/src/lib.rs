@@ -33,8 +33,9 @@ use flume::{
     TeamRuntimeConfig, TeamSpawn, TeamTaskAdd, TeamTaskClaim, TeamTaskComplete,
 };
 use headgate::{
-    count_tokens, Headgate, HeadgateConfig, LifecycleEntry, MemoryRecallStore, RecallStore,
-    Resolution, SnapshotEntry, WorkingContextBundle, WorkingContextSnapshot,
+    count_tokens, load_savings_rollup, record_savings, Headgate, HeadgateConfig, LifecycleEntry,
+    MemoryRecallStore, OpSavings, RecallStore, Resolution, SnapshotEntry, TokenSavingsRollup,
+    WorkingContextBundle, WorkingContextSnapshot,
 };
 use headrace::{ClaimRequest, FilesTaskStore, NewTask, TaskStatus, TaskStore, TransitionTask};
 use rmcp::{
@@ -95,6 +96,10 @@ pub struct MemoryServer {
     process_defaults: ProcessDefaults,
     acc: AccConfig,
     tool_router: ToolRouter<Self>,
+    /// Collection name passed to token-savings entries.
+    collection: String,
+    /// Mirror of `config.memory.track_savings`.
+    track_savings: bool,
 }
 
 impl MemoryServer {
@@ -133,6 +138,8 @@ impl MemoryServer {
             process_defaults: ProcessDefaults::default(),
             acc: AccConfig::default(),
             tool_router: Self::mode_tool_router(Mode::Memory),
+            collection: String::new(),
+            track_savings: true,
         }
     }
 
@@ -163,6 +170,8 @@ impl MemoryServer {
             definitions,
         )));
         self.tool_router = Self::mode_tool_router(config.mode);
+        self.collection = config.memory.collection.clone();
+        self.track_savings = config.memory.track_savings;
         self
     }
 
@@ -230,11 +239,14 @@ impl MemoryServer {
     }
 
     pub fn from_config(config: &MemoryConfig) -> anyhow::Result<Self> {
-        Ok(Self::with_backend_and_anchor(
+        let mut server = Self::with_backend_and_anchor(
             open_memory_backend(config)?,
             Some(AnchorAnchorStore::new(&config.root)),
         )
-        .with_okf_root(Some(PathBuf::from(&config.root))))
+        .with_okf_root(Some(PathBuf::from(&config.root)));
+        server.collection = config.collection.clone();
+        server.track_savings = config.track_savings;
+        Ok(server)
     }
 
     pub async fn from_artesian_config(config: &ArtesianConfig) -> anyhow::Result<Self> {
@@ -928,6 +940,68 @@ pub struct SessionSummaryPayload {
     pub token_count: Option<usize>,
 }
 
+// ── Token-savings MCP tool structs ────────────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SavingsRequest {
+    /// Only count recalls at or after this UTC timestamp (ISO 8601, e.g.
+    /// `"2026-01-01T00:00:00Z"`). Omit for all-time totals.
+    pub since: Option<String>,
+}
+
+/// Per-operation token-savings breakdown returned by `memory.savings`.
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct OpSavingsInfo {
+    pub calls: u64,
+    pub returned_total: u64,
+    pub baseline_total: u64,
+    pub saved_total: u64,
+}
+
+impl From<&OpSavings> for OpSavingsInfo {
+    fn from(o: &OpSavings) -> Self {
+        Self {
+            calls: o.calls,
+            returned_total: o.returned_total,
+            baseline_total: o.baseline_total,
+            saved_total: o.saved_total,
+        }
+    }
+}
+
+/// Response for `memory.savings`.
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct SavingsResponse {
+    /// Total number of recall operations measured.
+    pub calls: u64,
+    /// Sum of `returned_tokens` across all recalls.
+    pub returned_total: u64,
+    /// Sum of `baseline_tokens` across all recalls.
+    pub baseline_total: u64,
+    /// Sum of `saved_tokens` (`max(0, baseline - returned)`) across all recalls.
+    pub saved_total: u64,
+    /// Per-operation breakdown.
+    pub by_op: std::collections::HashMap<String, OpSavingsInfo>,
+    /// RFC 3339 timestamp of the first recorded recall, if any.
+    pub first_ts: Option<String>,
+    /// RFC 3339 timestamp of the most recent recorded recall, if any.
+    pub last_ts: Option<String>,
+}
+
+impl From<TokenSavingsRollup> for SavingsResponse {
+    fn from(r: TokenSavingsRollup) -> Self {
+        Self {
+            calls: r.calls,
+            returned_total: r.returned_total,
+            baseline_total: r.baseline_total,
+            saved_total: r.saved_total,
+            by_op: r.by_op.iter().map(|(k, v)| (k.clone(), v.into())).collect(),
+            first_ts: r.first_ts.map(|dt| dt.to_rfc3339()),
+            last_ts: r.last_ts.map(|dt| dt.to_rfc3339()),
+        }
+    }
+}
+
 #[derive(Debug, Serialize, schemars::JsonSchema)]
 pub struct KitGetResponse {
     pub vision: Option<String>,
@@ -1414,7 +1488,16 @@ impl MemoryServer {
             .await
             .map_err(|error| ErrorData::internal_error(error.to_string(), None))?;
         }
-        let hits = hits.into_iter().map(find_hit).collect();
+        let baseline_tokens: usize = hits.iter().map(|h| count_tokens(&h.record.content)).sum();
+        let hits: Vec<FindHit> = hits.into_iter().map(find_hit).collect();
+        let returned_tokens: usize = hits.iter().map(|h| count_tokens(&h.content)).sum();
+        record_savings(
+            "memory.find",
+            &self.collection,
+            returned_tokens,
+            baseline_tokens,
+            self.track_savings,
+        );
         Ok(Json(FindResponse { hits }))
     }
 
@@ -1445,14 +1528,22 @@ impl MemoryServer {
         &self,
         Parameters(request): Parameters<ContextRequest>,
     ) -> Result<Json<ContextResponse>, ErrorData> {
-        let index = self
-            .okf_root
-            .as_ref()
-            .and_then(|root| std::fs::read_to_string(root.join("memory").join("index.md")).ok())
-            .map(|index| {
-                let limit = request.index_chars.unwrap_or(4_000);
-                index.chars().take(limit).collect::<String>()
-            });
+        // Read the index, computing full-vs-truncated token counts for savings accounting.
+        let (index, index_baseline_tokens, index_returned_tokens) =
+            if let Some(root) = self.okf_root.as_ref() {
+                match std::fs::read_to_string(root.join("memory").join("index.md")) {
+                    Ok(full_index) => {
+                        let index_limit = request.index_chars.unwrap_or(4_000);
+                        let baseline = count_tokens(&full_index);
+                        let truncated: String = full_index.chars().take(index_limit).collect();
+                        let returned = count_tokens(&truncated);
+                        (Some(truncated), baseline, returned)
+                    }
+                    Err(_) => (None, 0usize, 0usize),
+                }
+            } else {
+                (None, 0usize, 0usize)
+            };
         let mut query = MemoryQuery::new(request.query);
         query.limit = request.limit.unwrap_or(10);
         let expand = request.expand.unwrap_or(false);
@@ -1475,7 +1566,16 @@ impl MemoryServer {
             .await
             .map_err(|error| ErrorData::internal_error(error.to_string(), None))?;
         }
-        let hits = hits.into_iter().map(find_hit).collect();
+        let hits_baseline: usize = hits.iter().map(|h| count_tokens(&h.record.content)).sum();
+        let hits: Vec<FindHit> = hits.into_iter().map(find_hit).collect();
+        let hits_returned: usize = hits.iter().map(|h| count_tokens(&h.content)).sum();
+        record_savings(
+            "memory.context",
+            &self.collection,
+            index_returned_tokens + hits_returned,
+            index_baseline_tokens + hits_baseline,
+            self.track_savings,
+        );
         // When a goal is given, also surface the invariants relevant to it (tag-filtered), so the
         // caller can assemble a goal-scoped packet — goal + invariants + relevant memory.
         let mut invariants = Vec::new();
@@ -1701,6 +1801,15 @@ and task_id. Restores the OCF snapshot without re-qualifying and never matches o
         };
         let packet = WorkingContextBundle::resume_packet_from_session(&session)
             .map_err(|error| ErrorData::internal_error(error.to_string(), None))?;
+        // Baseline = returned for session resume (the packet IS the full bounded output).
+        let packet_tokens = count_tokens(&packet.to_string());
+        record_savings(
+            "memory.session.resume",
+            &self.collection,
+            packet_tokens,
+            packet_tokens,
+            self.track_savings,
+        );
         Ok(Json(SessionResumeResponse { packet }))
     }
 
@@ -1761,12 +1870,46 @@ the matched task/session ids and any alternative matches."
         };
         let packet = WorkingContextBundle::resume_packet_from_session(&session)
             .map_err(|error| ErrorData::internal_error(error.to_string(), None))?;
+        let packet_tokens = count_tokens(&packet.to_string());
+        record_savings(
+            "memory.session.resume_by_task",
+            &self.collection,
+            packet_tokens,
+            packet_tokens,
+            self.track_savings,
+        );
         Ok(Json(SessionResumeByTaskResponse {
             packet,
             matched_task_id: best.key.task_id.clone(),
             matched_session_id: best.key.session_id.clone(),
             alternatives,
         }))
+    }
+
+    #[tool(
+        name = "memory.savings",
+        description = "Return cumulative token-savings statistics: how many tokens Artesian's \
+targeted recall saved vs loading the full source records. Baseline assumption: each hit's full \
+record content token count is the baseline; the actual response payload is the returned count; \
+saved = max(0, baseline - returned). Pass `since` (ISO 8601) for a time-windowed view."
+    )]
+    pub async fn memory_savings(
+        &self,
+        Parameters(request): Parameters<SavingsRequest>,
+    ) -> Result<Json<SavingsResponse>, ErrorData> {
+        let since = request
+            .since
+            .as_deref()
+            .map(|s| {
+                chrono::DateTime::parse_from_rfc3339(s)
+                    .map(|dt| dt.with_timezone(&chrono::Utc))
+                    .map_err(|e| {
+                        ErrorData::invalid_params(format!("invalid since timestamp: {e}"), None)
+                    })
+            })
+            .transpose()?;
+        let rollup = load_savings_rollup(since);
+        Ok(Json(SavingsResponse::from(rollup)))
     }
 
     #[tool(
@@ -2166,6 +2309,8 @@ verified skill + spec + auto-invariants to memory. Brakes: max_turns (default 10
             run_id,
             run_log_dir,
             stop_file,
+            collection: self.collection.clone(),
+            track_savings: self.track_savings,
         };
         let mut commands = McpShellLoopCommands;
         let report =

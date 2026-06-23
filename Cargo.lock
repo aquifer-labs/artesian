@@ -193,6 +193,7 @@ dependencies = [
  "artesian-process-agent",
  "artesian-test-support",
  "axum 0.8.9",
+ "chrono",
  "clap",
  "flume",
  "headgate",

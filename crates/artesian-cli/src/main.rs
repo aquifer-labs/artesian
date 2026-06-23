@@ -40,8 +40,8 @@ use flume::{
     TeamWorkerEvent,
 };
 use headgate::{
-    count_tokens, Headgate, HeadgateConfig, LifecycleEntry, MemoryRecallStore, RecallStore,
-    SnapshotEntry, WorkingContextBundle, WorkingContextSnapshot,
+    count_tokens, load_savings_rollup, Headgate, HeadgateConfig, LifecycleEntry, MemoryRecallStore,
+    RecallStore, SnapshotEntry, WorkingContextBundle, WorkingContextSnapshot,
 };
 use headrace::{
     ClaimRequest, CommandVerifier, FilesTaskStore, NewTask, TaskKind, TaskStore, VectorTaskStore,
@@ -310,6 +310,20 @@ enum Command {
         root: PathBuf,
         #[arg(long)]
         budget_tokens: Option<usize>,
+    },
+    /// Show cumulative token-savings from targeted recall: how many tokens Artesian saved
+    /// vs loading the full source records.
+    Tokens {
+        /// Emit the raw JSON rollup (machine-readable / badge use).
+        #[arg(long)]
+        json: bool,
+        /// Only count recalls at or after this UTC timestamp (ISO 8601, e.g.
+        /// `2026-01-01T00:00:00Z`).
+        #[arg(long)]
+        since: Option<String>,
+        /// Show per-operation breakdown alongside the total.
+        #[arg(long)]
+        by_op: bool,
     },
     /// Run an autonomous memory-first loop: repeat a worker action until a goal command succeeds
     /// (exit 0), writing a resume anchor each turn. The worker can be any shell command — a script
@@ -1228,6 +1242,7 @@ async fn main() -> Result<()> {
             root,
             budget_tokens,
         } => perf(config, root, budget_tokens).await,
+        Command::Tokens { json, since, by_op } => tokens_command(json, since, by_op),
         Command::Loop {
             goal,
             worker_cmd,
@@ -1396,6 +1411,8 @@ async fn run_loop(options: LoopCliOptions) -> Result<()> {
         run_id: loop_run_id(),
         run_log_dir: loop_run_log_dir()?,
         stop_file: loop_stop_file()?,
+        collection: memory_config.collection.clone(),
+        track_savings: memory_config.track_savings,
     };
     let mut commands = ShellLoopCommands;
     let report = run_loop_core(
@@ -1737,7 +1754,9 @@ fn update() -> Result<()> {
     if !run_shell("brew upgrade aquifer-labs/tap/artesian")? {
         eprintln!("note: brew reported a non-zero exit (e.g. already up to date)");
     }
-    println!("\nNext: run `artesian doctor` to verify the install and your setup survived the upgrade.");
+    println!(
+        "\nNext: run `artesian doctor` to verify the install and your setup survived the upgrade."
+    );
     Ok(())
 }
 
@@ -2101,6 +2120,7 @@ async fn init(options: InitOptions, _non_interactive: bool) -> Result<()> {
             llm_consolidation_enabled: false,
             semantic_cache: Default::default(),
             track_access: true,
+            track_savings: true,
         },
         agents,
         coordination: Default::default(),
@@ -4220,6 +4240,7 @@ async fn preflight_qdrant_options(options: &InitOptions) -> Result<()> {
         llm_consolidation_enabled: false,
         semantic_cache: Default::default(),
         track_access: true,
+        track_savings: true,
     };
     preflight_qdrant_memory(&memory).await
 }
@@ -4262,6 +4283,7 @@ fn memory_config_for_command(
             llm_consolidation_enabled: false,
             semantic_cache: Default::default(),
             track_access: true,
+            track_savings: true,
         }
     };
     let config = if let Some(backend) = backend {
@@ -4555,6 +4577,66 @@ fn command_exists(command: &str) -> bool {
     env::split_paths(&path).any(|dir| dir.join(command).is_file())
 }
 
+/// Print cumulative token-savings statistics collected by Artesian's targeted recall.
+///
+/// The baseline assumption is documented in `docs/token-savings.md`: `baseline_tokens` is the
+/// sum of `count_tokens(record.content)` for each source record that contributed a hit.
+/// `saved_tokens = max(0, baseline_tokens - returned_tokens)`.
+fn tokens_command(json: bool, since: Option<String>, by_op: bool) -> Result<()> {
+    let since_dt = since
+        .as_deref()
+        .map(|s| {
+            chrono::DateTime::parse_from_rfc3339(s)
+                .with_context(|| format!("invalid --since timestamp: {s}"))
+                .map(|dt| dt.with_timezone(&chrono::Utc))
+        })
+        .transpose()?;
+
+    let rollup = load_savings_rollup(since_dt);
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&rollup)?);
+        return Ok(());
+    }
+
+    if rollup.calls == 0 {
+        println!("No token-savings data recorded yet. Run some recalls first.");
+        return Ok(());
+    }
+
+    let pct = if rollup.baseline_total > 0 {
+        100.0 * rollup.saved_total as f64 / rollup.baseline_total as f64
+    } else {
+        0.0
+    };
+    println!(
+        "Artesian saved ~{} tokens across {} recalls (~{:.0}% vs loading the source records)",
+        rollup.saved_total, rollup.calls, pct
+    );
+
+    if by_op && !rollup.by_op.is_empty() {
+        println!();
+        println!("By operation:");
+        let mut ops: Vec<_> = rollup.by_op.iter().collect();
+        ops.sort_by_key(|(name, _)| name.as_str());
+        for (op, stats) in ops {
+            let op_pct = if stats.baseline_total > 0 {
+                100.0 * stats.saved_total as f64 / stats.baseline_total as f64
+            } else {
+                0.0
+            };
+            println!(
+                "  {op}: saved {saved} tokens / {calls} recalls ({pct:.0}%)",
+                saved = stats.saved_total,
+                calls = stats.calls,
+                pct = op_pct,
+            );
+        }
+    }
+
+    Ok(())
+}
+
 async fn perf(config_path: PathBuf, root: PathBuf, budget_tokens: Option<usize>) -> Result<()> {
     let memory_config = memory_config_for_command(&config_path, root.clone(), None)?;
     let backend = open_memory_backend(&memory_config)?;
@@ -4700,6 +4782,8 @@ mod tests {
             run_id: run_id.to_string(),
             run_log_dir: tmp.join("runs"),
             stop_file: tmp.join("STOP"),
+            collection: String::new(),
+            track_savings: false,
         }
     }
 

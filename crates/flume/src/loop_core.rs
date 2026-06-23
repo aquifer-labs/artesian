@@ -26,6 +26,7 @@ use aquifer::{
     AnchorAnchorStore, MemoryBackend, MemoryQuery, MemoryScope, MemoryTier, SessionAnchor,
     StoreMemory,
 };
+use headgate::{count_tokens, record_savings};
 use serde_json::{json, Value};
 
 // ── Brakes / constants ─────────────────────────────────────────────────────────────────────────
@@ -104,6 +105,12 @@ pub struct LoopRunOptions {
     pub run_log_dir: PathBuf,
     /// Sentinel file path — loop stops if it exists at turn start.
     pub stop_file: PathBuf,
+    /// Memory collection label used in token-savings statistics.  Pass an empty string to
+    /// omit a collection label in the stats entry.
+    pub collection: String,
+    /// When `true` (the default), each per-turn `loop.recall` records a token-savings entry.
+    /// Mirror of `config.memory.track_savings`.
+    pub track_savings: bool,
 }
 
 /// Summary returned after `run_loop_core` completes (successfully or via a brake).
@@ -283,20 +290,31 @@ pub fn wall_cap_message(
 /// Search the backend for memory relevant to the goal; MMR-diversify to avoid crowding from
 /// near-duplicate turn commits.
 pub async fn loop_recall(backend: &dyn MemoryBackend, goal: &str) -> String {
+    loop_recall_inner(backend, goal).await.0
+}
+
+/// Like [`loop_recall`] but also returns `(baseline_tokens, returned_tokens)` for savings
+/// accounting.  `baseline_tokens` is the sum of full record content token counts for each
+/// MMR-selected hit.  `returned_tokens` is the token count of the formatted output (each
+/// record truncated to 280 chars).
+async fn loop_recall_inner(backend: &dyn MemoryBackend, goal: &str) -> (String, usize, usize) {
     let Ok(hits) = backend
         .find(MemoryQuery::new(goal).with_limit(LOOP_RECALL_LIMIT * 3))
         .await
     else {
-        return String::new();
+        return (String::new(), 0, 0);
     };
     let hits = aquifer::mmr_diversify(hits, LOOP_RECALL_LIMIT, aquifer::MMR_DEFAULT_LAMBDA);
+    let baseline_tokens: usize = hits.iter().map(|h| count_tokens(&h.record.content)).sum();
     let mut lines = Vec::new();
     for hit in hits {
         let content = hit.record.content.replace('\n', " ");
         let trimmed: String = content.chars().take(280).collect();
         lines.push(format!("- {trimmed}"));
     }
-    lines.join("\n")
+    let text = lines.join("\n");
+    let returned_tokens = count_tokens(&text);
+    (text, baseline_tokens, returned_tokens)
 }
 
 async fn packet_tag_section(
@@ -583,7 +601,18 @@ pub async fn run_loop_core(
             );
         }
         let recall = match backend {
-            Some(backend) => loop_recall(backend, &options.goal).await,
+            Some(backend) => {
+                let (text, baseline_tokens, returned_tokens) =
+                    loop_recall_inner(backend, &options.goal).await;
+                record_savings(
+                    "loop.recall",
+                    &options.collection,
+                    returned_tokens,
+                    baseline_tokens,
+                    options.track_savings,
+                );
+                text
+            }
             None => String::new(),
         };
         let packet =
@@ -836,6 +865,8 @@ mod tests {
                 run_id: run_id.clone(),
                 run_log_dir,
                 stop_file,
+                collection: String::new(),
+                track_savings: false,
             },
             Some(&backend),
             &anchor,
@@ -869,6 +900,8 @@ mod tests {
                 run_id: "test-run-one-turn".to_string(),
                 run_log_dir,
                 stop_file,
+                collection: String::new(),
+                track_savings: false,
             },
             Some(&backend),
             &anchor,
@@ -909,6 +942,8 @@ mod tests {
                 run_id: "test-run-max".to_string(),
                 run_log_dir,
                 stop_file,
+                collection: String::new(),
+                track_savings: false,
             },
             Some(&backend),
             &anchor,
@@ -943,6 +978,8 @@ mod tests {
                 run_id: "test-run-stop".to_string(),
                 run_log_dir,
                 stop_file,
+                collection: String::new(),
+                track_savings: false,
             },
             Some(&backend),
             &anchor,
