@@ -21,6 +21,10 @@ use aquifer::{
 use artesian_core::{
     Agent, AgentBinding, ArtesianConfig, MemoryBackendKind, MemoryConfig, Mode, Role, SpawnRequest,
 };
+use artesian_mcp::{
+    build_session_bundle_for_cli, checkpoint_anchor_for_cli, session_scoped_hits_for_cli,
+    SessionCheckpointRequest,
+};
 use artesian_process_agent::{
     fallback_agent_catalog, refresh_agent_catalog, ProcessAgent, ProcessAgentConfig,
     ProcessSupervisor,
@@ -610,6 +614,48 @@ enum SessionCommand {
         session_id: Option<String>,
         #[arg(long = "task")]
         task_id: Option<String>,
+        #[arg(long, default_value = DEFAULT_CONFIG)]
+        config: PathBuf,
+        #[arg(long, default_value = ".artesian")]
+        root: PathBuf,
+        #[arg(long, value_enum)]
+        backend: Option<BackendArg>,
+    },
+    /// Write a keyed (user, session, task) OCF checkpoint — symmetric with the MCP
+    /// memory.session.checkpoint tool so any agent can checkpoint from the CLI.
+    Checkpoint {
+        #[arg(long = "user")]
+        user_id: Option<String>,
+        #[arg(long = "session")]
+        session_id: Option<String>,
+        #[arg(long = "task")]
+        task_id: Option<String>,
+        #[arg(long)]
+        agent_id: String,
+        #[arg(long)]
+        current_task: Option<String>,
+        #[arg(long)]
+        next_step: Option<String>,
+        #[arg(long = "decision")]
+        last_decisions: Vec<String>,
+        #[arg(long)]
+        plan_pointer: Option<String>,
+        #[arg(long)]
+        last_failed_check: Option<String>,
+        #[arg(long, default_value = DEFAULT_CONFIG)]
+        config: PathBuf,
+        #[arg(long, default_value = ".artesian")]
+        root: PathBuf,
+        #[arg(long, value_enum)]
+        backend: Option<BackendArg>,
+    },
+    /// Resume a session by fuzzy task query (case-insensitive substring, most-recent tiebreak).
+    /// Prints the full resume packet so the operator does not need to know the session_id.
+    Resume {
+        /// Substring to match against session task ids (e.g. "DPT-4477").
+        task_query: String,
+        #[arg(long = "user")]
+        user_id: Option<String>,
         #[arg(long, default_value = DEFAULT_CONFIG)]
         config: PathBuf,
         #[arg(long, default_value = ".artesian")]
@@ -3084,6 +3130,109 @@ async fn session(command: SessionCommand) -> Result<()> {
                 })
                 .await?;
             println!("{}", serde_json::to_string_pretty(&summaries)?);
+        }
+        SessionCommand::Checkpoint {
+            user_id,
+            session_id,
+            task_id,
+            agent_id,
+            current_task,
+            next_step,
+            last_decisions,
+            plan_pointer,
+            last_failed_check,
+            config,
+            root,
+            backend,
+        } => {
+            let memory = memory_config_for_command(&config, root, backend)?;
+            let backend = open_memory_backend(&memory)?;
+            let anchor_store = AnchorAnchorStore::new(&memory.root);
+            let key = SessionKey::new(user_id, session_id, task_id);
+            let request = SessionCheckpointRequest {
+                agent_id,
+                user_id: Some(key.user_id.clone()),
+                session_id: Some(key.session_id.clone()),
+                task_id: Some(key.task_id.clone()),
+                current_task,
+                next_step,
+                last_decisions: if last_decisions.is_empty() {
+                    None
+                } else {
+                    Some(last_decisions)
+                },
+                plan_pointer,
+                goal: None,
+                last_failed_check,
+                limit: None,
+            };
+            let anchor = checkpoint_anchor_for_cli(&anchor_store, &key, &request).await?;
+            let session_hits = session_scoped_hits_for_cli(backend.as_ref(), &key, 8).await?;
+            let bundle = build_session_bundle_for_cli(
+                Some(&anchor),
+                &session_hits,
+                &[],
+                request.last_failed_check.as_deref(),
+            );
+            let session = bundle.to_ocf_session(&key, Some(request.agent_id.clone()))?;
+            let summary = SessionStore::new(backend).store(session).await?;
+            println!("{}", serde_json::to_string_pretty(&summary)?);
+        }
+        SessionCommand::Resume {
+            task_query,
+            user_id,
+            config,
+            root,
+            backend,
+        } => {
+            let backend = open_backend_for_command(&config, root, backend)?;
+            let all_summaries = SessionStore::new(backend.clone())
+                .list(SessionListFilter {
+                    user_id,
+                    ..SessionListFilter::default()
+                })
+                .await?;
+            let query_lower = task_query.to_lowercase();
+            let mut matches: Vec<_> = all_summaries
+                .iter()
+                .filter(|summary| summary.key.task_id.to_lowercase().contains(&query_lower))
+                .collect();
+            if matches.is_empty() {
+                bail!("no session matched task query {:?}", task_query);
+            }
+            // Sort by recency descending — most recently updated first.
+            matches.sort_by_key(|summary| std::cmp::Reverse(summary.updated_at));
+            let best = matches[0];
+            if matches.len() > 1 {
+                let alternatives: Vec<_> = matches[1..]
+                    .iter()
+                    .map(|summary| {
+                        format!(
+                            "  {} / {} (updated {})",
+                            summary.key.session_id,
+                            summary.key.task_id,
+                            summary.updated_at.format("%Y-%m-%dT%H:%M:%SZ")
+                        )
+                    })
+                    .collect();
+                eprintln!(
+                    "note: {} session(s) matched {:?}; resuming most recent ({} / {}). Alternatives:\n{}",
+                    matches.len(),
+                    task_query,
+                    best.key.session_id,
+                    best.key.task_id,
+                    alternatives.join("\n")
+                );
+            }
+            let store = SessionStore::new(backend);
+            let Some(session) = store.load(&best.key).await? else {
+                bail!(
+                    "session {} not found (listed but load failed)",
+                    best.key.session_id
+                );
+            };
+            let packet = WorkingContextBundle::resume_packet_from_session(&session)?;
+            println!("{}", serde_json::to_string_pretty(&packet)?);
         }
     }
     Ok(())

@@ -880,6 +880,19 @@ pub struct SessionResumeRequest {
     pub task_id: Option<String>,
 }
 
+/// Resume by fuzzy task query instead of exact session_id.
+///
+/// Matches the query (case-insensitive substring) against stored sessions' `task_id` fields,
+/// selects the most-recently-updated match, and returns the full resume packet. When multiple
+/// sessions match, the most recent is returned and the alternatives are listed in `alternatives`.
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SessionResumeByTaskRequest {
+    /// Substring to match against session task ids/titles (e.g. "DPT-4477").
+    pub task_query: String,
+    /// Optional user_id to narrow the search scope.
+    pub user_id: Option<String>,
+}
+
 #[derive(Debug, Serialize, schemars::JsonSchema)]
 pub struct SessionCheckpointResponse {
     pub summary: SessionSummaryPayload,
@@ -889,6 +902,19 @@ pub struct SessionCheckpointResponse {
 #[derive(Debug, Serialize, schemars::JsonSchema)]
 pub struct SessionResumeResponse {
     pub packet: serde_json::Value,
+}
+
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct SessionResumeByTaskResponse {
+    /// The full resume packet (same shape as memory.session.resume).
+    pub packet: serde_json::Value,
+    /// The matched session's task_id.
+    pub matched_task_id: String,
+    /// The matched session's session_id.
+    pub matched_session_id: String,
+    /// Alternative session task_ids that also matched the query (excluding the selected one).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub alternatives: Vec<String>,
 }
 
 #[derive(Debug, Serialize, schemars::JsonSchema)]
@@ -1676,6 +1702,71 @@ and task_id. Restores the OCF snapshot without re-qualifying and never matches o
         let packet = WorkingContextBundle::resume_packet_from_session(&session)
             .map_err(|error| ErrorData::internal_error(error.to_string(), None))?;
         Ok(Json(SessionResumeResponse { packet }))
+    }
+
+    #[tool(
+        name = "memory.session.resume_by_task",
+        description = "Resume a cross-agent session by fuzzy task query (case-insensitive substring \
+match on task_id/title, recency tiebreak). The operator says 'continue the DPT-4477 work' and the \
+agent resumes the right session WITHOUT knowing the session_id. Returns the full resume packet plus \
+the matched task/session ids and any alternative matches."
+    )]
+    pub async fn memory_session_resume_by_task(
+        &self,
+        Parameters(request): Parameters<SessionResumeByTaskRequest>,
+    ) -> Result<Json<SessionResumeByTaskResponse>, ErrorData> {
+        use aquifer::SessionListFilter;
+        let store = SessionStore::new(self.backend.clone());
+        let all_summaries = store
+            .list(SessionListFilter {
+                user_id: request.user_id.clone(),
+                ..SessionListFilter::default()
+            })
+            .await
+            .map_err(|error| ErrorData::internal_error(error.to_string(), None))?;
+        let query_lower = request.task_query.to_lowercase();
+        let mut matches: Vec<_> = all_summaries
+            .iter()
+            .filter(|summary| summary.key.task_id.to_lowercase().contains(&query_lower))
+            .collect();
+        if matches.is_empty() {
+            return Err(ErrorData::invalid_params(
+                format!("no session matched task query {:?}", request.task_query),
+                None,
+            ));
+        }
+        // Most-recently-updated first.
+        matches.sort_by_key(|summary| std::cmp::Reverse(summary.updated_at));
+        let best = matches[0];
+        let alternatives: Vec<String> = matches[1..]
+            .iter()
+            .map(|summary| {
+                format!(
+                    "{} / {} (updated {})",
+                    summary.key.session_id,
+                    summary.key.task_id,
+                    summary.updated_at.to_rfc3339()
+                )
+            })
+            .collect();
+        let Some(session) = store
+            .load(&best.key)
+            .await
+            .map_err(|error| ErrorData::internal_error(error.to_string(), None))?
+        else {
+            return Err(ErrorData::internal_error(
+                format!("session {} listed but load failed", best.key.session_id),
+                None,
+            ));
+        };
+        let packet = WorkingContextBundle::resume_packet_from_session(&session)
+            .map_err(|error| ErrorData::internal_error(error.to_string(), None))?;
+        Ok(Json(SessionResumeByTaskResponse {
+            packet,
+            matched_task_id: best.key.task_id.clone(),
+            matched_session_id: best.key.session_id.clone(),
+            alternatives,
+        }))
     }
 
     #[tool(
@@ -2504,6 +2595,73 @@ impl From<SessionSummary> for SessionSummaryPayload {
             token_count: summary.token_count,
         }
     }
+}
+
+// ── Public helpers for the CLI ────────────────────────────────────────────────────────────────
+//
+// These thin wrappers expose the core checkpoint/bundle logic with `anyhow::Result` returns so the
+// CLI does not need to depend on `rmcp::ErrorData`. The MCP tool methods call the private
+// functions directly (same code path, zero duplication).
+
+/// Write (or update) a session anchor for `key` and return the resulting [`SessionAnchor`].
+pub async fn checkpoint_anchor_for_cli(
+    store: &AnchorAnchorStore,
+    key: &SessionKey,
+    request: &SessionCheckpointRequest,
+) -> anyhow::Result<SessionAnchor> {
+    let existing = store.get_for_session(key).await?;
+    let current_task = request
+        .current_task
+        .clone()
+        .or_else(|| existing.as_ref().map(|anchor| anchor.current_task.clone()))
+        .or_else(|| request.goal.clone())
+        .unwrap_or_else(|| format!("session {}", key.session_id));
+    let next_step = request
+        .next_step
+        .clone()
+        .or_else(|| existing.as_ref().map(|anchor| anchor.next_step.clone()))
+        .unwrap_or_else(|| "continue from the checkpoint".to_string());
+    let mut anchor = existing.unwrap_or_else(|| SessionAnchor::new(&current_task, &next_step));
+    anchor.current_task = current_task;
+    anchor.next_step = next_step;
+    if let Some(plan_pointer) = &request.plan_pointer {
+        anchor.plan_pointer = Some(plan_pointer.clone());
+    }
+    if let Some(last_decisions) = &request.last_decisions {
+        anchor.last_decisions = last_decisions.clone();
+    }
+    Ok(store.set_for_session(key, anchor).await?)
+}
+
+/// Return session-scoped memory hits for `key` (excludes session-record tags).
+pub async fn session_scoped_hits_for_cli(
+    backend: &dyn MemoryBackend,
+    key: &SessionKey,
+    limit: usize,
+) -> anyhow::Result<Vec<SearchHit>> {
+    let query_text = format!("{} {}", key.task_id, key.session_id);
+    let mut query = MemoryQuery::new(query_text).with_limit(limit);
+    query.scope = Some(MemoryScope::Session);
+    query.user_id = Some(key.user_id.clone());
+    query.session_id = Some(key.session_id.clone());
+    query.task_id = Some(key.task_id.clone());
+    let hits = backend
+        .find(query)
+        .await?
+        .into_iter()
+        .filter(|hit| !hit.record.tags.iter().any(|tag| tag == SESSION_RECORD_TAG))
+        .collect();
+    Ok(hits)
+}
+
+/// Build an OCF session bundle from anchor, hits, and optional `last_failed_check`.
+pub fn build_session_bundle_for_cli(
+    anchor: Option<&SessionAnchor>,
+    session_hits: &[SearchHit],
+    invariant_hits: &[SearchHit],
+    last_failed_check: Option<&str>,
+) -> WorkingContextBundle {
+    build_session_bundle(anchor, session_hits, invariant_hits, last_failed_check)
 }
 
 pub async fn run_stdio(root: impl Into<PathBuf>) -> anyhow::Result<()> {

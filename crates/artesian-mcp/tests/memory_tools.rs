@@ -13,10 +13,10 @@ use aquifer::{
 use artesian_core::{AgentBinding, AgentCatalog, AgentCatalogEntry, AgentModel, Mode, Role};
 use artesian_mcp::{
     AnchorSetRequest, AnswerRequest, BindRequest, CommitRequest, DelegateRequest, FindRequest,
-    MemoryServer, RelationRequest, SessionCheckpointRequest, SessionResumeRequest, StoreRequest,
-    TeamCreateRequest, TeamMessageKindRequest, TeamMessageRequest, TeamSpawnRequest,
-    TeamStatusRequest, TeamTaskAddRequest, TeamTaskClaimRequest, TeamTaskCompleteRequest,
-    ToolsFindRequest,
+    MemoryServer, RelationRequest, SessionCheckpointRequest, SessionResumeByTaskRequest,
+    SessionResumeRequest, StoreRequest, TeamCreateRequest, TeamMessageKindRequest,
+    TeamMessageRequest, TeamSpawnRequest, TeamStatusRequest, TeamTaskAddRequest,
+    TeamTaskClaimRequest, TeamTaskCompleteRequest, ToolsFindRequest,
 };
 use artesian_test_support::TempDir;
 use rmcp::handler::server::wrapper::Parameters;
@@ -1122,5 +1122,175 @@ async fn orchestrate_loop_reaches_max_turns_when_goal_never_holds() {
         response.run_log_path.ends_with(".jsonl"),
         "run_log_path should be a .jsonl file: {}",
         response.run_log_path
+    );
+}
+
+// ── OCF cross-agent session continuity (end-to-end) ──────────────────────────────────────────
+
+/// Full OCF cross-agent flow:
+///
+/// 1. Codex checkpoints a keyed session (user=u1, session=s1, task="DPT-4477 add dag_id/run_id")
+///    with current_task, next_step, last_failed_check, and a session-scoped memory record.
+/// 2. Claude resumes by task query "DPT-4477" via `memory.session.resume_by_task`.
+/// 3. Assert the packet restores current_task/next_step/last_failed_check and the relevant memory.
+/// 4. Assert `handed_off_from == "codex"` (proving the cross-agent identity is preserved).
+/// 5. Non-matching query returns an error (clean miss).
+/// 6. Exact-id handoff (`memory.session.resume`) still works.
+#[tokio::test]
+async fn ocf_cross_agent_session_continuity_end_to_end() {
+    let tempdir = TempDir::new("mcp-ocf-e2e");
+    let server = MemoryServer::new(tempdir.path());
+
+    // Store a session-scoped memory that the resumed agent should see.
+    server
+        .memory_store(Parameters(StoreRequest {
+            content: "dag_id and run_id must be propagated via XCom".to_string(),
+            tags: Some(vec!["airflow".to_string(), "design".to_string()]),
+            node_id: Some("node:dpt-4477-xcom".to_string()),
+            relations: None,
+            source: Some("DPT-4477".to_string()),
+            confidence: Some(1.0),
+            scope: Some(artesian_mcp::ScopeRequest::Session),
+            agent_id: Some("codex".to_string()),
+            session_id: Some("s1".to_string()),
+            task_id: Some("DPT-4477 add dag_id/run_id".to_string()),
+            user_id: Some("u1".to_string()),
+        }))
+        .await
+        .expect("session-scoped memory should store");
+
+    // Store a second memory so we can confirm relevance recall.
+    server
+        .memory_store(Parameters(StoreRequest {
+            content: "backfill runs must not re-trigger the downstream sensor".to_string(),
+            tags: Some(vec!["invariant".to_string()]),
+            node_id: Some("node:dpt-4477-inv".to_string()),
+            relations: None,
+            source: Some("DPT-4477".to_string()),
+            confidence: Some(1.0),
+            scope: None,
+            agent_id: None,
+            session_id: None,
+            task_id: None,
+            user_id: None,
+        }))
+        .await
+        .expect("invariant memory should store");
+
+    // Codex checkpoints the keyed session.
+    let checkpoint = server
+        .memory_session_checkpoint(Parameters(SessionCheckpointRequest {
+            agent_id: "codex".to_string(),
+            user_id: Some("u1".to_string()),
+            session_id: Some("s1".to_string()),
+            task_id: Some("DPT-4477 add dag_id/run_id".to_string()),
+            current_task: Some("DPT-4477 add dag_id/run_id to Airflow operator".to_string()),
+            next_step: Some("wire XCom push in execute() and add unit test".to_string()),
+            plan_pointer: Some("docs/plan.md#step-3".to_string()),
+            last_decisions: Some(vec![
+                "use XCom over env vars for testability".to_string(),
+                "scope to task-scope memory to avoid session bleed".to_string(),
+            ]),
+            goal: Some("DPT-4477 dag_id run_id XCom".to_string()),
+            last_failed_check: Some(
+                "mypy: Argument 1 to XCom.set has incompatible type".to_string(),
+            ),
+            limit: Some(8),
+        }))
+        .await
+        .expect("codex checkpoint should succeed")
+        .0;
+
+    // Verify the checkpoint itself records the producer.
+    assert_eq!(
+        checkpoint.summary.handed_off_from.as_deref(),
+        Some("codex"),
+        "checkpoint summary should record codex as producer"
+    );
+    assert_eq!(
+        checkpoint.packet["session"]["handed_off_from"], "codex",
+        "checkpoint packet session block should record codex"
+    );
+
+    // Claude resumes by task query "DPT-4477" — no session_id needed.
+    let resumed = server
+        .memory_session_resume_by_task(Parameters(SessionResumeByTaskRequest {
+            task_query: "DPT-4477".to_string(),
+            user_id: Some("u1".to_string()),
+        }))
+        .await
+        .expect("resume_by_task should match DPT-4477")
+        .0;
+
+    // The matched session should be the one Codex checkpointed.
+    assert!(
+        resumed.matched_task_id.contains("DPT-4477"),
+        "matched_task_id should contain DPT-4477, got: {}",
+        resumed.matched_task_id
+    );
+
+    // Cross-agent identity: handed_off_from == "codex".
+    assert_eq!(
+        resumed.packet["session"]["handed_off_from"], "codex",
+        "resumed packet should show handed_off_from=codex (cross-agent proof)"
+    );
+
+    // The working state should contain current_task and next_step.
+    let state = resumed.packet["restored_working_state"]
+        .as_str()
+        .expect("restored_working_state should be a string");
+    assert!(
+        state.contains("DPT-4477 add dag_id/run_id to Airflow operator"),
+        "current_task missing from restored state: {state}"
+    );
+    assert!(
+        state.contains("wire XCom push in execute()"),
+        "next_step missing from restored state: {state}"
+    );
+
+    // last_failed_check must survive the handoff.
+    assert_eq!(
+        resumed.packet["last_failed_check"], "mypy: Argument 1 to XCom.set has incompatible type",
+        "last_failed_check should survive the handoff"
+    );
+
+    // The session-scoped memory (stored by codex) must appear in the restored state.
+    assert!(
+        state.contains("dag_id and run_id must be propagated via XCom"),
+        "session-scoped memory should appear in restored state: {state}"
+    );
+
+    // Non-matching query must return an error (clean miss).
+    let miss = server
+        .memory_session_resume_by_task(Parameters(SessionResumeByTaskRequest {
+            task_query: "NONEXISTENT-9999".to_string(),
+            user_id: Some("u1".to_string()),
+        }))
+        .await;
+    assert!(
+        miss.is_err(),
+        "non-matching query should return an error, not a session"
+    );
+
+    // Exact-id handoff via the original memory.session.resume must still work.
+    let exact_resumed = server
+        .memory_session_resume(Parameters(SessionResumeRequest {
+            session_id: Some("s1".to_string()),
+            user_id: Some("u1".to_string()),
+            task_id: Some("DPT-4477 add dag_id/run_id".to_string()),
+        }))
+        .await
+        .expect("exact-id resume should succeed")
+        .0;
+    assert_eq!(
+        exact_resumed.packet["session"]["handed_off_from"], "codex",
+        "exact-id resume should also show handed_off_from=codex"
+    );
+    let exact_state = exact_resumed.packet["restored_working_state"]
+        .as_str()
+        .expect("exact resume state should be a string");
+    assert!(
+        exact_state.contains("DPT-4477 add dag_id/run_id to Airflow operator"),
+        "exact-id resume should restore current_task: {exact_state}"
     );
 }
