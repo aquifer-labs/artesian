@@ -216,6 +216,16 @@ pub struct ArtesianConfig {
     pub coordination: CoordinationConfig,
     #[serde(default)]
     pub acc: AccConfig,
+    /// When `true`, the Claude `PreCompact` hook spawns an offline dream consolidation
+    /// pass **after** the synchronous session checkpoint completes and returns.  The
+    /// dream runs fully detached (fire-and-forget) so it never delays the compaction or
+    /// the hook's prompt return.  Default `false` because the dream is heavy and may
+    /// consume LLM tokens.
+    ///
+    /// Can also be enabled per-invocation via the `ARTESIAN_DREAM_ON_COMPACT=1` env var
+    /// without changing the config file.
+    #[serde(default)]
+    pub dream_on_compact: bool,
 }
 
 impl ArtesianConfig {
@@ -240,6 +250,7 @@ impl ArtesianConfig {
             agents,
             coordination: CoordinationConfig::default(),
             acc: AccConfig::default(),
+            dream_on_compact: false,
         }
     }
 

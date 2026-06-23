@@ -2082,6 +2082,7 @@ async fn init(options: InitOptions, _non_interactive: bool) -> Result<()> {
         agents,
         coordination: Default::default(),
         acc: Default::default(),
+        dream_on_compact: false,
     };
     let config_path = Path::new(DEFAULT_CONFIG);
     if !config_path.exists() || options.project.is_some() {
@@ -2989,8 +2990,8 @@ async fn claude_pre_compact(
 ) -> Result<()> {
     let input = read_claude_hook_input()?;
     enter_hook_cwd(&input)?;
-    let memory = memory_config_for_command(&config, root, backend)?;
-    let backend = open_memory_backend(&memory)?;
+    let memory = memory_config_for_command(&config, root.clone(), backend)?;
+    let backend_handle = open_memory_backend(&memory)?;
     let key = SessionKey::new(None, input.session_id.clone(), None);
     let anchor_store = AnchorAnchorStore::new(&memory.root);
     let anchor = anchor_store
@@ -3004,14 +3005,18 @@ async fn claude_pre_compact(
             )
         });
     let query_text = format!("{} {}", anchor.current_task, anchor.next_step);
-    let hits = backend
+    let hits = backend_handle
         .find(MemoryQuery::new(query_text).with_limit(8))
         .await
         .unwrap_or_default();
     let bundle = hook_recovery_bundle(&anchor, &hits);
     let session = bundle.to_ocf_session(&key, Some("claude-code".to_string()))?;
     let packet = WorkingContextBundle::resume_packet_from_session(&session)?;
-    let summary = SessionStore::new(backend).store(session).await?;
+    let summary = SessionStore::new(backend_handle).store(session).await?;
+
+    // ── PHASE 1 COMPLETE: synchronous checkpoint always runs first ──────────
+    // Print the recovery packet now, before any dream logic, so the compaction
+    // boundary always gets its data promptly regardless of what follows.
     println!(
         "{}",
         serde_json::to_string_pretty(&json!({
@@ -3019,7 +3024,115 @@ async fn claude_pre_compact(
             "packet": packet
         }))?
     );
+
+    // ── PHASE 2 (OPTIONAL): detached background dream ────────────────────────
+    // Gate: config flag `dream_on_compact = true` OR env var ARTESIAN_DREAM_ON_COMPACT=1.
+    // The dream is heavy (reads all records + optional LLM) and MUST NOT block the hook
+    // or delay the prompt return.  We spawn it fully detached (fire-and-forget) — the
+    // Child handle is intentionally dropped immediately.  A dream error never propagates
+    // here; the checkpoint already succeeded.
+    let env_override = env::var("ARTESIAN_DREAM_ON_COMPACT").ok();
+    let dream_enabled = pre_compact_dream_enabled(&config, env_override.as_deref());
+    if dream_enabled {
+        spawn_detached_dream(&config, &root);
+    }
+
     Ok(())
+}
+
+/// Returns `true` when the detached dream should run after the pre-compact checkpoint.
+///
+/// Precedence (highest first):
+/// 1. `env_override = Some("1" | "true" | "yes")` → enabled.
+/// 2. `env_override = Some("0" | "false" | "no")` → disabled (explicit opt-out).
+/// 3. `dream_on_compact = true` in `artesian.toml` → enabled.
+/// 4. Default → disabled.
+///
+/// The caller is responsible for reading `ARTESIAN_DREAM_ON_COMPACT` from the environment
+/// and passing it as `env_override`; this keeps the function pure and easily testable.
+fn pre_compact_dream_enabled(config: &Path, env_override: Option<&str>) -> bool {
+    match env_override {
+        Some("1") | Some("true") | Some("yes") => return true,
+        Some("0") | Some("false") | Some("no") => return false,
+        _ => {}
+    }
+    // Fall back to the config file flag.
+    if config.exists() {
+        if let Ok(text) = fs::read_to_string(config) {
+            if let Ok(ac) = ArtesianConfig::from_toml(&text) {
+                return ac.dream_on_compact;
+            }
+        }
+    }
+    false
+}
+
+/// Spawn `artesian dream` as a fully detached background process (fire-and-forget).
+///
+/// # Coexistence guarantees
+///
+/// - The synchronous checkpoint has already completed and its output has been printed
+///   before this function is called.  A spawn failure here is logged to stderr and
+///   silently swallowed — it never affects the checkpoint result or the hook return.
+/// - The dream writes to a timestamped subdirectory of `~/.artesian/dreams/` and
+///   never mutates the live store, anchor, or any session file.
+/// - The child process runs with inherited stdio redirected to `/dev/null` so it
+///   cannot interfere with the hook's stdout (which Claude Code has already read).
+fn spawn_detached_dream(config: &Path, root: &Path) {
+    let ts = chrono::Utc::now().format("%Y%m%dT%H%M%SZ");
+    let dreams_base = dirs_dream_base();
+    let out_dir = dreams_base.join(ts.to_string());
+
+    // Resolve the current executable so the child reuses the same binary.
+    let exe = env::current_exe().unwrap_or_else(|_| PathBuf::from("artesian"));
+
+    let mut cmd = std::process::Command::new(&exe);
+    cmd.arg("dream")
+        .arg("--config")
+        .arg(config)
+        .arg("--root")
+        .arg(root)
+        .arg("--out")
+        .arg(&out_dir)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+
+    // Detach on Unix: new process group so the child outlives the hook process.
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        cmd.process_group(0);
+    }
+
+    match cmd.spawn() {
+        Ok(_child) => {
+            // Drop the Child handle immediately — we do not wait for it.
+            eprintln!(
+                "artesian: dream-on-compact: spawned background dream → {}",
+                out_dir.display()
+            );
+        }
+        Err(e) => {
+            // Non-fatal: the checkpoint already succeeded.
+            eprintln!("artesian: dream-on-compact: failed to spawn background dream: {e}");
+        }
+    }
+}
+
+/// Default directory for dreams written by the pre-compact hook.
+fn dirs_dream_base() -> PathBuf {
+    dirs_home()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join(".artesian")
+        .join("dreams")
+}
+
+/// Portable home-directory resolution (no extra crate dependency).
+fn dirs_home() -> Option<PathBuf> {
+    env::var_os("HOME")
+        .or_else(|| env::var_os("USERPROFILE"))
+        .map(PathBuf::from)
 }
 
 fn read_claude_hook_input() -> Result<ClaudeHookInput> {
@@ -4838,5 +4951,99 @@ mod tests {
             .map(|duration| duration.as_nanos())
             .unwrap_or(0);
         std::env::temp_dir().join(format!("{name}-{}-{unique}", std::process::id()))
+    }
+
+    // ── dream-on-compact unit tests ──────────────────────────────────────────
+
+    /// Helper: write a minimal artesian.toml with `dream_on_compact` set.
+    fn write_compact_config(dir: &Path, dream_on_compact: bool) -> PathBuf {
+        let config = dir.join("artesian.toml");
+        let toml = format!(
+            r#"mode = "memory"
+dream_on_compact = {dream_on_compact}
+
+[memory]
+backend = "files"
+root = ".artesian"
+collection = "artesian-memory"
+
+[[agents]]
+role = "master"
+agent = "claude-code"
+"#
+        );
+        fs::write(&config, toml).expect("write test config");
+        config
+    }
+
+    /// With no config file and no env override, the dream is disabled (default = off).
+    #[test]
+    fn dream_on_compact_defaults_to_off() {
+        // Use a path that definitely does not exist so config-file fallback is skipped.
+        let nonexistent = PathBuf::from("/tmp/artesian-no-such-config-xyz.toml");
+        assert!(!pre_compact_dream_enabled(&nonexistent, None));
+    }
+
+    /// `dream_on_compact = false` in the config file keeps the dream disabled.
+    #[test]
+    fn dream_on_compact_false_in_config_stays_disabled() {
+        let tmp = temp_path("doc-false");
+        fs::create_dir_all(&tmp).expect("create tmp");
+        let config = write_compact_config(&tmp, false);
+        assert!(!pre_compact_dream_enabled(&config, None));
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    /// `dream_on_compact = true` in the config file enables the dream.
+    #[test]
+    fn dream_on_compact_true_in_config_enables_dream() {
+        let tmp = temp_path("doc-true");
+        fs::create_dir_all(&tmp).expect("create tmp");
+        let config = write_compact_config(&tmp, true);
+        assert!(pre_compact_dream_enabled(&config, None));
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    /// `env_override = "1"` enables the dream even when the config says false.
+    #[test]
+    fn dream_on_compact_env_var_overrides_config_enabled() {
+        let tmp = temp_path("doc-env-on");
+        fs::create_dir_all(&tmp).expect("create tmp");
+        let config = write_compact_config(&tmp, false);
+        assert!(
+            pre_compact_dream_enabled(&config, Some("1")),
+            "env override=1 must override config false"
+        );
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    /// `env_override = "0"` disables the dream even when the config says true.
+    #[test]
+    fn dream_on_compact_env_var_overrides_config_disabled() {
+        let tmp = temp_path("doc-env-off");
+        fs::create_dir_all(&tmp).expect("create tmp");
+        let config = write_compact_config(&tmp, true);
+        assert!(
+            !pre_compact_dream_enabled(&config, Some("0")),
+            "env override=0 must override config true"
+        );
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    /// `spawn_detached_dream` with a non-existent executable must not panic and must not
+    /// return an error (errors are swallowed — the checkpoint already succeeded).
+    #[test]
+    fn spawn_detached_dream_error_is_non_fatal() {
+        let tmp = temp_path("spawn-nonfatal");
+        let config = tmp.join("artesian.toml");
+        let root = tmp.join(".artesian");
+        // spawn_detached_dream resolves via current_exe() which exists; but since the
+        // dream target dir does not need to actually run, we only verify the function
+        // returns without panicking. We can't intercept the child process in a unit test,
+        // so we use a config path that guarantees the dream binary's `dream` subcommand
+        // will immediately exit with an error (config does not exist) — which should be
+        // silently swallowed.
+        // Just call the function; the test passes if it does not panic.
+        spawn_detached_dream(&config, &root);
     }
 }

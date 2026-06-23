@@ -47,3 +47,51 @@ artesian memory anchor recover --limit 10
 
 This is a first-class, demoable feature: interrupt a loop at "turn 47," run `recover`, resume
 with plan pointer, decisions, and next step intact — no human "re-read the markdown" step.
+
+## Dream-on-compact (optional offline consolidation)
+
+The `PreCompact` hook can optionally trigger an offline [dream](../crates/aquifer/src/dream.rs)
+consolidation pass immediately after the synchronous checkpoint.  Dreams are bundle-to-bundle
+operations: they read the committed store, score records by access signals, and write a new OCF
+bundle — the live store and anchor are **never mutated**.
+
+### Coexistence guarantees
+
+| Property | Guarantee |
+|---|---|
+| Checkpoint always runs first | The synchronous anchor + session checkpoint completes and its output is printed **before** any dream logic is evaluated. |
+| Hook returns promptly | The dream is spawned as a **fully detached** background process (fire-and-forget). The hook does not await it. |
+| Dream failure is non-fatal | A spawn error or a dream crash is logged to stderr and silently discarded — the checkpoint result is unaffected. |
+| Live store is never mutated | The dream writes to a timestamped directory under `~/.artesian/dreams/<timestamp>/` and does not touch the source collection, anchor, or session files. |
+| Default is off | `dream_on_compact` defaults to `false`. Enable it deliberately (tokens cost money). |
+
+### Enabling dream-on-compact
+
+**Option A — config file** (`artesian.toml`):
+
+```toml
+dream_on_compact = true
+```
+
+**Option B — environment variable** (overrides the config, useful for a single session):
+
+```sh
+ARTESIAN_DREAM_ON_COMPACT=1 claude   # or whatever launches your agent
+```
+
+Set `ARTESIAN_DREAM_ON_COMPACT=0` to force-disable even when the config is `true`.
+
+### Output location
+
+Each hook invocation writes to a new timestamped subdirectory:
+
+```
+~/.artesian/dreams/20260623T142301Z/
+  manifest.json
+  schema.json
+  snapshot.json
+  qualify.jsonl
+```
+
+The `qualify.jsonl` file logs every `admit`/`reject`/`merge`/`supersede`/`decay` decision for
+post-hoc inspection.

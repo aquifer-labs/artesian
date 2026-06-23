@@ -116,5 +116,6 @@ fn load_runtime_config(args: &Args) -> anyhow::Result<ArtesianConfig> {
         agents: Vec::new(),
         coordination: Default::default(),
         acc: Default::default(),
+        dream_on_compact: false,
     })
 }

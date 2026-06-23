@@ -69,6 +69,7 @@ async fn sigterm_to_orchestrator_kills_tracked_worker_process_group() {
             ..CoordinationConfig::default()
         },
         acc: Default::default(),
+        dream_on_compact: false,
     };
     let config_path = tempdir.join("artesian.toml");
     fs::write(
