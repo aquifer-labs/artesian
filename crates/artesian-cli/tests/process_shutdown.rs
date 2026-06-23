@@ -49,6 +49,7 @@ async fn sigterm_to_orchestrator_kills_tracked_worker_process_group() {
             debate_enabled: false,
             llm_consolidation_enabled: false,
             semantic_cache: Default::default(),
+            track_access: true,
         },
         agents: vec![AgentBinding {
             role: Role::Worker,

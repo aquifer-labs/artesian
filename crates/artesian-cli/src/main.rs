@@ -249,6 +249,32 @@ enum Command {
         #[arg(long)]
         allow_llm: bool,
     },
+    /// Bundle-to-bundle OCF memory consolidation: read committed records, score by access signals,
+    /// write a new OCF bundle with every admit/reject/merge decision logged in qualify.jsonl.
+    /// Source collection is NEVER mutated. Schedule with cron or trigger at compaction boundaries.
+    ///
+    /// Example: artesian dream --out .artesian/dreams/2026-06-23 --diary
+    Dream {
+        #[arg(long, default_value = DEFAULT_CONFIG)]
+        config: PathBuf,
+        #[arg(long, default_value = ".artesian")]
+        root: PathBuf,
+        /// Collection to read records from (defaults to the configured collection).
+        #[arg(long)]
+        collection: Option<String>,
+        /// Output directory to write the OCF bundle into (created if absent).
+        #[arg(long)]
+        out: PathBuf,
+        /// Also write a human-readable DREAMS.md narrative alongside the OCF files.
+        #[arg(long, default_value_t = false)]
+        diary: bool,
+        /// Admission score threshold [0.0–1.0]. Records scoring below this are rejected.
+        #[arg(long, default_value_t = 0.3)]
+        admit_threshold: f32,
+        /// Jaccard similarity threshold for the dedup consolidation grouping pass [0.0–1.0].
+        #[arg(long, default_value_t = 0.6)]
+        similarity_threshold: f32,
+    },
     Migrate {
         #[command(subcommand)]
         command: MigrateCommand,
@@ -1072,6 +1098,26 @@ async fn main() -> Result<()> {
             root,
             allow_llm,
         } => consolidate(config, root, allow_llm).await,
+        Command::Dream {
+            config,
+            root,
+            collection,
+            out,
+            diary,
+            admit_threshold,
+            similarity_threshold,
+        } => {
+            dream_command(
+                config,
+                root,
+                collection,
+                out,
+                diary,
+                admit_threshold,
+                similarity_threshold,
+            )
+            .await
+        }
         Command::Migrate { command } => match command {
             MigrateCommand::OkfBundle {
                 okf_root,
@@ -1936,6 +1982,7 @@ async fn init(options: InitOptions, _non_interactive: bool) -> Result<()> {
             debate_enabled: false,
             llm_consolidation_enabled: false,
             semantic_cache: Default::default(),
+            track_access: true,
         },
         agents,
         coordination: Default::default(),
@@ -3434,6 +3481,91 @@ async fn consolidate(config_path: PathBuf, root: PathBuf, allow_llm: bool) -> Re
     Ok(())
 }
 
+/// Bundle-to-bundle OCF memory consolidation.
+///
+/// Reads committed records, scores them by access signals (access_count / last_access /
+/// creation freshness / content richness), and writes a new OCF bundle to `--out`.
+/// The source collection is NEVER mutated. Every admit/reject/merge/supersede/decay
+/// decision is logged as a line in `qualify.jsonl`.
+///
+/// Recommended usage: schedule with cron (`0 3 * * * artesian dream --out …`) or
+/// trigger at compaction boundaries.
+#[allow(clippy::too_many_arguments)]
+async fn dream_command(
+    config_path: PathBuf,
+    root: PathBuf,
+    collection: Option<String>,
+    out: PathBuf,
+    diary: bool,
+    admit_threshold: f32,
+    similarity_threshold: f32,
+) -> Result<()> {
+    let mut memory_config = memory_config_for_command(&config_path, root, None)?;
+    // If the caller specified a collection override, apply it before opening the backend.
+    if let Some(col) = collection {
+        memory_config.collection = col;
+    }
+    let collection_name = memory_config.collection.clone();
+
+    // Read all records (up to 10 000) from the source backend without mutating them.
+    let backend = open_memory_backend(&memory_config)?;
+    let hits = backend
+        .find(MemoryQuery::new("").with_limit(10_000))
+        .await
+        .unwrap_or_default();
+    let records: Vec<_> = hits.into_iter().map(|h| h.record).collect();
+
+    let record_count = records.len();
+    let opts = aquifer::DreamOptions {
+        admit_threshold,
+        similarity_threshold,
+        diary,
+        source_label: collection_name.clone(),
+        ..Default::default()
+    };
+
+    // No LLM merge callback wired in the CLI (opt-in, see artesian.toml [acc.compressor]).
+    let result = aquifer::dream(&records, &opts, None)?;
+
+    println!("# artesian dream");
+    println!();
+    println!("  Source collection: {collection_name}");
+    println!("  Records read:      {record_count}");
+    println!("  Admitted:          {}", result.admitted);
+    println!("  Rejected:          {}", result.rejected);
+    println!(
+        "  LLM synthesis:     {}",
+        if result.llm_ran {
+            "yes"
+        } else {
+            "no (deterministic only)"
+        }
+    );
+    println!();
+
+    aquifer::write_dream_bundle(&result, &opts, &out, &collection_name)?;
+
+    println!("  Bundle written to: {}", out.display());
+    for file in [
+        "manifest.json",
+        "schema.json",
+        "snapshot.json",
+        "qualify.jsonl",
+    ] {
+        println!("    {}", out.join(file).display());
+    }
+    if diary {
+        println!("    {}", out.join("DREAMS.md").display());
+    }
+    println!();
+    println!("  Inspect qualify.jsonl for admit/reject/merge/supersede/decay decisions.");
+    println!(
+        "  To promote this bundle, review and run `artesian memory store` on accepted entries."
+    );
+
+    Ok(())
+}
+
 /// Run a consolidation pass after import (`--consolidate` flag on backfill/onboard).
 ///
 /// `artesian_root` is the `--root` value (`.artesian` by default), the same parameter that the
@@ -3567,6 +3699,7 @@ async fn preflight_qdrant_options(options: &InitOptions) -> Result<()> {
         debate_enabled: false,
         llm_consolidation_enabled: false,
         semantic_cache: Default::default(),
+        track_access: true,
     };
     preflight_qdrant_memory(&memory).await
 }
@@ -3608,6 +3741,7 @@ fn memory_config_for_command(
             debate_enabled: false,
             llm_consolidation_enabled: false,
             semantic_cache: Default::default(),
+            track_access: true,
         }
     };
     let config = if let Some(backend) = backend {

@@ -114,6 +114,13 @@ pub struct MemoryRecord {
     pub confidence: Option<f32>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub relations: Vec<Relation>,
+    /// Last time this record was returned by a `find` call (access-tracking signal for decay).
+    /// `None` for records that pre-date access tracking or that have never been retrieved.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_access: Option<DateTime<Utc>>,
+    /// Number of times this record has been returned by `find`. Zero for legacy records.
+    #[serde(default)]
+    pub access_count: u32,
 }
 
 impl Eq for MemoryRecord {}
@@ -143,6 +150,8 @@ impl MemoryRecord {
             source: None,
             confidence: None,
             relations: Vec::new(),
+            last_access: None,
+            access_count: 0,
         }
     }
 }

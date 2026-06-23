@@ -158,6 +158,12 @@ pub struct VectorMemoryConfig {
     /// the same downstream budget. `0` (default) disables reranking.
     #[serde(default)]
     pub rerank_candidates: usize,
+
+    /// When `true` (the default), every `find` call bumps `access_count` and `last_access`
+    /// on returned records (best-effort, non-blocking upsert writeback). Set to `false` to
+    /// disable at the cost of losing reinforcement signals for decay/promotion.
+    #[serde(default = "default_true")]
+    pub track_access: bool,
 }
 
 fn default_episode_threshold() -> f32 {
@@ -194,12 +200,19 @@ impl VectorMemoryConfig {
             parent_context_auto: true,
             parent_context_max_chars: default_parent_context_max_chars(),
             rerank_candidates: 0,
+            track_access: true,
         }
     }
 
     /// Set the reranking candidate pool (`0` disables reranking).
     pub fn with_rerank_candidates(mut self, candidates: usize) -> Self {
         self.rerank_candidates = candidates;
+        self
+    }
+
+    /// Enable or disable access tracking (bumping `access_count`/`last_access` on `find`).
+    pub fn with_track_access(mut self, enabled: bool) -> Self {
+        self.track_access = enabled;
         self
     }
 
@@ -658,6 +671,8 @@ impl<V: VectorStore> VectorMemoryBackend<V> {
                 source: provenance_source,
                 confidence,
                 relations,
+                last_access,
+                access_count,
                 mut metadata,
                 ..
             } = record;
@@ -689,6 +704,8 @@ impl<V: VectorStore> VectorMemoryBackend<V> {
                     source: provenance_source,
                     confidence,
                     relations,
+                    last_access,
+                    access_count,
                 },
             });
         }
@@ -928,6 +945,37 @@ impl<V: VectorStore> MemoryBackend for VectorMemoryBackend<V> {
                 }
                 None => Ok(raw_hits),
             }?;
+
+            // Access tracking: bump access_count / last_access on returned records and
+            // write back to the vector store. Best-effort — any error is silently
+            // discarded so a failed writeback never fails the query.
+            // We fetch each existing point to reuse its stored vector (avoiding re-embedding).
+            if self.config.track_access && !hits.is_empty() {
+                let now = Utc::now();
+                let collection = &self.config.collection;
+                let mut points = Vec::with_capacity(hits.len());
+                for hit in &hits {
+                    let mut record = hit.record.clone();
+                    record.access_count = record.access_count.saturating_add(1);
+                    record.last_access = Some(now);
+                    // Reuse the stored vector to avoid re-embedding.
+                    if let Ok(Some(existing)) = self.store.get(collection, record.id.as_str()).await
+                    {
+                        if let Ok(payload) = serde_json::to_value(MemoryPayload::from(&record)) {
+                            points.push(VectorPoint {
+                                id: record.id.to_string(),
+                                vector: existing.vector,
+                                payload,
+                            });
+                        }
+                    }
+                }
+                if !points.is_empty() {
+                    // Discard any error; the query result is already computed.
+                    let _ = self.store.upsert_no_wait(collection, points).await;
+                }
+            }
+
             Ok(hits)
         }
         .boxed()
@@ -1038,6 +1086,8 @@ impl<V: VectorStore> MemoryBackend for VectorMemoryBackend<V> {
                     source: memory.source.clone(),
                     confidence: memory.confidence,
                     relations,
+                    last_access: None,
+                    access_count: 0,
                 };
                 let vector = self.embedder.embed_passage(&record.content)?;
                 self.store
@@ -1294,6 +1344,8 @@ impl<V: VectorStore> MemoryBackend for VectorMemoryBackend<V> {
                         source: memory.source.clone(),
                         confidence: memory.confidence,
                         relations,
+                        last_access: None,
+                        access_count: 0,
                     };
                     match self.embedder.embed_passage(&record.content) {
                         Ok(vector) => {
@@ -1384,6 +1436,8 @@ fn reconstruct_parent_record(parent_node: &str, siblings: Vec<MemoryRecord>) -> 
         source: first.source.clone(),
         confidence: first.confidence,
         relations: first.relations.clone(),
+        last_access: first.last_access,
+        access_count: first.access_count,
     }
 }
 
@@ -1412,6 +1466,10 @@ struct MemoryPayload {
     confidence: Option<f32>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     relations: Vec<Relation>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    last_access: Option<chrono::DateTime<Utc>>,
+    #[serde(default)]
+    access_count: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1452,6 +1510,8 @@ impl From<&MemoryRecord> for MemoryPayload {
             source: record.source.clone(),
             confidence: record.confidence,
             relations: record.relations.clone(),
+            last_access: record.last_access,
+            access_count: record.access_count,
         }
     }
 }
@@ -1474,6 +1534,8 @@ impl From<MemoryPayload> for MemoryRecord {
             source: payload.source,
             confidence: payload.confidence,
             relations: payload.relations,
+            last_access: payload.last_access,
+            access_count: payload.access_count,
         }
     }
 }
@@ -1580,6 +1642,9 @@ mod tests {
         assert_eq!(record.source, None);
         assert_eq!(record.confidence, None);
         assert!(record.relations.is_empty());
+        // Access-tracking fields default to None/0 for legacy payloads.
+        assert_eq!(record.last_access, None);
+        assert_eq!(record.access_count, 0);
     }
 
     #[test]

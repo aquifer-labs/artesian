@@ -81,6 +81,14 @@ pub struct SnapshotEntry {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub unit_ref: Option<String>,
     pub committed_at: DateTime<Utc>,
+    /// Last time the underlying memory record was retrieved by `find` (propagated from
+    /// `MemoryRecord::last_access`). `None` for entries from pre-access-tracking bundles.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_access: Option<DateTime<Utc>>,
+    /// Number of times the underlying record has been retrieved (propagated from
+    /// `MemoryRecord::access_count`). Zero for legacy bundles.
+    #[serde(default)]
+    pub access_count: u32,
 }
 
 impl SnapshotEntry {
@@ -102,6 +110,29 @@ impl SnapshotEntry {
             resolution: Resolution::Full,
             unit_ref: None,
             committed_at: Utc::now(),
+            last_access: None,
+            access_count: 0,
+        }
+    }
+
+    /// Build a snapshot entry from a `MemoryRecord`, carrying its access-tracking signals.
+    pub fn from_record(
+        record: &aquifer::MemoryRecord,
+        slot: impl Into<String>,
+        score: f32,
+    ) -> Self {
+        let tokens = count_tokens(&record.content);
+        Self {
+            id: record.id.to_string(),
+            slot: slot.into(),
+            content: record.content.clone(),
+            tokens,
+            score,
+            resolution: Resolution::Full,
+            unit_ref: Some(record.node_id.clone()),
+            committed_at: Utc::now(),
+            last_access: record.last_access,
+            access_count: record.access_count,
         }
     }
 }
@@ -133,6 +164,9 @@ impl WorkingContextSnapshot {
                 resolution: Resolution::Full,
                 unit_ref: None,
                 committed_at: entry.committed_at,
+                // CommittedEntry does not carry access signals; they propagate via from_record.
+                last_access: None,
+                access_count: 0,
             })
             .collect();
         Self {
@@ -815,6 +849,8 @@ mod tests {
                 resolution: Resolution::Full,
                 unit_ref: None,
                 committed_at: fixed_ts(),
+                last_access: None,
+                access_count: 0,
             },
             SnapshotEntry {
                 id: "b".into(),
@@ -825,6 +861,8 @@ mod tests {
                 resolution: Resolution::Full,
                 unit_ref: Some("pam://entry/9f86".into()),
                 committed_at: fixed_ts(),
+                last_access: None,
+                access_count: 0,
             },
         ];
         WorkingContextSnapshot {

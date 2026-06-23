@@ -111,6 +111,7 @@ fn load_runtime_config(args: &Args) -> anyhow::Result<ArtesianConfig> {
             debate_enabled: false,
             llm_consolidation_enabled: false,
             semantic_cache: Default::default(),
+            track_access: true,
         },
         agents: Vec::new(),
         coordination: Default::default(),

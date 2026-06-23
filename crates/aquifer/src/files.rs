@@ -21,11 +21,23 @@ use crate::{
 #[derive(Debug, Clone)]
 pub struct FilesBackend {
     root: PathBuf,
+    /// When `true` (the default), every `find` call bumps `access_count` and sets
+    /// `last_access` on returned records (best-effort, non-blocking writeback).
+    track_access: bool,
 }
 
 impl FilesBackend {
     pub fn new(root: impl Into<PathBuf>) -> Self {
-        Self { root: root.into() }
+        Self {
+            root: root.into(),
+            track_access: true,
+        }
+    }
+
+    /// Disable or enable access tracking for this backend instance.
+    pub fn with_track_access(mut self, enabled: bool) -> Self {
+        self.track_access = enabled;
+        self
     }
 
     pub fn root(&self) -> &Path {
@@ -122,6 +134,30 @@ impl MemoryBackend for FilesBackend {
                     .then_with(|| right.record.created_at.cmp(&left.record.created_at))
             });
             hits.truncate(query.limit);
+
+            // Access tracking: bump access_count / last_access on returned records.
+            // Best-effort, non-blocking: a failed write must never fail the query result.
+            if self.track_access {
+                let now = Utc::now();
+                let memory_dir = self.memory_dir();
+                for hit in &hits {
+                    let mut updated = hit.record.clone();
+                    updated.access_count = updated.access_count.saturating_add(1);
+                    updated.last_access = Some(now);
+                    let memory_dir = memory_dir.clone();
+                    let id = updated.id.clone();
+                    // Fire-and-forget on the Tokio executor; errors are silently dropped.
+                    tokio::spawn(async move {
+                        if let Ok(text) = render_record(&updated) {
+                            // Search for the file under the date-sharded directory.
+                            if let Ok(Some(path)) = find_existing_record_path(&memory_dir, &id) {
+                                let _ = fs::write(path, text).await;
+                            }
+                        }
+                    });
+                }
+            }
+
             Ok(hits)
         }
         .boxed()
@@ -165,6 +201,8 @@ impl MemoryBackend for FilesBackend {
                 source: memory.source,
                 confidence: memory.confidence,
                 relations,
+                last_access: None,
+                access_count: 0,
             };
             let path = self.record_path(&date_tag, &record.id);
             if let Some(parent) = path.parent() {
@@ -237,6 +275,10 @@ struct FileHeader {
     confidence: Option<f32>,
     #[serde(default)]
     relations: Vec<Relation>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    last_access: Option<DateTime<Utc>>,
+    #[serde(default)]
+    access_count: u32,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -291,6 +333,13 @@ struct OkfHeader {
     #[serde(default)]
     #[serde(skip_serializing_if = "Vec::is_empty")]
     relations: Vec<Relation>,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    last_access: Option<DateTime<Utc>>,
+    /// Persisted so that access bumps survive reloads. Omitted when zero (backward-compat).
+    #[serde(default)]
+    #[serde(skip_serializing_if = "is_zero_u32")]
+    access_count: u32,
     #[serde(flatten)]
     unknown: BTreeMap<String, serde_yaml::Value>,
 }
@@ -327,6 +376,8 @@ fn render_record(record: &MemoryRecord) -> MemoryResult<String> {
         source: record.source.clone(),
         confidence: record.confidence,
         relations: record.relations.clone(),
+        last_access: record.last_access,
+        access_count: record.access_count,
     };
     Ok(format!(
         "---\n{}---\n\n{}\n",
@@ -354,6 +405,8 @@ fn render_okf_header(header: FileHeader) -> String {
         source: header.source,
         confidence: header.confidence,
         relations: header.relations,
+        last_access: header.last_access,
+        access_count: header.access_count,
         unknown: BTreeMap::new(),
     };
     serde_yaml::to_string(&okf).expect("OKF header serialization should be infallible")
@@ -396,6 +449,8 @@ pub(crate) fn parse_record(text: &str) -> MemoryResult<MemoryRecord> {
         source: header.source,
         confidence: header.confidence,
         relations,
+        last_access: header.last_access,
+        access_count: header.access_count,
     })
 }
 
@@ -471,6 +526,8 @@ fn parse_okf_record(text: &str) -> MemoryResult<MemoryRecord> {
         source: header.source,
         confidence: header.confidence,
         relations,
+        last_access: header.last_access,
+        access_count: header.access_count,
     })
 }
 
@@ -498,6 +555,10 @@ fn collect_paths(dir: &Path, paths: &mut Vec<PathBuf>) -> MemoryResult<()> {
         }
     }
     Ok(())
+}
+
+fn is_zero_u32(v: &u32) -> bool {
+    *v == 0
 }
 
 fn query_terms(input: &str) -> Vec<String> {

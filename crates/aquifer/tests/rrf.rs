@@ -23,6 +23,8 @@ fn record(id: &str, node_id: &str) -> MemoryRecord {
         source: None,
         confidence: None,
         relations: Vec::new(),
+        last_access: None,
+        access_count: 0,
     }
 }
 

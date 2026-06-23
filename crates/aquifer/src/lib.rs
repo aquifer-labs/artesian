@@ -103,3 +103,9 @@ pub use consolidation::{
     consolidation_pass, ConsolidationClaim, ConsolidationOptions, ConsolidationReport,
     GovernanceFields,
 };
+
+pub mod dream;
+pub use dream::{
+    dream, render_diary, write_dream_bundle, DreamDecision, DreamError, DreamOptions,
+    DreamQualifyRecord, DreamResult, DreamSnapshotEntry,
+};

@@ -828,6 +828,8 @@ fn push_memory_hit(entries: &mut Vec<SnapshotEntry>, hit: &SearchHit, slot: &str
         resolution: Resolution::Full,
         unit_ref: Some(hit.record.node_id.clone()),
         committed_at: hit.record.created_at,
+        last_access: hit.record.last_access,
+        access_count: hit.record.access_count,
     });
 }
 
@@ -909,6 +911,35 @@ pub struct KitGetResponse {
 pub struct KitSetRequest {
     /// Updated vision content to write to kit/vision.md.
     pub vision: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct DreamRequest {
+    /// Collection to read records from. Defaults to the server-configured collection.
+    pub collection: Option<String>,
+    /// Output directory path for the OCF bundle (created if absent).
+    pub out: String,
+    /// Write a human-readable DREAMS.md narrative alongside the OCF files.
+    #[serde(default)]
+    pub diary: bool,
+    /// Admission score threshold [0.0–1.0]. Records below this are logged as reject.
+    pub admit_threshold: Option<f32>,
+}
+
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct DreamResponse {
+    /// Records read from the source collection.
+    pub records_read: usize,
+    /// Records admitted into the output OCF bundle.
+    pub admitted: usize,
+    /// Records rejected (score below threshold or superseded).
+    pub rejected: usize,
+    /// Whether the LLM synthesis pass ran.
+    pub llm_ran: bool,
+    /// Absolute path to the output bundle directory.
+    pub out: String,
+    /// Files written inside the bundle directory.
+    pub files: Vec<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -2235,6 +2266,67 @@ verified skill + spec + auto-invariants to memory. Brakes: max_turns (default 10
             skipped_unverified: report.skipped_unverified,
         }))
     }
+
+    #[tool(
+        name = "memory.dream",
+        description = "Bundle-to-bundle OCF memory consolidation: read all committed records, \
+score by access signals (access_count / last_access / recency / richness), and write a new \
+OCF bundle to `out` without mutating the source collection. Every admit/reject/merge/supersede/\
+decay decision is logged in qualify.jsonl. Opt-in — run on a schedule or at compaction boundaries."
+    )]
+    pub async fn memory_dream(
+        &self,
+        Parameters(request): Parameters<DreamRequest>,
+    ) -> Result<Json<DreamResponse>, ErrorData> {
+        let out_path = std::path::PathBuf::from(&request.out);
+        std::fs::create_dir_all(&out_path)
+            .map_err(|error| ErrorData::internal_error(error.to_string(), None))?;
+
+        // Read all records (up to 10 000) from the source backend without mutating them.
+        let query = MemoryQuery::new("").with_limit(10_000);
+        let hits = self
+            .backend
+            .find(query)
+            .await
+            .map_err(|error| ErrorData::internal_error(error.to_string(), None))?;
+        let records_read = hits.len();
+        let records: Vec<_> = hits.into_iter().map(|h| h.record).collect();
+
+        let opts = aquifer::DreamOptions {
+            admit_threshold: request.admit_threshold.unwrap_or(0.3),
+            diary: request.diary,
+            ..Default::default()
+        };
+        let source_label = request
+            .collection
+            .clone()
+            .unwrap_or_else(|| "artesian-memory".to_string());
+
+        let result = aquifer::dream(&records, &opts, None)
+            .map_err(|error| ErrorData::internal_error(error.to_string(), None))?;
+
+        aquifer::write_dream_bundle(&result, &opts, &out_path, &source_label)
+            .map_err(|error| ErrorData::internal_error(error.to_string(), None))?;
+
+        let mut files = vec![
+            out_path.join("manifest.json").display().to_string(),
+            out_path.join("schema.json").display().to_string(),
+            out_path.join("snapshot.json").display().to_string(),
+            out_path.join("qualify.jsonl").display().to_string(),
+        ];
+        if request.diary {
+            files.push(out_path.join("DREAMS.md").display().to_string());
+        }
+
+        Ok(Json(DreamResponse {
+            records_read,
+            admitted: result.admitted,
+            rejected: result.rejected,
+            llm_ran: result.llm_ran,
+            out: out_path.display().to_string(),
+            files,
+        }))
+    }
 }
 
 #[tool_handler(router = self.tool_router)]
@@ -2338,13 +2430,17 @@ pub async fn run_http(config: ArtesianConfig, bind: std::net::SocketAddr) -> any
 
 pub fn open_memory_backend(config: &MemoryConfig) -> anyhow::Result<Arc<dyn MemoryBackend>> {
     match config.backend {
-        MemoryBackendKind::Files => Ok(Arc::new(FilesBackend::new(&config.root))),
+        MemoryBackendKind::Files => Ok(Arc::new(
+            FilesBackend::new(&config.root).with_track_access(config.track_access),
+        )),
         MemoryBackendKind::SqliteVec => {
             let store = SqliteVecVectorStore::open(SqliteVecVectorStoreConfig::new(sqlite_path(
                 &config.root,
             )))?;
-            let backend =
-                VectorMemoryBackend::new(store, VectorMemoryConfig::new(&config.collection))?;
+            let backend = VectorMemoryBackend::new(
+                store,
+                VectorMemoryConfig::new(&config.collection).with_track_access(config.track_access),
+            )?;
             Ok(finish_vector_backend(backend, config))
         }
         MemoryBackendKind::Qdrant => open_qdrant_backend(config),
@@ -2392,7 +2488,10 @@ fn open_qdrant_backend(config: &MemoryConfig) -> anyhow::Result<Arc<dyn MemoryBa
         vector_config.api_key = env::var(env_name).ok();
     }
     let store = QdrantVectorStore::connect(vector_config)?;
-    let backend = VectorMemoryBackend::new(store, VectorMemoryConfig::new(&config.collection))?;
+    let backend = VectorMemoryBackend::new(
+        store,
+        VectorMemoryConfig::new(&config.collection).with_track_access(config.track_access),
+    )?;
     Ok(finish_vector_backend(backend, config))
 }
 

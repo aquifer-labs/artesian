@@ -48,6 +48,11 @@ pub struct MemoryConfig {
     /// Semantic query cache over a vector backend (no effect on the files backend).
     #[serde(default)]
     pub semantic_cache: SemanticCacheConfig,
+    /// When `true` (the default), `find` bumps `access_count` and `last_access` on returned
+    /// records (best-effort writeback). Set to `false` to reduce write amplification at the
+    /// cost of losing reinforcement signals for dreams/decay.
+    #[serde(default = "default_track_access")]
+    pub track_access: bool,
 }
 
 /// Settings for the semantic query cache (see `aquifer::SemanticCache`).
@@ -230,6 +235,7 @@ impl ArtesianConfig {
                 debate_enabled: false,
                 llm_consolidation_enabled: false,
                 semantic_cache: SemanticCacheConfig::default(),
+                track_access: default_track_access(),
             },
             agents,
             coordination: CoordinationConfig::default(),
@@ -280,4 +286,8 @@ fn default_cache_capacity() -> usize {
 
 fn default_cache_min_similarity() -> f32 {
     0.95
+}
+
+fn default_track_access() -> bool {
+    true
 }

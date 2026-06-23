@@ -131,13 +131,16 @@ fn open_memory_backend_inner(
     relation_extraction: bool,
 ) -> Result<Arc<dyn MemoryBackend>> {
     match config.backend {
-        MemoryBackendKind::Files => Ok(Arc::new(FilesBackend::new(&config.root))),
+        MemoryBackendKind::Files => Ok(Arc::new(
+            FilesBackend::new(&config.root).with_track_access(config.track_access),
+        )),
         MemoryBackendKind::SqliteVec => {
             let store = SqliteVecVectorStore::open(SqliteVecVectorStoreConfig::new(sqlite_path(
                 &config.root,
             )))?;
             let vector_config = VectorMemoryConfig::new(&config.collection)
-                .with_relation_extraction(relation_extraction);
+                .with_relation_extraction(relation_extraction)
+                .with_track_access(config.track_access);
             let backend = VectorMemoryBackend::new(store, vector_config)?;
             Ok(finish_vector_backend(backend, config))
         }
@@ -273,8 +276,9 @@ fn open_qdrant_backend_inner(
         vector_config.api_key = env::var(env_name).ok();
     }
     let store = QdrantVectorStore::connect(vector_config)?;
-    let mem_config =
-        VectorMemoryConfig::new(&config.collection).with_relation_extraction(relation_extraction);
+    let mem_config = VectorMemoryConfig::new(&config.collection)
+        .with_relation_extraction(relation_extraction)
+        .with_track_access(config.track_access);
     let backend = VectorMemoryBackend::new(store, mem_config)?;
     Ok(finish_vector_backend(backend, config))
 }
