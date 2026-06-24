@@ -34,3 +34,6 @@ benchmarks/comparison/data/
 
 # fastembed model cache
 .fastembed_cache/
+
+# MkDocs build output (the Pages workflow builds fresh)
+/site/
