@@ -1,0 +1,244 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+/* Artesian docs — custom styles for landing page, token-savings banner, and polish */
+
+/* ── Variables ──────────────────────────────────────────────── */
+:root {
+  --art-teal-dark:   #00796b;
+  --art-teal:        #009688;
+  --art-teal-mid:    #00897b;
+  --art-teal-light:  #b2dfdb;
+  --art-accent:      #00bfa5;
+  --art-accent-muted: rgba(0, 191, 165, 0.12);
+  --art-text-inverse: rgba(255, 255, 255, 0.95);
+  --art-text-inverse-muted: rgba(255, 255, 255, 0.78);
+}
+
+/* ── Hero section ───────────────────────────────────────────── */
+.art-hero {
+  text-align: center;
+  padding: 4rem 1.5rem 3.5rem;
+  background: linear-gradient(155deg, var(--art-teal-dark) 0%, var(--art-teal) 60%, var(--art-teal-mid) 100%);
+  margin: -0.8rem -0.8rem 3rem;
+  border-radius: 0 0 1.25rem 1.25rem;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Subtle texture overlay */
+.art-hero::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    45deg,
+    transparent,
+    transparent 40px,
+    rgba(255,255,255,0.015) 40px,
+    rgba(255,255,255,0.015) 80px
+  );
+  pointer-events: none;
+}
+
+.art-logo {
+  height: 3.25rem;
+  width: auto;
+  margin-bottom: 1.5rem;
+  display: block;
+  margin-left: auto;
+  margin-right: auto;
+  /* Invert so the SVG reads as white on the teal background */
+  filter: brightness(0) invert(1);
+}
+
+.art-tagline {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--art-text-inverse);
+  margin: 0 auto 0.5rem;
+  max-width: 46rem;
+  line-height: 1.4;
+  letter-spacing: -0.01em;
+}
+
+.art-sub {
+  font-size: 1.05rem;
+  color: var(--art-text-inverse-muted);
+  margin: 0 auto 2.25rem;
+  max-width: 36rem;
+}
+
+.art-actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+  flex-wrap: wrap;
+  position: relative;
+  z-index: 1;
+}
+
+/* Override Material button colours inside the hero */
+.art-actions .md-button {
+  color: var(--art-text-inverse) !important;
+  border-color: rgba(255, 255, 255, 0.55) !important;
+}
+
+.art-actions .md-button--primary {
+  background: rgba(255, 255, 255, 0.2) !important;
+  border-color: rgba(255, 255, 255, 0.7) !important;
+}
+
+.art-actions .md-button--primary:hover {
+  background: rgba(255, 255, 255, 0.32) !important;
+}
+
+/* ── Token-savings banner ───────────────────────────────────── */
+.art-token-banner {
+  display: flex;
+  align-items: center;
+  gap: 1.75rem;
+  background: var(--art-accent-muted);
+  border: 2px solid var(--art-accent);
+  border-radius: 0.875rem;
+  padding: 1.25rem 1.75rem;
+  margin: 2.5rem 0;
+  flex-wrap: wrap;
+}
+
+.art-token-stat {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  font-family: var(--md-code-font-family, "JetBrains Mono", monospace);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.art-token-before {
+  font-size: 1.55rem;
+  font-weight: 700;
+  color: var(--md-default-fg-color--light);
+  text-decoration: line-through;
+  text-decoration-color: #ef5350;
+  text-decoration-thickness: 2px;
+}
+
+.art-token-arrow {
+  font-size: 1.3rem;
+  color: var(--art-accent);
+  font-weight: 800;
+  padding: 0 0.1rem;
+}
+
+.art-token-after {
+  font-size: 2.1rem;
+  font-weight: 800;
+  color: var(--art-accent);
+  letter-spacing: -0.02em;
+}
+
+.art-token-unit {
+  font-size: 0.85rem;
+  color: var(--md-default-fg-color--light);
+  align-self: flex-end;
+  padding-bottom: 0.2rem;
+}
+
+.art-token-desc {
+  flex: 1;
+  font-size: 0.9rem;
+  min-width: 200px;
+  color: var(--md-default-fg-color);
+  line-height: 1.55;
+}
+
+.art-token-desc strong {
+  display: block;
+  margin-bottom: 0.3rem;
+  font-size: 0.95rem;
+}
+
+/* ── Install section heading spacing ────────────────────────── */
+.md-typeset h2:first-of-type {
+  margin-top: 0.5rem;
+}
+
+/* ── Grid card tweaks ───────────────────────────────────────── */
+/* Give the landing-page feature cards a consistent min-height */
+.art-feature-cards.grid.cards > ul > li {
+  min-height: 9rem;
+}
+
+/* ── Governance / OCF highlight boxes ──────────────────────── */
+.art-highlight-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.25rem;
+  margin: 2rem 0;
+}
+
+@media screen and (max-width: 768px) {
+  .art-highlight-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.art-highlight-box {
+  border: 1.5px solid var(--md-default-fg-color--lightest, #e0e0e0);
+  border-radius: 0.75rem;
+  padding: 1.25rem 1.5rem;
+  background: var(--md-default-bg-color);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.art-highlight-box:hover {
+  border-color: var(--art-teal);
+  box-shadow: 0 2px 12px rgba(0, 150, 136, 0.12);
+}
+
+.art-highlight-box h3 {
+  margin-top: 0;
+  font-size: 1rem;
+  color: var(--art-teal);
+}
+
+.art-highlight-box p {
+  font-size: 0.88rem;
+  color: var(--md-default-fg-color--light);
+  margin-bottom: 0.75rem;
+}
+
+/* ── Dark mode overrides ────────────────────────────────────── */
+[data-md-color-scheme="slate"] {
+  --art-accent-muted: rgba(0, 191, 165, 0.1);
+}
+
+[data-md-color-scheme="slate"] .art-highlight-box {
+  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+[data-md-color-scheme="slate"] .art-highlight-box:hover {
+  border-color: var(--art-teal);
+}
+
+/* ── Responsive ─────────────────────────────────────────────── */
+@media screen and (max-width: 600px) {
+  .art-hero {
+    margin: -0.4rem -0.4rem 2rem;
+    padding: 3rem 1rem 2.5rem;
+  }
+
+  .art-tagline {
+    font-size: 1.15rem;
+  }
+
+  .art-token-banner {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem;
+  }
+
+  .art-token-after {
+    font-size: 1.75rem;
+  }
+}

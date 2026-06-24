@@ -1,8 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0
-# Docs site (starter). Install: pip install mkdocs-material. Run: mkdocs serve.
-# Nav is intentionally minimal and is finalized during the documentation sweep.
+# Artesian documentation site.
+# Build: pip install mkdocs-material && mkdocs build
+# Serve locally: mkdocs serve
+
 site_name: Artesian
-site_description: Memory control plane for agent loops.
+site_description: >-
+  An open, portable, governed memory control plane for AI agents.
+  OCF is the open format.
 site_url: https://aquifer-labs.github.io/artesian/
 repo_url: https://github.com/aquifer-labs/artesian
 repo_name: aquifer-labs/artesian
@@ -11,42 +15,92 @@ docs_dir: docs
 
 theme:
   name: material
+  logo: brand/artesian-mark.svg
+  favicon: brand/artesian-mark.svg
+  font:
+    text: Inter
+    code: JetBrains Mono
+  icon:
+    repo: fontawesome/brands/github
   features:
+    - navigation.tabs
     - navigation.sections
     - navigation.top
+    - navigation.instant
+    - navigation.tracking
     - content.code.copy
+    - content.code.annotate
+    - content.tabs.link
     - search.suggest
+    - search.highlight
+    - header.autohide
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default
       primary: teal
-      toggle: { icon: material/weather-night, name: Switch to dark mode }
+      accent: teal
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
       primary: teal
-      toggle: { icon: material/weather-sunny, name: Switch to light mode }
+      accent: teal
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+
+extra_css:
+  - stylesheets/extra.css
 
 markdown_extensions:
   - admonition
   - tables
-  - pymdownx.superfences
-  - pymdownx.highlight
+  - attr_list
+  - md_in_html
+  - def_list
   - toc:
       permalink: true
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/aquifer-labs/artesian
+      name: Artesian on GitHub
+    - icon: fontawesome/brands/github
+      link: https://github.com/aquifer-labs/ocf
+      name: OCF spec
 
 nav:
-  - Home: README.md
-  - Start:
-      - Onboarding: onboarding.md
+  - Home: index.md
+  - Get Started:
+      - Quickstart: onboarding.md
       - Why Artesian: positioning.md
       - Why Rust: why-rust.md
       - Roadmap: roadmap.md
   - Concepts:
       - Architecture: architecture.md
       - Modes: modes.md
-      - Composability (LEGO): composability.md
+      - Composability: composability.md
       - Context tree: context-tree.md
       - Self-repair: self-repair.md
+      - Governance: governance.md
   - Memory:
       - Memory model: memory.md
       - Backends: backends.md
@@ -59,5 +113,8 @@ nav:
       - Task tracking: task-tracking.md
       - Concurrency: concurrency.md
   - Operations:
+      - Sizing & deployment: sizing-and-deployment.md
+      - Token savings: token-savings.md
       - Upgrades: upgrades.md
       - Development: development.md
+  - OCF: ocf.md

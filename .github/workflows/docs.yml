@@ -7,6 +7,7 @@ on:
     paths:
       - "docs/**"
       - "mkdocs.yml"
+      - "llms.txt"
       - ".github/workflows/docs.yml"
   workflow_dispatch:
 
@@ -25,11 +26,42 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install mkdocs-material
-      - run: mkdocs build --site-dir site
+
+      - name: Install MkDocs Material
+        run: pip install mkdocs-material
+
+      - name: Build site
+        run: mkdocs build --site-dir site
+
+      # Place llms.txt and a freshly generated llms-full.txt at the site root.
+      # llms-full.txt is regenerated from docs/*.md on every deploy so it stays
+      # in sync without committing a large generated file to the repo.
+      - name: Add llms files to site root
+        run: |
+          cp llms.txt site/
+
+          {
+            echo "# Artesian — Full Documentation"
+            echo "# Source: https://aquifer-labs.github.io/artesian/"
+            echo "# Generated: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "# License: Apache-2.0"
+            echo ""
+            echo "Artesian is an open, portable, governed memory control plane for AI agents."
+            echo "OCF is the open format. See https://github.com/aquifer-labs/ocf"
+            echo ""
+            for f in docs/*.md; do
+              echo "---"
+              echo "## $(basename "$f" .md)"
+              echo ""
+              cat "$f"
+              echo ""
+            done
+          } > site/llms-full.txt
+
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site

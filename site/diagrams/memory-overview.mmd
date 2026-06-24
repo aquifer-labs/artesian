@@ -1,0 +1,25 @@
+flowchart LR
+  Agent[Agent core]:::agent
+  subgraph STM["Short-term memory"]
+    direction TB
+    W[Working buffer]:::stm
+    A[Session anchor]:::stm
+  end
+  subgraph LTM["Long-term memory — Aquifer"]
+    direction TB
+    V[(Vector store: tiered records)]:::ltm
+    F[(Files: OKF md)]:::ltm
+  end
+
+  Agent -->|recent turns| W
+  Agent -->|current task + next step| A
+  Agent -->|store durable learnings| V
+  Agent -->|write OKF records| F
+  W -->|optional summary| V
+  V -->|find: top-k relevant slice| Agent
+  F -->|keyword recall| Agent
+  A -->|self-repair after compaction| Agent
+
+  classDef agent fill:#fcecc9,stroke:#c98a1e,color:#3d2700;
+  classDef stm   fill:#cdeef2,stroke:#0f9aa8,color:#073740;
+  classDef ltm   fill:#cfeae3,stroke:#1f8a70,color:#0b3020;
