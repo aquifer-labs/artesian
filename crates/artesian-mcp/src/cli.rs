@@ -8,7 +8,7 @@ use artesian_core::{ArtesianConfig, MemoryBackendKind, MemoryConfig, Mode};
 use clap::{Parser, ValueEnum};
 
 #[derive(Debug, Parser)]
-#[command(name = "artesian-mcp", about = "Artesian MCP memory server")]
+#[command(name = "artesian-mcp", about = "Artesian MCP memory server", version)]
 struct Args {
     #[arg(long)]
     config: Option<PathBuf>,

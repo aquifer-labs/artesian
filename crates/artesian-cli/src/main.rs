@@ -83,6 +83,7 @@ Use the `artesian-memory` MCP server and its `memory.find`, `memory.store`, `mem
 mod artesiand;
 mod import;
 mod runtime;
+mod update;
 use import::{import_directory, ImportOptions};
 use runtime::{
     build_orchestrator, load_config, open_memory_backend, open_memory_backend_with_relations,
@@ -90,7 +91,11 @@ use runtime::{
 };
 
 #[derive(Debug, Parser)]
-#[command(name = "artesian", about = "Multi-agent context orchestration")]
+#[command(
+    name = "artesian",
+    about = "Multi-agent context orchestration",
+    version
+)]
 struct Cli {
     #[command(subcommand)]
     command: Command,
@@ -413,9 +418,13 @@ enum Command {
         #[arg(long, value_enum)]
         backend: Option<BackendArg>,
     },
-    /// Update Artesian via its package manager (Homebrew), then suggest `artesian doctor`. A
-    /// convenience wrapper — your config, MCP registrations, and stored memory are untouched.
-    Update,
+    /// Update Artesian via its package manager, then report installed surfaces and stale MCP
+    /// servers. A convenience wrapper — config, MCP registrations, and stored memory are untouched.
+    Update {
+        /// Best-effort restart of stale artesian-mcp servers after the update.
+        #[arg(long)]
+        restart_stale: bool,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -1361,18 +1370,8 @@ async fn main() -> Result<()> {
             root,
             backend,
         } => doctor(config, root, backend).await,
-        Command::Update => update(),
+        Command::Update { restart_stale } => update::update(restart_stale),
     }
-}
-
-/// Run a shell command, returning whether it exited successfully (exit code 0).
-fn run_shell(cmd: &str) -> Result<bool> {
-    let mut command = std::process::Command::new("sh");
-    command.arg("-c").arg(cmd);
-    let status = command
-        .status()
-        .with_context(|| format!("run command: {cmd}"))?;
-    Ok(status.success())
 }
 
 // LoopCommands, LoopCommandFuture, LoopRunOptions are imported from flume::loop_core above.
@@ -1660,15 +1659,20 @@ fn file_mentions(path: &Path, needle: &str) -> bool {
 }
 
 /// Which agent surfaces have the `artesian-memory` MCP server registered.
-fn mcp_registration_status() -> Vec<(&'static str, bool)> {
+pub(crate) fn mcp_registration_status() -> Vec<(&'static str, bool)> {
+    let claude_user = home_dir().ok().map(|home| home.join(".claude.json"));
     let codex = home_dir()
         .ok()
         .map(|home| home.join(".codex").join("config.toml"));
     let zed = zed_settings_path().ok();
     vec![
         (
-            "Claude Code (.mcp.json)",
+            "Claude Code (project .mcp.json)",
             file_mentions(Path::new(".mcp.json"), MCP_SERVER_NAME),
+        ),
+        (
+            "Claude Code (user ~/.claude.json)",
+            claude_user.is_some_and(|path| file_mentions(&path, MCP_SERVER_NAME)),
         ),
         (
             "Codex",
@@ -1770,60 +1774,6 @@ async fn doctor(config_path: PathBuf, root: PathBuf, backend: Option<BackendArg>
     } else {
         bail!("{problems} problem(s) found — see the fixes above")
     }
-}
-
-/// Update Artesian via Homebrew (if present and managing this binary), then point at
-/// `artesian doctor`. A convenience wrapper — config, MCP registrations, and stored memory are
-/// untouched.
-fn update() -> Result<()> {
-    let brew_available = std::process::Command::new("brew")
-        .arg("--version")
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .map(|status| status.success())
-        .unwrap_or(false);
-
-    if !brew_available {
-        println!(
-            "Homebrew not found — update with your install method, then run `artesian doctor`:"
-        );
-        println!("  brew install aquifer-labs/tap/artesian  # to hand over to Homebrew");
-        println!(
-            "  or download the latest binary: https://github.com/aquifer-labs/artesian/releases"
-        );
-        return Ok(());
-    }
-
-    // Homebrew is present — but it only manages binaries it installed. Check before upgrading.
-    let brew_managed = std::process::Command::new("brew")
-        .args(["list", "aquifer-labs/tap/artesian"])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .map(|status| status.success())
-        .unwrap_or(false);
-
-    if !brew_managed {
-        let exe = std::env::current_exe()
-            .map(|p| p.display().to_string())
-            .unwrap_or_else(|_| "<unknown>".to_string());
-        println!("Artesian is not managed by Homebrew (binary: {exe}).");
-        println!("To hand over management to Homebrew and enable `artesian update`:");
-        println!("  brew install aquifer-labs/tap/artesian");
-        println!("Or update your manual install, then run `artesian doctor`.");
-        println!("  Latest release: https://github.com/aquifer-labs/artesian/releases");
-        return Ok(());
-    }
-
-    println!("Updating Artesian via Homebrew…");
-    if !run_shell("brew upgrade aquifer-labs/tap/artesian")? {
-        eprintln!("note: brew reported a non-zero exit (e.g. already up to date)");
-    }
-    println!(
-        "\nNext: run `artesian doctor` to verify the install and your setup survived the upgrade."
-    );
-    Ok(())
 }
 
 async fn task(command: TaskCommand) -> Result<()> {
@@ -4678,7 +4628,7 @@ fn ensure_toml_table(document: &mut DocumentMut, key: &str) {
     }
 }
 
-fn home_dir() -> Result<PathBuf> {
+pub(crate) fn home_dir() -> Result<PathBuf> {
     if let Some(home) = env::var_os("ARTESIAN_HOME").or_else(|| env::var_os("HOME")) {
         return Ok(PathBuf::from(home));
     }

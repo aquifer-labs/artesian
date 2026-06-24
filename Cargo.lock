@@ -160,6 +160,7 @@ dependencies = [
  "flume",
  "headgate",
  "headrace",
+ "nix",
  "sandbox",
  "serde",
  "serde_json",
