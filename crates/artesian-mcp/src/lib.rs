@@ -1449,18 +1449,28 @@ pub struct LoopRequest {
     pub max_wall_secs: Option<u64>,
     /// Disable durable skill/spec/invariant learning for this run.
     pub no_learn: Option<bool>,
+    /// Maximum consecutive verify failures before escalating with a failure trail
+    /// (outcome `"escalated"`). Each failing turn injects `$ARTESIAN_LAST_FAILURE` into
+    /// the next worker so retries target the specific failure. Defaults to 3. Set to 0
+    /// to disable escalation (the loop will run to max_turns instead).
+    pub max_remediation_attempts: Option<u32>,
 }
 
 #[derive(Debug, Serialize, schemars::JsonSchema)]
 pub struct LoopResponse {
-    /// Outcome label: `"success"`, `"max-turns"`, `"wall-cap"`, `"stopped"`, `"error"`.
+    /// Outcome label: `"success"`, `"max-turns"`, `"wall-cap"`, `"stopped"`, `"error"`,
+    /// or `"escalated"` when the remediation budget is exhausted.
     pub outcome: String,
-    /// Human-readable explanation of why the loop stopped.
+    /// Human-readable explanation of why the loop stopped.  When `outcome == "escalated"`
+    /// this includes a compact per-turn failure summary.
     pub why_stopped: String,
     /// Number of turns executed.
     pub turns: u32,
     /// Absolute path to the JSONL run log.
     pub run_log_path: String,
+    /// Accumulated failure trail when `outcome == "escalated"`; empty otherwise.
+    /// Each entry has `turn`, `reason` (bounded verifier output), and `fix_attempt`.
+    pub failure_trail: Vec<serde_json::Value>,
 }
 
 /// Shell-backed [`LoopCommands`] for the MCP path — captures both stdout and stderr for the
@@ -2379,17 +2389,32 @@ verified skill + spec + auto-invariants to memory. Brakes: max_turns (default 10
             stop_file,
             collection: self.collection.clone(),
             track_savings: self.track_savings,
+            max_remediation_attempts: request
+                .max_remediation_attempts
+                .unwrap_or(loop_core::LOOP_REMEDIATION_ATTEMPTS_DEFAULT),
         };
         let mut commands = McpShellLoopCommands;
         let report =
             loop_core::run_loop_core(options, Some(backend_ref), &anchor_store, &mut commands)
                 .await
                 .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
+        let failure_trail: Vec<serde_json::Value> = report
+            .failure_trail
+            .iter()
+            .map(|a| {
+                serde_json::json!({
+                    "turn": a.turn,
+                    "reason": a.reason,
+                    "fix_attempt": a.fix_attempt,
+                })
+            })
+            .collect();
         Ok(Json(LoopResponse {
             outcome: report.outcome,
             why_stopped: report.why_stopped,
             turns: report.turns,
             run_log_path: report.run_log_path.display().to_string(),
+            failure_trail,
         }))
     }
 

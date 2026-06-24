@@ -349,6 +349,12 @@ enum Command {
         /// Disable durable skill/spec/invariant learning for this loop run.
         #[arg(long)]
         no_learn: bool,
+        /// Maximum consecutive verify failures before escalating with a failure trail.
+        /// Each failing turn injects $ARTESIAN_LAST_FAILURE into the next worker so retries
+        /// target the specific failure rather than blindly retrying. Set to 0 to disable
+        /// escalation (the loop will run to --max-turns instead).
+        #[arg(long, default_value_t = flume::loop_core::LOOP_REMEDIATION_ATTEMPTS_DEFAULT)]
+        max_remediation_attempts: u32,
         #[arg(long, default_value = ".artesian")]
         root: PathBuf,
         /// Project config; its memory backend is used for per-turn recall/commit. Falls back to a
@@ -1306,6 +1312,7 @@ async fn main() -> Result<()> {
             max_wall_secs,
             poll,
             no_learn,
+            max_remediation_attempts,
             root,
             config,
         } => {
@@ -1316,6 +1323,7 @@ async fn main() -> Result<()> {
                 max_wall_secs,
                 poll,
                 learn: !no_learn,
+                max_remediation_attempts,
                 root,
                 config,
             })
@@ -1435,6 +1443,7 @@ struct LoopCliOptions {
     max_wall_secs: Option<u64>,
     poll: bool,
     learn: bool,
+    max_remediation_attempts: u32,
     root: PathBuf,
     config: PathBuf,
 }
@@ -1469,6 +1478,7 @@ async fn run_loop(options: LoopCliOptions) -> Result<()> {
         stop_file: loop_stop_file()?,
         collection: memory_config.collection.clone(),
         track_savings: memory_config.track_savings,
+        max_remediation_attempts: options.max_remediation_attempts,
     };
     let mut commands = ShellLoopCommands;
     let report = run_loop_core(
@@ -4967,6 +4977,7 @@ mod tests {
             stop_file: tmp.join("STOP"),
             collection: String::new(),
             track_savings: false,
+            max_remediation_attempts: flume::loop_core::LOOP_REMEDIATION_ATTEMPTS_DEFAULT,
         }
     }
 

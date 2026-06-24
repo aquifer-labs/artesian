@@ -54,6 +54,21 @@ pub const ARTESIAN_RUNS_DIR_ENV: &str = "ARTESIAN_RUNS_DIR";
 /// Default sleep between poll turns.
 pub const DEFAULT_LOOP_SLEEP: Duration = Duration::from_millis(500);
 
+// ── Remediation constants ──────────────────────────────────────────────────────────────────────
+
+/// Default maximum number of *consecutive* verify failures before the loop escalates.
+/// Each failure injects the failure output into the next worker invocation via
+/// [`ARTESIAN_LAST_FAILURE_ENV`] so each retry is informed rather than blind.
+/// Set `max_remediation_attempts = 0` in [`LoopRunOptions`] to disable escalation entirely.
+pub const LOOP_REMEDIATION_ATTEMPTS_DEFAULT: u32 = 3;
+/// Environment variable injected into the worker when the previous verify failed.
+/// Its value is a structured remediation directive:
+/// `"PREVIOUS ATTEMPT FAILED — fix exactly this:\n<bounded verifier output>\n"`.
+/// Workers that read this can target the specific failure rather than blindly retrying.
+pub const ARTESIAN_LAST_FAILURE_ENV: &str = "ARTESIAN_LAST_FAILURE";
+/// Cap on individual failure-reason text captured into the remediation trail and directive.
+pub const LOOP_FAILURE_TRAIL_REASON_CHARS: usize = 800;
+
 // ── Worker / verifier abstraction ─────────────────────────────────────────────────────────────
 
 pub type LoopCommandFuture<'a, T> =
@@ -111,6 +126,12 @@ pub struct LoopRunOptions {
     /// When `true` (the default), each per-turn `loop.recall` records a token-savings entry.
     /// Mirror of `config.memory.track_savings`.
     pub track_savings: bool,
+    /// Maximum number of *consecutive* verify failures before escalating with a failure trail
+    /// (outcome `"escalated"`). Each failing turn injects [`ARTESIAN_LAST_FAILURE_ENV`] into
+    /// the next worker invocation so retries are informed by the specific failure output.
+    /// Defaults to [`LOOP_REMEDIATION_ATTEMPTS_DEFAULT`]. Set to `0` to disable escalation
+    /// (the loop then runs to max-turns if the goal never holds).
+    pub max_remediation_attempts: u32,
 }
 
 /// Summary returned after `run_loop_core` completes (successfully or via a brake).
@@ -118,12 +139,16 @@ pub struct LoopRunOptions {
 pub struct LoopRunReport {
     /// How many turns ran before the loop stopped.
     pub turns: u32,
-    /// Outcome label: `"success"`, `"wall-cap"`, `"max-turns"`, `"stopped"`, `"error"`.
+    /// Outcome label: `"success"`, `"wall-cap"`, `"max-turns"`, `"stopped"`, `"error"`,
+    /// or `"escalated"` when the remediation budget is exhausted.
     pub outcome: String,
-    /// Human-readable stop reason.
+    /// Human-readable stop reason.  When `outcome == "escalated"` this includes a compact
+    /// per-turn failure summary; the full structured trail is in `failure_trail`.
     pub why_stopped: String,
     /// Absolute path of the JSONL run log.
     pub run_log_path: PathBuf,
+    /// Accumulated remediation failure trail.  Non-empty only when `outcome == "escalated"`.
+    pub failure_trail: Vec<RemediationAttempt>,
 }
 
 // ── Run-log ───────────────────────────────────────────────────────────────────────────────────
@@ -196,6 +221,60 @@ impl LoopRunLog {
             .map_err(|e| anyhow::anyhow!("flush run-log {}: {e}", self.path.display()))
     }
 
+    /// Write a per-turn remediation log entry — one per turn where the previous verify failed
+    /// and the worker was re-invoked with [`ARTESIAN_LAST_FAILURE_ENV`] set.
+    pub fn write_remediation_attempt(
+        &mut self,
+        run_id: &str,
+        turn: u32,
+        consecutive_failures: u32,
+        reason: &str,
+        fix_attempt: Option<&str>,
+    ) -> anyhow::Result<()> {
+        self.write_value(json!({
+            "type": "remediation",
+            "run_id": run_id,
+            "turn": turn,
+            "consecutive_failures": consecutive_failures,
+            "reason": compact_inline(reason, LOOP_FAILURE_TRAIL_REASON_CHARS),
+            "fix_attempt": fix_attempt,
+        }))
+    }
+
+    /// Write the escalation summary entry including the full failure trail when the remediation
+    /// budget is exhausted.
+    pub fn write_escalation_summary(
+        &mut self,
+        run_id: &str,
+        turns: u32,
+        elapsed: Duration,
+        why_stopped: &str,
+        trail: &[RemediationAttempt],
+    ) -> anyhow::Result<()> {
+        let trail_json: Vec<Value> = trail
+            .iter()
+            .map(|a| {
+                json!({
+                    "turn": a.turn,
+                    "reason": a.reason,
+                    "fix_attempt": a.fix_attempt,
+                })
+            })
+            .collect();
+        self.write_value(json!({
+            "type": "summary",
+            "run_id": run_id,
+            "outcome": "escalated",
+            "turns": turns,
+            "elapsed_ms": duration_millis(elapsed),
+            "why_stopped": why_stopped,
+            "failure_trail": trail_json,
+        }))?;
+        self.file
+            .flush()
+            .map_err(|e| anyhow::anyhow!("flush run-log {}: {e}", self.path.display()))
+    }
+
     fn write_value(&mut self, value: Value) -> anyhow::Result<()> {
         serde_json::to_writer(&mut self.file, &value)
             .map_err(|e| anyhow::anyhow!("write run-log {}: {e}", self.path.display()))?;
@@ -211,6 +290,16 @@ impl LoopRunLog {
 pub struct FailedCheck {
     pub turn: u32,
     pub output: String,
+}
+
+/// One entry in the remediation failure trail recorded when the escalation budget is exhausted.
+/// Carries the turn number, the bounded verifier output (the rejection reason), and the worker
+/// command that was attempted as the fix.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct RemediationAttempt {
+    pub turn: u32,
+    pub reason: String,
+    pub fix_attempt: Option<String>,
 }
 
 pub fn duration_millis(duration: Duration) -> u64 {
@@ -572,10 +661,16 @@ pub async fn run_loop_core(
             outcome: "success".to_string(),
             why_stopped: "goal already held".to_string(),
             run_log_path: log.path().to_path_buf(),
+            failure_trail: Vec::new(),
         });
     }
     let mut last_check: Option<String> = None;
-    let mut corrected_failures = Vec::new();
+    let mut corrected_failures: Vec<FailedCheck> = Vec::new();
+    // Remediation state: consecutive failure count, accumulated trail, and the directive injected
+    // into the next worker so each retry targets the specific failure rather than blindly retrying.
+    let mut consecutive_failures: u32 = 0;
+    let mut failure_trail: Vec<RemediationAttempt> = Vec::new();
+    let mut last_failure_reason: Option<String> = None;
     for turn in 1..=options.max_turns {
         if let Some(reason) =
             wall_cap_message(started_at, options.max_wall, &format!("turn {turn}"))
@@ -623,13 +718,19 @@ pub async fn run_loop_core(
                 .map_or(DEFAULT_LOOP_SLEEP, |d| d.min(DEFAULT_LOOP_SLEEP));
             tokio::time::sleep(sleep_for).await;
         } else if let Some(cmd) = &options.worker_cmd {
-            let env = vec![
+            let mut env = vec![
                 ("ARTESIAN_PACKET".to_string(), packet),
                 ("ARTESIAN_RECALL".to_string(), recall.clone()),
                 ("ARTESIAN_GOAL".to_string(), options.goal.clone()),
                 ("ARTESIAN_RUN_ID".to_string(), options.run_id.clone()),
                 ("ARTESIAN_TURN".to_string(), turn.to_string()),
             ];
+            // Inject the structured remediation directive when the previous verify failed.
+            // The worker can read $ARTESIAN_LAST_FAILURE to target the specific failure rather
+            // than blindly retrying the same action.
+            if let Some(ref directive) = last_failure_reason {
+                env.push((ARTESIAN_LAST_FAILURE_ENV.to_string(), directive.clone()));
+            }
             match commands
                 .run_worker(
                     cmd,
@@ -700,18 +801,45 @@ pub async fn run_loop_core(
             &check_output,
             started_at.elapsed(),
         )?;
-        last_check = if goal_met {
-            None
+        if goal_met {
+            // Success: reset remediation state so a later failure in the same session starts fresh.
+            consecutive_failures = 0;
+            last_failure_reason = None;
+            last_check = None;
         } else {
+            // Failure: record for auto-invariant extraction, accumulate the remediation trail,
+            // and build the directive that will be injected into the next worker invocation.
+            consecutive_failures += 1;
+            let reason = compact_inline(&check_output, LOOP_FAILURE_TRAIL_REASON_CHARS);
             corrected_failures.push(FailedCheck {
                 turn,
                 output: check_output.clone(),
             });
-            Some(format!(
+            failure_trail.push(RemediationAttempt {
+                turn,
+                reason: reason.clone(),
+                fix_attempt: options.worker_cmd.clone(),
+            });
+            // Write a "remediation" log entry only for turns where ARTESIAN_LAST_FAILURE was
+            // already injected — i.e. the second consecutive failure onward.  The first failure
+            // is the initial detection; subsequent turns are the actual remediation attempts.
+            if consecutive_failures > 1 {
+                log.write_remediation_attempt(
+                    &options.run_id,
+                    turn,
+                    consecutive_failures,
+                    &reason,
+                    options.worker_cmd.as_deref(),
+                )?;
+            }
+            last_check = Some(format!(
                 "turn {turn}: `{}` failed\n{check_output}",
                 options.goal
-            ))
-        };
+            ));
+            last_failure_reason = Some(format!(
+                "PREVIOUS ATTEMPT FAILED — fix exactly this:\n{reason}\n"
+            ));
+        }
         if let Some(backend) = backend {
             loop_commit_turn(
                 backend,
@@ -723,6 +851,21 @@ pub async fn run_loop_core(
             )
             .await;
         }
+        // Escalation check: after recording the failure in memory, stop if the remediation budget
+        // is exhausted.  A success always resets the counter, so this only fires on consecutive
+        // failures.  The escalation outcome is distinct from "max-turns" and carries the full trail.
+        if !goal_met
+            && options.max_remediation_attempts > 0
+            && consecutive_failures >= options.max_remediation_attempts
+        {
+            return finish_loop_escalation(
+                &mut log,
+                &options.run_id,
+                turn,
+                started_at,
+                failure_trail,
+            );
+        }
         if goal_met {
             if options.learn {
                 if let Some(backend) = backend {
@@ -731,6 +874,8 @@ pub async fn run_loop_core(
                     }
                     loop_store_spec(backend, &options.goal, options.worker_cmd.as_deref(), turn)
                         .await;
+                    // The auto-invariants capture each failure->fix pair as a structured lesson so
+                    // future runs avoid repeating the same mistake.
                     loop_store_auto_invariants(
                         backend,
                         &options.goal,
@@ -752,6 +897,7 @@ pub async fn run_loop_core(
                 outcome: "success".to_string(),
                 why_stopped: "goal held".to_string(),
                 run_log_path: log.path().to_path_buf(),
+                failure_trail: Vec::new(),
             });
         }
     }
@@ -783,6 +929,35 @@ fn finish_loop_early(
         outcome: outcome.to_string(),
         why_stopped: reason.to_string(),
         run_log_path: log.path().to_path_buf(),
+        failure_trail: Vec::new(),
+    })
+}
+
+/// Write the escalation summary and return an `"escalated"` report with the full failure trail.
+/// Called when consecutive verify failures exhaust `max_remediation_attempts`.
+fn finish_loop_escalation(
+    log: &mut LoopRunLog,
+    run_id: &str,
+    turns: u32,
+    started_at: Instant,
+    trail: Vec<RemediationAttempt>,
+) -> anyhow::Result<LoopRunReport> {
+    let compact_trail: Vec<String> = trail
+        .iter()
+        .map(|a| format!("turn {}: {}", a.turn, a.reason))
+        .collect();
+    let why_stopped = format!(
+        "escalated: {} remediation attempt(s) exhausted; failures: [{}]",
+        trail.len(),
+        compact_trail.join("; ")
+    );
+    log.write_escalation_summary(run_id, turns, started_at.elapsed(), &why_stopped, &trail)?;
+    Ok(LoopRunReport {
+        turns,
+        outcome: "escalated".to_string(),
+        why_stopped,
+        run_log_path: log.path().to_path_buf(),
+        failure_trail: trail,
     })
 }
 
@@ -867,6 +1042,7 @@ mod tests {
                 stop_file,
                 collection: String::new(),
                 track_savings: false,
+                max_remediation_attempts: LOOP_REMEDIATION_ATTEMPTS_DEFAULT,
             },
             Some(&backend),
             &anchor,
@@ -902,6 +1078,7 @@ mod tests {
                 stop_file,
                 collection: String::new(),
                 track_savings: false,
+                max_remediation_attempts: LOOP_REMEDIATION_ATTEMPTS_DEFAULT,
             },
             Some(&backend),
             &anchor,
@@ -926,7 +1103,7 @@ mod tests {
         let tempdir = TempDir::new("loop-core-max-turns");
         let backend = FilesBackend::new(tempdir.path());
         let anchor = AnchorAnchorStore::new(tempdir.path());
-        // Never passes (pass_on_call = 999 > max_turns).
+        // Never passes (pass_on_call = 999 > max_turns). Disable escalation so max-turns fires.
         let mut commands = MockLoopCommands::new(999);
         let run_log_dir = tempdir.join("runs");
         let stop_file = tempdir.join("STOP");
@@ -944,6 +1121,7 @@ mod tests {
                 stop_file,
                 collection: String::new(),
                 track_savings: false,
+                max_remediation_attempts: 0, // disabled so we reach max-turns
             },
             Some(&backend),
             &anchor,
@@ -980,6 +1158,7 @@ mod tests {
                 stop_file,
                 collection: String::new(),
                 track_savings: false,
+                max_remediation_attempts: LOOP_REMEDIATION_ATTEMPTS_DEFAULT,
             },
             Some(&backend),
             &anchor,
@@ -989,5 +1168,290 @@ mod tests {
         .expect("loop should return a report on stop sentinel");
 
         assert_eq!(report.outcome, "stopped");
+    }
+
+    // ── Remediation arc tests ─────────────────────────────────────────────────────────────────
+
+    /// A stub that fails the first K verifier calls then passes — used to test the remediation arc.
+    /// Call 0 is the initial check; call N+1 is after turn N.
+    struct FailThenPassCommands {
+        /// The 0-based verifier call index on which to first return `true`.
+        pass_on_call: usize,
+        verify_calls: Mutex<usize>,
+        /// Env vars passed to each worker invocation (one entry per worker call).
+        worker_env: Mutex<Vec<Vec<(String, String)>>>,
+    }
+
+    impl FailThenPassCommands {
+        fn new(pass_on_call: usize) -> Self {
+            Self {
+                pass_on_call,
+                verify_calls: Mutex::new(0),
+                worker_env: Mutex::new(Vec::new()),
+            }
+        }
+    }
+
+    impl LoopCommands for FailThenPassCommands {
+        fn run_worker<'a>(
+            &'a mut self,
+            _cmd: &'a str,
+            env: Vec<(String, String)>,
+            _timeout: Option<Duration>,
+        ) -> LoopCommandFuture<'a, bool> {
+            self.worker_env.lock().unwrap().push(env);
+            Box::pin(async move { Ok(true) })
+        }
+
+        fn verify_goal<'a>(
+            &'a mut self,
+            _cmd: &'a str,
+            _timeout: Option<Duration>,
+        ) -> LoopCommandFuture<'a, (bool, String)> {
+            let mut calls = self.verify_calls.lock().unwrap();
+            let call_index = *calls;
+            *calls += 1;
+            let pass = call_index >= self.pass_on_call;
+            let output = if pass {
+                "ok".to_string()
+            } else {
+                format!("stub failure at call {call_index}")
+            };
+            Box::pin(async move { Ok((pass, output)) })
+        }
+    }
+
+    /// When the goal fails once and then passes, the loop remediates successfully:
+    /// - the captured failure output is injected into the next worker as ARTESIAN_LAST_FAILURE,
+    /// - the outcome is "success" (not "escalated"),
+    /// - the first worker call has no ARTESIAN_LAST_FAILURE (no prior failure),
+    /// - the second worker call has ARTESIAN_LAST_FAILURE set with the failure directive.
+    #[tokio::test]
+    async fn loop_core_remediates_fail_then_pass() {
+        let tempdir = TempDir::new("loop-core-remediate");
+        let backend = FilesBackend::new(tempdir.path());
+        let anchor = AnchorAnchorStore::new(tempdir.path());
+        // Call 0 = initial check (fails), call 1 = after turn 1 (fails), call 2 = turn 2 (passes).
+        let mut commands = FailThenPassCommands::new(2);
+        let run_log_dir = tempdir.join("runs");
+        let stop_file = tempdir.join("STOP");
+
+        let report = run_loop_core(
+            LoopRunOptions {
+                goal: "goal-cmd".to_string(),
+                worker_cmd: Some("worker-cmd".to_string()),
+                max_turns: 5,
+                max_wall: None,
+                poll: false,
+                learn: false,
+                run_id: "test-remediate".to_string(),
+                run_log_dir,
+                stop_file,
+                collection: String::new(),
+                track_savings: false,
+                max_remediation_attempts: 3,
+            },
+            Some(&backend),
+            &anchor,
+            &mut commands,
+        )
+        .await
+        .expect("loop should succeed after remediation");
+
+        assert_eq!(report.outcome, "success");
+        assert_eq!(report.turns, 2);
+        assert!(report.failure_trail.is_empty(), "success clears the trail");
+
+        let env_calls = commands.worker_env.lock().unwrap();
+        assert_eq!(env_calls.len(), 2, "worker should have run twice");
+
+        // Turn 1: no prior failure — ARTESIAN_LAST_FAILURE must NOT be present.
+        let turn1_has_last_failure = env_calls[0]
+            .iter()
+            .any(|(k, _)| k == ARTESIAN_LAST_FAILURE_ENV);
+        assert!(
+            !turn1_has_last_failure,
+            "turn 1 worker env must not have ARTESIAN_LAST_FAILURE (first attempt)"
+        );
+
+        // Turn 2: previous verify failed — ARTESIAN_LAST_FAILURE must carry the directive.
+        let turn2_directive = env_calls[1]
+            .iter()
+            .find(|(k, _)| k == ARTESIAN_LAST_FAILURE_ENV)
+            .map(|(_, v)| v.as_str());
+        assert!(
+            turn2_directive.is_some(),
+            "turn 2 worker env must have ARTESIAN_LAST_FAILURE"
+        );
+        assert!(
+            turn2_directive.unwrap().contains("PREVIOUS ATTEMPT FAILED"),
+            "ARTESIAN_LAST_FAILURE must contain the structured directive"
+        );
+        assert!(
+            turn2_directive.unwrap().contains("stub failure at call 1"),
+            "ARTESIAN_LAST_FAILURE must carry the captured failure output"
+        );
+    }
+
+    /// When a stub never passes and the remediation budget is exhausted, the loop escalates with:
+    /// - outcome "escalated" (not "max-turns"),
+    /// - a failure trail with one entry per consecutive failure,
+    /// - why_stopped containing "escalated: N remediation attempt(s) exhausted",
+    /// - the escalation fires at the budget boundary, not at max-turns.
+    #[tokio::test]
+    async fn loop_core_escalates_within_budget_not_max_turns() {
+        let tempdir = TempDir::new("loop-core-escalate");
+        let backend = FilesBackend::new(tempdir.path());
+        let anchor = AnchorAnchorStore::new(tempdir.path());
+        let mut commands = FailThenPassCommands::new(999); // never passes
+        let run_log_dir = tempdir.join("runs");
+        let stop_file = tempdir.join("STOP");
+
+        // max_turns=10 but max_remediation_attempts=2: escalation fires at turn 2, not turn 10.
+        let report = run_loop_core(
+            LoopRunOptions {
+                goal: "goal-cmd".to_string(),
+                worker_cmd: Some("worker-cmd".to_string()),
+                max_turns: 10,
+                max_wall: None,
+                poll: false,
+                learn: false,
+                run_id: "test-escalate".to_string(),
+                run_log_dir,
+                stop_file,
+                collection: String::new(),
+                track_savings: false,
+                max_remediation_attempts: 2,
+            },
+            Some(&backend),
+            &anchor,
+            &mut commands,
+        )
+        .await
+        .expect("loop should return an escalation report");
+
+        assert_eq!(report.outcome, "escalated", "outcome must be 'escalated'");
+        assert_eq!(
+            report.turns, 2,
+            "escalation fires at budget (turn 2), not max-turns (10)"
+        );
+        assert_eq!(
+            report.failure_trail.len(),
+            2,
+            "trail must have one entry per consecutive failure"
+        );
+        assert!(
+            report.why_stopped.contains("escalated: 2"),
+            "why_stopped must name the budget: {}",
+            report.why_stopped
+        );
+        assert!(
+            report.why_stopped.contains("remediation attempt"),
+            "why_stopped must mention remediation: {}",
+            report.why_stopped
+        );
+        // Trail entries must carry the turn and non-empty reason.
+        assert_eq!(report.failure_trail[0].turn, 1);
+        assert!(!report.failure_trail[0].reason.is_empty());
+        assert_eq!(report.failure_trail[1].turn, 2);
+        assert!(!report.failure_trail[1].reason.is_empty());
+    }
+
+    /// The run-log records a "remediation" entry for each failing turn and an "escalated" summary
+    /// with the failure trail when the budget is exhausted.
+    #[tokio::test]
+    async fn loop_core_run_log_records_remediation_entries() {
+        let tempdir = TempDir::new("loop-core-remediation-log");
+        let backend = FilesBackend::new(tempdir.path());
+        let anchor = AnchorAnchorStore::new(tempdir.path());
+        let mut commands = FailThenPassCommands::new(999); // never passes
+        let run_log_dir = tempdir.join("runs");
+        let stop_file = tempdir.join("STOP");
+
+        let report = run_loop_core(
+            LoopRunOptions {
+                goal: "goal-cmd".to_string(),
+                worker_cmd: Some("worker-cmd".to_string()),
+                max_turns: 5,
+                max_wall: None,
+                poll: false,
+                learn: false,
+                run_id: "test-run-log-remediation".to_string(),
+                run_log_dir: run_log_dir.clone(),
+                stop_file,
+                collection: String::new(),
+                track_savings: false,
+                max_remediation_attempts: 2,
+            },
+            Some(&backend),
+            &anchor,
+            &mut commands,
+        )
+        .await
+        .expect("loop should return an escalation report");
+
+        assert_eq!(report.outcome, "escalated");
+
+        let log_content = std::fs::read_to_string(&report.run_log_path)
+            .expect("run log must exist after the loop");
+
+        let has_remediation_entry = log_content
+            .lines()
+            .any(|line| line.contains(r#""type":"remediation""#));
+        assert!(
+            has_remediation_entry,
+            "run log must contain at least one remediation entry"
+        );
+
+        let escalated_summary = log_content
+            .lines()
+            .find(|line| line.contains(r#""outcome":"escalated""#));
+        assert!(
+            escalated_summary.is_some(),
+            "run log must contain an escalated summary entry"
+        );
+        let summary_line = escalated_summary.unwrap();
+        assert!(
+            summary_line.contains(r#""failure_trail""#),
+            "escalated summary must include failure_trail field"
+        );
+    }
+
+    /// Disabling escalation (max_remediation_attempts = 0) lets the loop run all the way to
+    /// max-turns even when every verify fails — backward-compatible with the original behaviour.
+    #[tokio::test]
+    async fn loop_core_disabled_escalation_runs_to_max_turns() {
+        let tempdir = TempDir::new("loop-core-no-escalate");
+        let backend = FilesBackend::new(tempdir.path());
+        let anchor = AnchorAnchorStore::new(tempdir.path());
+        let mut commands = FailThenPassCommands::new(999); // never passes
+        let run_log_dir = tempdir.join("runs");
+        let stop_file = tempdir.join("STOP");
+
+        let report = run_loop_core(
+            LoopRunOptions {
+                goal: "goal-cmd".to_string(),
+                worker_cmd: Some("worker-cmd".to_string()),
+                max_turns: 4,
+                max_wall: None,
+                poll: false,
+                learn: false,
+                run_id: "test-no-escalate".to_string(),
+                run_log_dir,
+                stop_file,
+                collection: String::new(),
+                track_savings: false,
+                max_remediation_attempts: 0, // escalation disabled
+            },
+            Some(&backend),
+            &anchor,
+            &mut commands,
+        )
+        .await
+        .expect("loop should run to max-turns when escalation is disabled");
+
+        assert_eq!(report.outcome, "max-turns");
+        assert_eq!(report.turns, 4);
+        assert!(report.failure_trail.is_empty());
     }
 }

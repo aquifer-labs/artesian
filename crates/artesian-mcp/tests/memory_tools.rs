@@ -1065,6 +1065,7 @@ async fn orchestrate_loop_is_mode_gated_and_succeeds_when_goal_holds_immediately
             max_turns: None,
             max_wall_secs: None,
             no_learn: Some(true),
+            max_remediation_attempts: None,
         }))
         .await;
     assert!(
@@ -1087,6 +1088,7 @@ async fn orchestrate_loop_is_mode_gated_and_succeeds_when_goal_holds_immediately
             max_turns: Some(5),
             max_wall_secs: None,
             no_learn: Some(true),
+            max_remediation_attempts: None,
         }))
         .await
         .expect("orchestrate.loop should succeed when goal holds immediately")
@@ -1112,6 +1114,7 @@ async fn orchestrate_loop_reaches_max_turns_when_goal_never_holds() {
             max_turns: Some(2),
             max_wall_secs: None,
             no_learn: Some(true),
+            max_remediation_attempts: Some(0), // disable escalation so max-turns fires
         }))
         .await
         .expect("orchestrate.loop should return a report even on max-turns")
