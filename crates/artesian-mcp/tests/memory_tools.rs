@@ -13,11 +13,11 @@ use aquifer::{
 use artesian_core::{AgentBinding, AgentCatalog, AgentCatalogEntry, AgentModel, Mode, Role};
 use artesian_mcp::{
     AnchorSetRequest, AnswerRequest, BindRequest, CommitRequest, DelegateRequest, FindRequest,
-    LearnRequest, LoopRequest, MemoryServer, RelationRequest, SessionCheckpointRequest,
-    SessionResumeByTaskRequest, SessionResumeRequest, SkillProcedureStep, SkillReplayRequest,
-    SkillsRequest, StoreRequest, TeamCreateRequest, TeamMessageKindRequest, TeamMessageRequest,
-    TeamSpawnRequest, TeamStatusRequest, TeamTaskAddRequest, TeamTaskClaimRequest,
-    TeamTaskCompleteRequest, ToolsFindRequest,
+    LearnRequest, LoopRequest, MemoryServer, QualifyRequest, RelationRequest,
+    SessionCheckpointRequest, SessionResumeByTaskRequest, SessionResumeRequest, SkillProcedureStep,
+    SkillReplayRequest, SkillsRequest, StoreRequest, TeamCreateRequest, TeamMessageKindRequest,
+    TeamMessageRequest, TeamSpawnRequest, TeamStatusRequest, TeamTaskAddRequest,
+    TeamTaskClaimRequest, TeamTaskCompleteRequest, ToolsFindRequest,
 };
 use artesian_test_support::TempDir;
 use rmcp::handler::server::wrapper::Parameters;
@@ -220,6 +220,58 @@ async fn memory_commit_runs_acc_cycle_with_files_backend() {
         "{}",
         response.committed_context
     );
+}
+
+#[tokio::test]
+async fn memory_qualify_returns_audited_admit_and_reject_decisions() {
+    let tempdir = TempDir::new("mcp-qualify");
+    let server = MemoryServer::new(tempdir.path());
+
+    server
+        .memory_store(Parameters(StoreRequest {
+            content: "the team chose Rust for the core crates".to_string(),
+            tags: None,
+            node_id: None,
+            relations: None,
+            source: None,
+            confidence: None,
+            scope: None,
+            agent_id: None,
+            session_id: None,
+            task_id: None,
+            user_id: None,
+        }))
+        .await
+        .expect("store should succeed");
+
+    let admitted = server
+        .memory_qualify(Parameters(QualifyRequest {
+            candidate: "the deployment gate checks freshness".to_string(),
+            goal: Some("deployment gate".to_string()),
+        }))
+        .await
+        .expect("qualify admit should succeed")
+        .0;
+    assert!(admitted.admitted, "{admitted:?}");
+    assert!(admitted.signals.len() >= 2);
+    assert!((0.0..=1.0).contains(&admitted.agreement));
+    assert!(admitted.chance_corrected_agreement.is_some());
+    assert!((0.0..=1.0).contains(&admitted.confidence));
+
+    let rejected = server
+        .memory_qualify(Parameters(QualifyRequest {
+            candidate: "the team chose Rust for the core crates".to_string(),
+            goal: None,
+        }))
+        .await
+        .expect("qualify reject should succeed")
+        .0;
+    assert!(!rejected.admitted, "{rejected:?}");
+    assert!(rejected.reason.contains("redundant"));
+    assert!(rejected
+        .signals
+        .iter()
+        .any(|signal| signal.name == "novelty" && !signal.passed));
 }
 
 #[tokio::test]

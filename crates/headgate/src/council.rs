@@ -22,7 +22,8 @@ use serde_json::json;
 
 use crate::{
     judge::{parse_verdict_pub, JudgeVerdict},
-    CommittedContextState, LlmClient, LlmRequest, QualifyDecision, QualifyGate, RecallItem,
+    CommittedContextState, LlmClient, LlmRequest, QualifyAudit, QualifyDecision, QualifyGate,
+    QualifySignal, RecallItem,
 };
 
 const PANEL_SYSTEM: &str = "You are a memory-control judge for an AI agent. Score whether a \
@@ -91,11 +92,13 @@ impl CouncilJudge {
 
     fn decide(&self, verdict: &JudgeVerdict, ccs: &CommittedContextState) -> QualifyDecision {
         let reason = verdict.reason.clone().unwrap_or_default();
+        let signals = self.audit_signals(verdict);
         if verdict.relevance < self.min_relevance {
             return QualifyDecision::reject(
                 format!("council: low relevance {:.2} ({reason})", verdict.relevance),
                 verdict.relevance,
-            );
+            )
+            .with_audit(QualifyAudit::from_signals(false, signals));
         }
         if verdict.novelty < self.min_novelty {
             return QualifyDecision::reject(
@@ -104,7 +107,8 @@ impl CouncilJudge {
                     verdict.novelty
                 ),
                 verdict.relevance,
-            );
+            )
+            .with_audit(QualifyAudit::from_signals(false, signals));
         }
         if verdict.drift > self.max_drift {
             return QualifyDecision::reject(
@@ -113,7 +117,8 @@ impl CouncilJudge {
                     verdict.drift, self.max_drift
                 ),
                 verdict.relevance,
-            );
+            )
+            .with_audit(QualifyAudit::from_signals(false, signals));
         }
         let slot = verdict
             .slot
@@ -121,6 +126,30 @@ impl CouncilJudge {
             .filter(|s| ccs.schema().contains(s))
             .unwrap_or_else(|| ccs.schema().default_slot().to_string());
         QualifyDecision::admit(slot, verdict.relevance)
+            .with_audit(QualifyAudit::from_signals(true, signals))
+    }
+
+    fn audit_signals(&self, verdict: &JudgeVerdict) -> Vec<QualifySignal> {
+        vec![
+            QualifySignal::new(
+                "relevance",
+                verdict.relevance,
+                self.min_relevance,
+                verdict.relevance >= self.min_relevance,
+            ),
+            QualifySignal::new(
+                "novelty",
+                verdict.novelty,
+                self.min_novelty,
+                verdict.novelty >= self.min_novelty,
+            ),
+            QualifySignal::new(
+                "drift",
+                verdict.drift,
+                self.max_drift,
+                verdict.drift <= self.max_drift,
+            ),
+        ]
     }
 
     fn majority_verdict(verdicts: &[JudgeVerdict]) -> Option<JudgeVerdict> {
@@ -214,7 +243,9 @@ impl QualifyGate for CouncilJudge {
 
             match final_verdict {
                 Some(verdict) => self.decide(&verdict, ccs),
-                None => QualifyDecision::reject("council: no verdict produced".to_string(), item.score),
+                None => {
+                    QualifyDecision::reject("council: no verdict produced".to_string(), item.score)
+                }
             }
         }
         .boxed()

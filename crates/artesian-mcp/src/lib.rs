@@ -34,9 +34,11 @@ use flume::{
     TeamRuntimeConfig, TeamSpawn, TeamTaskAdd, TeamTaskClaim, TeamTaskComplete,
 };
 use headgate::{
-    count_tokens, load_savings_rollup, record_savings, Headgate, HeadgateConfig, LifecycleEntry,
-    MemoryRecallStore, OpSavings, RecallStore, Resolution, SnapshotEntry, TokenSavingsRollup,
-    WorkingContextBundle, WorkingContextSnapshot,
+    count_tokens, load_savings_rollup, record_savings, CcsSchema, CommittedContextState,
+    CommittedEntry, DefaultQualifyGate, Headgate, HeadgateConfig, LifecycleEntry,
+    MemoryRecallStore, OpSavings, QualifyAudit, QualifyDecision, QualifyGate, QualifySignal,
+    RecallItem, RecallStore, Resolution, SnapshotEntry, TokenSavingsRollup, WorkingContextBundle,
+    WorkingContextSnapshot,
 };
 use headrace::{ClaimRequest, FilesTaskStore, NewTask, TaskStatus, TaskStore, TransitionTask};
 use rmcp::{
@@ -522,6 +524,37 @@ pub struct CommitResponse {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct QualifyRequest {
+    /// Candidate text to run through the ACC qualify-gate.
+    pub candidate: String,
+    /// Optional current goal/task. When set, it drives relevance scoring and state recall.
+    pub goal: Option<String>,
+}
+
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct QualifyResponse {
+    pub admitted: bool,
+    pub reason: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub slot: Option<String>,
+    pub score: f32,
+    pub signals: Vec<QualifySignalResponse>,
+    pub agreement: f32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub chance_corrected_agreement: Option<f32>,
+    pub confidence: f32,
+}
+
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct QualifySignalResponse {
+    pub name: String,
+    pub value: f32,
+    pub threshold: f32,
+    pub passed: bool,
+    pub margin: f32,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct StoreRequest {
     pub content: String,
     pub tags: Option<Vec<String>>,
@@ -740,6 +773,28 @@ pub async fn answer_memory(
         extractive: true,
         sources,
     })
+}
+
+pub async fn qualify_memory_candidate(
+    backend: &dyn MemoryBackend,
+    acc: &AccConfig,
+    candidate: &str,
+    goal: Option<&str>,
+) -> anyhow::Result<QualifyResponse> {
+    let config = HeadgateConfig::from(acc);
+    let query = goal
+        .map(str::trim)
+        .filter(|goal| !goal.is_empty())
+        .unwrap_or(candidate);
+    let hits = backend
+        .find(MemoryQuery::new(query).with_limit(config.recall_limit.max(1)))
+        .await?;
+    let ccs = committed_state_from_hits(hits, config.budget_tokens);
+    let score = candidate_relevance_score(candidate, goal);
+    let item = RecallItem::new("qualify:candidate", candidate, score);
+    let gate = qualify_gate_from_acc(acc, &config)?;
+    let decision = gate.qualify(&item, &ccs).await;
+    Ok(qualify_response_from_decision(decision))
 }
 
 pub fn normalize_skill_procedure(
@@ -1048,6 +1103,81 @@ fn answer_prompt(question: &str, hits: &[SearchHit]) -> String {
     }
     prompt.push_str(&format!("\nQuestion: {question}\nAnswer:"));
     prompt
+}
+
+fn committed_state_from_hits(hits: Vec<SearchHit>, budget_tokens: usize) -> CommittedContextState {
+    let mut ccs = CommittedContextState::new(CcsSchema::default(), budget_tokens);
+    for hit in hits {
+        ccs.admit(CommittedEntry::new(
+            hit.record.node_id,
+            "fact",
+            hit.record.content,
+            hit.score,
+        ));
+    }
+    ccs
+}
+
+fn qualify_gate_from_acc(
+    acc: &AccConfig,
+    config: &HeadgateConfig,
+) -> anyhow::Result<Arc<dyn QualifyGate>> {
+    #[cfg(not(feature = "llm"))]
+    let _ = acc;
+    #[cfg(feature = "llm")]
+    {
+        if let Some(judge) = &acc.judge {
+            let client = headgate::llm_client_from_config(judge)?;
+            return Ok(Arc::new(headgate::JudgeQualifyGate::new(client)));
+        }
+    }
+    Ok(Arc::new(DefaultQualifyGate::new(
+        config.min_score,
+        config.redundancy_threshold,
+    )))
+}
+
+fn candidate_relevance_score(candidate: &str, goal: Option<&str>) -> f32 {
+    if candidate.trim().is_empty() {
+        return 0.0;
+    }
+    let Some(goal) = goal.map(str::trim).filter(|goal| !goal.is_empty()) else {
+        return 1.0;
+    };
+    let haystack = candidate.to_ascii_lowercase();
+    goal.split_whitespace()
+        .map(str::to_ascii_lowercase)
+        .filter(|term| !term.is_empty())
+        .map(|term| haystack.matches(&term).count() as f32)
+        .sum()
+}
+
+fn qualify_response_from_decision(decision: QualifyDecision) -> QualifyResponse {
+    let audit = decision
+        .audit
+        .unwrap_or_else(|| QualifyAudit::from_signals(decision.admitted, Vec::new()));
+    QualifyResponse {
+        admitted: decision.admitted,
+        reason: decision.reason,
+        slot: decision.slot,
+        score: decision.score,
+        signals: audit.signals.into_iter().map(Into::into).collect(),
+        agreement: audit.agreement,
+        chance_corrected_agreement: audit.chance_corrected_agreement,
+        confidence: audit.confidence,
+    }
+}
+
+impl From<QualifySignal> for QualifySignalResponse {
+    fn from(signal: QualifySignal) -> Self {
+        Self {
+            name: signal.name,
+            value: signal.value,
+            threshold: signal.threshold,
+            passed: signal.passed,
+            margin: signal.margin,
+        }
+    }
 }
 
 fn validate_confidence(confidence: Option<f32>) -> Result<Option<f32>, ErrorData> {
@@ -1946,6 +2076,25 @@ impl MemoryServer {
             &self.acc,
             &request.question,
             request.limit.unwrap_or(10),
+        )
+        .await
+        .map_err(|error| ErrorData::internal_error(error.to_string(), None))?;
+        Ok(Json(response))
+    }
+
+    #[tool(
+        name = "memory.qualify",
+        description = "Run the ACC qualify-gate on one candidate without storing it. Returns admitted/rejected plus audited deterministic signals, agreement, chance-corrected agreement, confidence, and reason for use as a PreToolUse-style gate."
+    )]
+    pub async fn memory_qualify(
+        &self,
+        Parameters(request): Parameters<QualifyRequest>,
+    ) -> Result<Json<QualifyResponse>, ErrorData> {
+        let response = qualify_memory_candidate(
+            self.backend.as_ref(),
+            &self.acc,
+            &request.candidate,
+            request.goal.as_deref(),
         )
         .await
         .map_err(|error| ErrorData::internal_error(error.to_string(), None))?;

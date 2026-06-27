@@ -24,6 +24,7 @@ use serde::{Deserialize, Serialize};
 use aquifer::{Session, SessionKey};
 
 use crate::ccs::{CcsSchema, CommittedContextState, CommittedEntry};
+use crate::gate::QualifyAudit;
 use crate::metrics::count_tokens;
 
 /// Stable format identifier written into every manifest.
@@ -252,6 +253,8 @@ pub struct LifecycleEntry {
     pub supersedes: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reason: Option<LifecycleReason>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub audit: Option<QualifyAudit>,
 }
 
 impl LifecycleEntry {
@@ -264,6 +267,15 @@ impl LifecycleEntry {
             status: Status::Active,
             supersedes: None,
             reason: None,
+            audit: None,
+        }
+    }
+
+    /// A commit event that carries the qualify-gate's audited decision metadata.
+    pub fn commit_with_audit(entry_id: impl Into<String>, audit: QualifyAudit) -> Self {
+        Self {
+            audit: Some(audit),
+            ..Self::commit(entry_id)
         }
     }
 }
@@ -559,6 +571,8 @@ pub struct QualifyRecord {
     pub score: f32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub audit: Option<QualifyAudit>,
 }
 
 impl WorkingContextBundle {
@@ -803,6 +817,13 @@ impl WorkingContextBundle {
                 slot: Some(entry.slot.clone()),
                 score: entry.score,
                 reason: Some("qualified".to_string()),
+                audit: self
+                    .lifecycle
+                    .iter()
+                    .find(|event| {
+                        event.entry_id == entry.id && matches!(event.decision, Decision::Commit)
+                    })
+                    .and_then(|event| event.audit.clone()),
             })
             .collect();
         for event in &self.lifecycle {
@@ -814,6 +835,7 @@ impl WorkingContextBundle {
                     slot: None,
                     score: 0.0,
                     reason: Some(format!("{:?}", event.decision).to_lowercase()),
+                    audit: event.audit.clone(),
                 });
             }
         }
@@ -913,6 +935,7 @@ mod tests {
                     novelty: 0.5,
                     drift: 0.0,
                 }),
+                audit: None,
             }],
         );
         let dir = temp_dir("roundtrip");
@@ -978,6 +1001,31 @@ mod tests {
         assert_eq!(read.snapshot, bundle.snapshot);
         assert_eq!(read.manifest.unit_source, "inline");
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn ocf_qualify_record_carries_lifecycle_audit() {
+        let audit = QualifyAudit::from_signals(
+            true,
+            vec![
+                crate::QualifySignal::new("relevance", 0.9, 0.2, true),
+                crate::QualifySignal::new("novelty", 0.8, 0.2, true),
+            ],
+        );
+        let bundle = WorkingContextBundle::new(
+            sample_snapshot(),
+            vec![LifecycleEntry::commit_with_audit("a", audit.clone())],
+        );
+
+        let qualify = bundle.ocf_qualify();
+        let record = qualify
+            .iter()
+            .find(|record| record.unit_ref == "a")
+            .expect("qualify record for committed entry");
+        let recorded = record.audit.as_ref().expect("audit should be serialized");
+        assert_eq!(recorded.signals.len(), 2);
+        assert_eq!(recorded.confidence, audit.confidence);
+        assert!(recorded.chance_corrected_agreement.is_some());
     }
 
     #[test]

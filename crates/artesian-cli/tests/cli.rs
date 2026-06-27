@@ -106,6 +106,55 @@ fn cli_memory_mode_round_trip_and_spawn_alias_work() {
     );
     assert!(commit_out.contains("\"admitted\": 1"), "{commit_out}");
 
+    let qualify_admit = Command::new(binary)
+        .args([
+            "qualify",
+            "Rust qualify gate admits fresh candidate",
+            "--goal",
+            "Rust qualify",
+            "--json",
+        ])
+        .current_dir(tempdir.path())
+        .output()
+        .expect("qualify admit should run");
+    assert!(qualify_admit.status.success(), "{}", stderr(&qualify_admit));
+    let qualify_admit_json: serde_json::Value =
+        serde_json::from_str(&stdout(&qualify_admit)).expect("qualify admit should be JSON");
+    assert_eq!(qualify_admit_json["admitted"], true);
+    assert!(
+        qualify_admit_json["signals"]
+            .as_array()
+            .expect("signals should be an array")
+            .len()
+            >= 2
+    );
+    assert!(qualify_admit_json["agreement"].as_f64().is_some());
+    assert!(qualify_admit_json["chance_corrected_agreement"]
+        .as_f64()
+        .is_some());
+    let confidence = qualify_admit_json["confidence"]
+        .as_f64()
+        .expect("confidence should be numeric");
+    assert!((0.0..=1.0).contains(&confidence));
+
+    let qualify_reject = Command::new(binary)
+        .args(["qualify", "Artesian memory mode works", "--json"])
+        .current_dir(tempdir.path())
+        .output()
+        .expect("qualify reject should run");
+    assert!(
+        qualify_reject.status.success(),
+        "{}",
+        stderr(&qualify_reject)
+    );
+    let qualify_reject_json: serde_json::Value =
+        serde_json::from_str(&stdout(&qualify_reject)).expect("qualify reject should be JSON");
+    assert_eq!(qualify_reject_json["admitted"], false);
+    assert!(qualify_reject_json["reason"]
+        .as_str()
+        .expect("reason should be text")
+        .contains("redundant"));
+
     let import_dir = tempdir.join("import");
     std::fs::create_dir_all(&import_dir).expect("import dir should be created");
     std::fs::write(

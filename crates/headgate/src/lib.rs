@@ -57,7 +57,7 @@ pub use bundle::{
 pub use ccs::{CcsSchema, CommittedContextState, CommittedEntry};
 pub use compressor::{Compressor, ExtractiveCompressor, NoopCompressor};
 pub use controller::{Headgate, HeadgateConfig};
-pub use gate::{DefaultQualifyGate, QualifyDecision, QualifyGate};
+pub use gate::{DefaultQualifyGate, QualifyAudit, QualifyDecision, QualifyGate, QualifySignal};
 pub use metrics::{count_tokens, GaugeMetrics};
 pub use recall::{MemoryRecallStore, RecallItem, RecallStore, StaticRecallStore};
 pub use savings::{

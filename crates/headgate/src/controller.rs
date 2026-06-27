@@ -8,7 +8,8 @@ use crate::metrics::count_tokens;
 use crate::savings::{record_savings, record_savings_to_dir};
 use crate::{
     CcsSchema, CommittedContextState, CommittedEntry, Compressor, DefaultQualifyGate,
-    ExtractiveCompressor, GaugeMetrics, HeadgateResult, NoopCompressor, QualifyGate, RecallStore,
+    ExtractiveCompressor, GaugeMetrics, HeadgateResult, NoopCompressor, QualifyDecision,
+    QualifyGate, RecallItem, RecallStore,
 };
 
 /// Tunables for the ACC commit-loop.
@@ -153,6 +154,11 @@ impl Headgate {
     /// The committed context the agent reads, rendered as slot-grouped markdown.
     pub fn render(&self) -> String {
         self.ccs.render()
+    }
+
+    /// Run the configured qualify-gate on one candidate against the current committed state.
+    pub async fn qualify_candidate(&self, item: &RecallItem) -> QualifyDecision {
+        self.gate.qualify(item, &self.ccs).await
     }
 
     /// Run one ACC cycle for `query`: recall candidates, qualify each, and admit qualifying

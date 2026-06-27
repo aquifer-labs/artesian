@@ -26,8 +26,8 @@ use artesian_core::{
     Agent, AgentBinding, ArtesianConfig, MemoryBackendKind, MemoryConfig, Mode, Role, SpawnRequest,
 };
 use artesian_mcp::{
-    build_session_bundle_for_cli, checkpoint_anchor_for_cli, session_scoped_hits_for_cli,
-    SessionCheckpointRequest,
+    build_session_bundle_for_cli, checkpoint_anchor_for_cli, qualify_memory_candidate,
+    session_scoped_hits_for_cli, QualifyResponse, SessionCheckpointRequest,
 };
 use artesian_process_agent::{
     fallback_agent_catalog, refresh_agent_catalog, ProcessAgent, ProcessAgentConfig,
@@ -178,6 +178,22 @@ enum Command {
     Memory {
         #[command(subcommand)]
         command: MemoryCommand,
+    },
+    /// Run the ACC qualify-gate on one candidate without storing it.
+    Qualify {
+        candidate: String,
+        /// Optional current goal/task used for relevance scoring and committed-state recall.
+        #[arg(long)]
+        goal: Option<String>,
+        /// Emit the audited gate decision as JSON.
+        #[arg(long)]
+        json: bool,
+        #[arg(long, default_value = DEFAULT_CONFIG)]
+        config: PathBuf,
+        #[arg(long, default_value = ".artesian")]
+        root: PathBuf,
+        #[arg(long, value_enum)]
+        backend: Option<BackendArg>,
     },
     Skill {
         #[command(subcommand)]
@@ -1254,6 +1270,14 @@ async fn main() -> Result<()> {
             once,
         } => run_orchestrator(config, root, dry_run, once).await,
         Command::Memory { command } => memory(command, &raw_args).await,
+        Command::Qualify {
+            candidate,
+            goal,
+            json,
+            config,
+            root,
+            backend,
+        } => qualify(candidate, goal, json, config, root, backend).await,
         Command::Skill { command } => skill(command).await,
         Command::Handoff {
             session_id,
@@ -2627,6 +2651,50 @@ async fn run_orchestrator(
         );
     }
     Ok(())
+}
+
+async fn qualify(
+    candidate: String,
+    goal: Option<String>,
+    json_output: bool,
+    config: PathBuf,
+    root: PathBuf,
+    backend: Option<BackendArg>,
+) -> Result<()> {
+    let acc = load_config(&config)
+        .map(|loaded| loaded.acc)
+        .unwrap_or_default();
+    let backend = open_backend_for_command(&config, root, backend)?;
+    let response =
+        qualify_memory_candidate(backend.as_ref(), &acc, &candidate, goal.as_deref()).await?;
+    if json_output {
+        println!("{}", serde_json::to_string_pretty(&response)?);
+    } else {
+        print_qualify_response(&response);
+    }
+    Ok(())
+}
+
+fn print_qualify_response(response: &QualifyResponse) {
+    println!("admitted: {}", response.admitted);
+    println!("reason: {}", response.reason);
+    if let Some(slot) = &response.slot {
+        println!("slot: {slot}");
+    }
+    println!("score: {:.3}", response.score);
+    println!("agreement: {:.3}", response.agreement);
+    match response.chance_corrected_agreement {
+        Some(value) => println!("chance_corrected_agreement: {value:.3}"),
+        None => println!("chance_corrected_agreement: n/a"),
+    }
+    println!("confidence: {:.3}", response.confidence);
+    println!("signals:");
+    for signal in &response.signals {
+        println!(
+            "  {} value={:.3} threshold={:.3} passed={} margin={:.3}",
+            signal.name, signal.value, signal.threshold, signal.passed, signal.margin
+        );
+    }
 }
 
 async fn memory(command: MemoryCommand, raw_args: &[OsString]) -> Result<()> {

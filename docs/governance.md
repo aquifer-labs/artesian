@@ -87,6 +87,19 @@ The gate evaluates three signals for each recall candidate:
 Records that pass all three gates are admitted (`gate: accepted`). Records that fail are
 logged as rejected with the reason. No silent drops.
 
+### Callable qualify gate
+
+The same gate can be called before storing or injecting content:
+
+```shell
+artesian qualify "candidate memory text" --goal "current task" --json
+```
+
+MCP clients can call `memory.qualify` with `candidate` and optional `goal`. Both surfaces return
+`admitted`, `reason`, `signals`, `agreement`, `chance_corrected_agreement`, and `confidence`. This
+is intended for PreToolUse-style hooks: reject low-confidence or low-agreement candidates before
+they enter the working context, while preserving the audited signal trail for review.
+
 ## Dream-on-compact: offline consolidation
 
 When `dream_on_compact = true` is set in `artesian.toml`, Artesian spawns a fully detached

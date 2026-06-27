@@ -16,7 +16,8 @@ use futures_util::{future::BoxFuture, FutureExt};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    CommittedContextState, LlmClient, LlmRequest, QualifyDecision, QualifyGate, RecallItem,
+    CommittedContextState, LlmClient, LlmRequest, QualifyAudit, QualifyDecision, QualifyGate,
+    QualifySignal, RecallItem,
 };
 
 const JUDGE_SYSTEM: &str = "You are a memory-control judge for an AI agent. You score whether a \
@@ -82,11 +83,13 @@ impl JudgeQualifyGate {
 
     fn decide(&self, verdict: &JudgeVerdict, ccs: &CommittedContextState) -> QualifyDecision {
         let reason = verdict.reason.clone().unwrap_or_default();
+        let signals = self.audit_signals(verdict);
         if verdict.relevance < self.min_relevance {
             return QualifyDecision::reject(
                 format!("judge: low relevance {:.2} ({reason})", verdict.relevance),
                 verdict.relevance,
-            );
+            )
+            .with_audit(QualifyAudit::from_signals(false, signals));
         }
         if verdict.novelty < self.min_novelty {
             return QualifyDecision::reject(
@@ -95,7 +98,8 @@ impl JudgeQualifyGate {
                     verdict.novelty
                 ),
                 verdict.relevance,
-            );
+            )
+            .with_audit(QualifyAudit::from_signals(false, signals));
         }
         if verdict.drift > self.max_drift {
             return QualifyDecision::reject(
@@ -104,7 +108,8 @@ impl JudgeQualifyGate {
                     verdict.drift, self.max_drift
                 ),
                 verdict.relevance,
-            );
+            )
+            .with_audit(QualifyAudit::from_signals(false, signals));
         }
         let slot = verdict
             .slot
@@ -112,6 +117,30 @@ impl JudgeQualifyGate {
             .filter(|slot| ccs.schema().contains(slot))
             .unwrap_or_else(|| ccs.schema().default_slot().to_string());
         QualifyDecision::admit(slot, verdict.relevance)
+            .with_audit(QualifyAudit::from_signals(true, signals))
+    }
+
+    fn audit_signals(&self, verdict: &JudgeVerdict) -> Vec<QualifySignal> {
+        vec![
+            QualifySignal::new(
+                "relevance",
+                verdict.relevance,
+                self.min_relevance,
+                verdict.relevance >= self.min_relevance,
+            ),
+            QualifySignal::new(
+                "novelty",
+                verdict.novelty,
+                self.min_novelty,
+                verdict.novelty >= self.min_novelty,
+            ),
+            QualifySignal::new(
+                "drift",
+                verdict.drift,
+                self.max_drift,
+                verdict.drift <= self.max_drift,
+            ),
+        ]
     }
 }
 
