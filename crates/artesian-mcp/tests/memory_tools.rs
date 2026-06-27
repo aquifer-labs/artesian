@@ -16,8 +16,9 @@ use artesian_mcp::{
     LearnRequest, LoopRequest, MemoryServer, QualifyRequest, RelationRequest,
     SessionCheckpointRequest, SessionResumeByTaskRequest, SessionResumeRequest, SkillProcedureStep,
     SkillReplayRequest, SkillsRequest, StoreRequest, TeamCreateRequest, TeamMessageKindRequest,
-    TeamMessageRequest, TeamSpawnRequest, TeamStatusRequest, TeamTaskAddRequest,
-    TeamTaskAwaitRequest, TeamTaskClaimRequest, TeamTaskCompleteRequest, ToolsFindRequest,
+    TeamMessageRequest, TeamRunRequest, TeamRunTaskRequest, TeamSpawnRequest, TeamStatusRequest,
+    TeamTaskAddRequest, TeamTaskAwaitRequest, TeamTaskClaimRequest, TeamTaskCompleteRequest,
+    ToolsFindRequest,
 };
 use artesian_test_support::TempDir;
 use rmcp::handler::server::wrapper::Parameters;
@@ -655,6 +656,7 @@ async fn orchestrate_delegate_timeout_uses_supervised_cleanup() {
             DelegateRequest {
                 role: "worker".to_string(),
                 task: "Keep a child process alive until timeout".to_string(),
+                max_output_chars: None,
             },
             CancellationToken::new(),
         )
@@ -693,6 +695,7 @@ async fn orchestrate_delegate_error_redacts_process_secrets() {
             DelegateRequest {
                 role: "worker".to_string(),
                 task: "Fail with a secret-bearing stderr".to_string(),
+                max_output_chars: None,
             },
             CancellationToken::new(),
         )
@@ -738,6 +741,7 @@ async fn orchestrate_delegate_tolerates_unread_stdin_and_redacts() {
             DelegateRequest {
                 role: "worker".to_string(),
                 task: big_task,
+                max_output_chars: None,
             },
             CancellationToken::new(),
         )
@@ -752,6 +756,44 @@ async fn orchestrate_delegate_tolerates_unread_stdin_and_redacts() {
         text.contains("[REDACTED]"),
         "worker stderr must be captured and redacted, got: {text}"
     );
+}
+
+#[tokio::test]
+async fn orchestrate_delegate_truncates_success_output_to_cap() {
+    let tempdir = TempDir::new("mcp-delegate-truncate");
+    let server = MemoryServer::new(tempdir.join("memory"))
+        .with_mode(Mode::Orchestrate)
+        .with_task_root(tempdir.join("tasks"))
+        .with_repo_root(tempdir.path())
+        .with_process_registry_dir(tempdir.join("spawns"))
+        .with_bindings(vec![AgentBinding {
+            role: Role::Worker,
+            agent: "codex".to_string(),
+            model: Some("gpt-5.5".to_string()),
+            command: Some("sh".to_string()),
+            args: vec![
+                "-c".to_string(),
+                "printf 'abcdefghijklmnopqrstuvwxyz\\n'".to_string(),
+            ],
+            timeout_seconds: Some(5),
+        }]);
+
+    let response = server
+        .orchestrate_delegate_inner(
+            DelegateRequest {
+                role: "worker".to_string(),
+                task: "Return long output".to_string(),
+                max_output_chars: Some(10),
+            },
+            CancellationToken::new(),
+        )
+        .await
+        .expect("delegation should succeed")
+        .0;
+
+    assert_eq!(response.status, "done");
+    assert_eq!(response.result.as_deref(), Some("abcdefghij"));
+    assert!(response.result_truncated);
 }
 
 #[tokio::test]
@@ -933,6 +975,7 @@ async fn team_task_await_returns_completed_task_and_progress() {
                 task_ids: Vec::new(),
                 timeout_secs: Some(5),
                 poll_interval_ms: Some(50),
+                max_output_chars: None,
             },
             CancellationToken::new(),
             on_progress,
@@ -975,6 +1018,7 @@ async fn team_task_await_cancels_promptly() {
                 task_ids: Vec::new(),
                 timeout_secs: Some(30),
                 poll_interval_ms: Some(50),
+                max_output_chars: None,
             },
             ct,
             None,
@@ -1003,6 +1047,7 @@ async fn team_task_await_timeout_returns_current_task_state() {
                 task_ids: Vec::new(),
                 timeout_secs: Some(0),
                 poll_interval_ms: Some(50),
+                max_output_chars: None,
             },
             CancellationToken::new(),
             None,
@@ -1015,6 +1060,228 @@ async fn team_task_await_timeout_returns_current_task_state() {
     assert_eq!(response.tasks.len(), 1);
     assert_eq!(response.tasks[0]["status"], "todo");
     assert_eq!(response.tasks[0]["description"], "not complete");
+}
+
+#[tokio::test]
+async fn team_task_await_truncates_long_returned_task_description() {
+    let tempdir = TempDir::new("mcp-team-await-truncate");
+    let server = await_test_server(&tempdir);
+    create_await_test_team(&server).await;
+    let long_description = format!("{} tail", "x".repeat(80));
+    let task_id = add_await_test_task(&server, "Await truncate", &long_description).await;
+    server
+        .team_task_complete(Parameters(TeamTaskCompleteRequest {
+            team_id: "team".to_string(),
+            task_id: task_id.clone(),
+            reviewer: "master".to_string(),
+            approved: true,
+        }))
+        .await
+        .expect("task should complete");
+
+    let response = server
+        .team_task_await_inner(
+            TeamTaskAwaitRequest {
+                team_id: "team".to_string(),
+                task_id: Some(task_id),
+                task_ids: Vec::new(),
+                timeout_secs: Some(5),
+                poll_interval_ms: Some(50),
+                max_output_chars: Some(12),
+            },
+            CancellationToken::new(),
+            None,
+        )
+        .await
+        .expect("await should complete")
+        .0;
+
+    assert_eq!(response.outcome, "completed");
+    assert!(response.tasks_truncated);
+    assert_eq!(
+        response.tasks[0]["description"]
+            .as_str()
+            .expect("description should be a string")
+            .chars()
+            .count(),
+        12
+    );
+    assert_eq!(response.tasks[0]["description_truncated"], true);
+}
+
+#[tokio::test]
+async fn team_run_blocks_returns_all_results_and_emits_progress() {
+    use std::sync::atomic::{AtomicU32, Ordering};
+
+    let tempdir = TempDir::new("mcp-team-run");
+    write_team_definitions(tempdir.path());
+    let server = MemoryServer::new(tempdir.join("memory"))
+        .with_mode(Mode::Orchestrate)
+        .with_task_root(tempdir.join("tasks"))
+        .with_repo_root(tempdir.path())
+        .with_process_registry_dir(tempdir.join("spawns"))
+        .with_bindings(team_bindings(
+            "sleep 0.15; printf 'worker-result\\n'",
+            "printf 'judge-ok\\n'",
+        ));
+
+    let event_count = Arc::new(AtomicU32::new(0));
+    let ec = Arc::clone(&event_count);
+    let on_progress: Option<TestProgressCallback> = Some(Arc::new(
+        move |_p: f64, _t: Option<f64>, _m: Option<String>| {
+            ec.fetch_add(1, Ordering::Relaxed);
+        },
+    ));
+
+    let started = Instant::now();
+    let response = server
+        .team_run_inner(
+            TeamRunRequest {
+                team_id: Some("team".to_string()),
+                team_name: Some("Atomic Team".to_string()),
+                tasks: vec![
+                    TeamRunTaskRequest {
+                        instruction: "First worker task".to_string(),
+                        title: None,
+                        role: Some("worker-a".to_string()),
+                        agent: None,
+                    },
+                    TeamRunTaskRequest {
+                        instruction: "Second worker task".to_string(),
+                        title: None,
+                        role: Some("worker-a".to_string()),
+                        agent: None,
+                    },
+                ],
+                timeout_secs: Some(5),
+                poll_interval_ms: Some(50),
+                max_output_chars: Some(100),
+            },
+            CancellationToken::new(),
+            on_progress,
+        )
+        .await
+        .expect("team.run should complete")
+        .0;
+
+    assert!(
+        started.elapsed() >= Duration::from_millis(120),
+        "team.run should block until workers finish"
+    );
+    assert_eq!(response.outcome, "completed");
+    assert_eq!(response.await_outcome, "completed");
+    assert_eq!(response.results.len(), 2);
+    assert!(response
+        .results
+        .iter()
+        .all(|result| result.status == "done"));
+    assert!(response.results.iter().all(|result| {
+        result
+            .output
+            .as_deref()
+            .is_some_and(|output| output == "worker-result")
+    }));
+    assert!(
+        event_count.load(Ordering::Relaxed) >= 1,
+        "progress callback should fire while team.run waits"
+    );
+}
+
+#[tokio::test]
+async fn team_run_truncates_long_worker_output_to_cap() {
+    let tempdir = TempDir::new("mcp-team-run-truncate");
+    write_team_definitions(tempdir.path());
+    let server = MemoryServer::new(tempdir.join("memory"))
+        .with_mode(Mode::Orchestrate)
+        .with_task_root(tempdir.join("tasks"))
+        .with_repo_root(tempdir.path())
+        .with_process_registry_dir(tempdir.join("spawns"))
+        .with_bindings(team_bindings(
+            "printf 'abcdefghijklmnopqrstuvwxyz\\n'",
+            "printf 'judge-ok\\n'",
+        ));
+
+    let response = server
+        .team_run_inner(
+            TeamRunRequest {
+                team_id: Some("team".to_string()),
+                team_name: None,
+                tasks: vec![TeamRunTaskRequest {
+                    instruction: "Return long output".to_string(),
+                    title: None,
+                    role: Some("worker-a".to_string()),
+                    agent: None,
+                }],
+                timeout_secs: Some(5),
+                poll_interval_ms: Some(50),
+                max_output_chars: Some(8),
+            },
+            CancellationToken::new(),
+            None,
+        )
+        .await
+        .expect("team.run should complete")
+        .0;
+
+    assert_eq!(response.outcome, "completed");
+    assert_eq!(response.results.len(), 1);
+    assert_eq!(response.results[0].output.as_deref(), Some("abcdefgh"));
+    assert!(response.results[0].output_truncated);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[cfg(unix)]
+async fn team_run_cancellation_aborts_promptly_and_reaps_workers() {
+    let tempdir = TempDir::new("mcp-team-run-cancel");
+    write_team_definitions(tempdir.path());
+    let parent_pid_file = tempdir.join("worker.pid");
+    let child_pid_file = tempdir.join("grandchild.pid");
+    let script = format!(
+        "echo $$ > \"{}\"; sleep 30 & echo $! > \"{}\"; wait",
+        parent_pid_file.display(),
+        child_pid_file.display()
+    );
+    let server = MemoryServer::new(tempdir.join("memory"))
+        .with_mode(Mode::Orchestrate)
+        .with_task_root(tempdir.join("tasks"))
+        .with_repo_root(tempdir.path())
+        .with_process_registry_dir(tempdir.join("spawns"))
+        .with_bindings(team_bindings(&script, "printf 'judge-ok\\n'"));
+    let ct = CancellationToken::new();
+    let cancel = ct.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(150));
+        cancel.cancel();
+    });
+
+    let started = Instant::now();
+    let result = server
+        .team_run_inner(
+            TeamRunRequest {
+                team_id: Some("team".to_string()),
+                team_name: None,
+                tasks: vec![TeamRunTaskRequest {
+                    instruction: "Run until cancelled".to_string(),
+                    title: None,
+                    role: Some("worker-a".to_string()),
+                    agent: None,
+                }],
+                timeout_secs: Some(30),
+                poll_interval_ms: Some(50),
+                max_output_chars: Some(100),
+            },
+            ct,
+            None,
+        )
+        .await;
+
+    assert!(result.is_err(), "cancelled team.run should return an error");
+    assert!(
+        started.elapsed() < Duration::from_secs(2),
+        "team.run cancellation should not wait for worker timeout"
+    );
+    assert_pid_gone(read_pid(&parent_pid_file));
+    assert_pid_gone(read_pid(&child_pid_file));
 }
 
 #[tokio::test]

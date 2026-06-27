@@ -562,6 +562,10 @@ impl TeamRuntime {
         }
     }
 
+    pub fn config(&self) -> &TeamRuntimeConfig {
+        &self.config
+    }
+
     pub fn definitions(&self) -> &[RoleDefinition] {
         &self.config.definitions
     }
@@ -952,6 +956,23 @@ impl TeamRuntime {
         resume_packet: Option<&str>,
         event_sender: Option<mpsc::UnboundedSender<TeamWorkerEvent>>,
     ) -> FlumeResult<TeamExecution> {
+        let delegation =
+            self.delegation_for_teammate(team_id, teammate_name, content, resume_packet)?;
+        self.execute_delegation(delegation, team_id, teammate_name, event_sender)
+            .await
+    }
+
+    /// Build the fully-specified delegation for an already-admitted teammate without executing it.
+    ///
+    /// This lets outer orchestrators dispatch several teammates concurrently without holding the
+    /// mutable team runtime lock across process execution.
+    pub fn delegation_for_teammate(
+        &self,
+        team_id: &str,
+        teammate_name: &str,
+        content: &str,
+        resume_packet: Option<&str>,
+    ) -> FlumeResult<Delegation> {
         let team = self.team(team_id)?;
         let teammate = team
             .teammates
@@ -966,16 +987,12 @@ impl TeamRuntime {
                     .unwrap_or_else(|| "paused".to_string()),
             });
         }
-        let definition = teammate.definition.clone();
-        let binding = teammate.binding.clone();
-        // Build a Delegation from the definition (all three knobs), allowing callers that supply a
-        // resume_packet override to set Knob 2 without duplicating prompt assembly logic.
-        let mut delegation = Delegation::from_definition(&definition, binding, content);
+        let mut delegation =
+            Delegation::from_definition(&teammate.definition, teammate.binding.clone(), content);
         if let Some(packet) = resume_packet {
             delegation = delegation.with_resume_packet(packet);
         }
-        self.execute_delegation(delegation, team_id, teammate_name, event_sender)
-            .await
+        Ok(delegation)
     }
 
     /// Execute a fully-specified [`Delegation`] (the canonical spawn + send path for all three
@@ -991,14 +1008,35 @@ impl TeamRuntime {
         teammate_name: &str,
         event_sender: Option<mpsc::UnboundedSender<TeamWorkerEvent>>,
     ) -> FlumeResult<TeamExecution> {
+        Self::execute_delegation_with_config(
+            self.config.clone(),
+            delegation,
+            team_id,
+            teammate_name,
+            event_sender,
+        )
+        .await
+    }
+
+    /// Execute a fully-specified delegation using only the immutable runtime config.
+    ///
+    /// The worker process and event collection do not need mutable team state, so `team.run` can
+    /// clone the config once and run several delegations in parallel.
+    pub async fn execute_delegation_with_config(
+        config: TeamRuntimeConfig,
+        delegation: Delegation,
+        team_id: &str,
+        teammate_name: &str,
+        event_sender: Option<mpsc::UnboundedSender<TeamWorkerEvent>>,
+    ) -> FlumeResult<TeamExecution> {
         let binding = &delegation.binding;
-        let process = self.process_agent(binding);
+        let process = process_agent_for_config(&config, binding);
         let session = process
             .spawn(SpawnRequest {
                 role: binding.role,
                 agent: binding.agent.clone(),
                 model: binding.model.clone(),
-                working_dir: Some(self.config.repo_root.display().to_string()),
+                working_dir: Some(config.repo_root.display().to_string()),
                 resume_packet: delegation.resume_packet.clone(),
             })
             .await?;
@@ -1114,38 +1152,7 @@ impl TeamRuntime {
     }
 
     fn process_agent(&self, binding: &AgentBinding) -> ProcessAgent {
-        let command = binding
-            .command
-            .clone()
-            .unwrap_or_else(|| binding.agent.clone());
-        let static_models = self
-            .config
-            .catalog
-            .agents
-            .iter()
-            .find(|entry| entry.agent == binding.agent)
-            .map(|entry| {
-                entry
-                    .models
-                    .iter()
-                    .filter(|model| model.reachable)
-                    .map(|model| model.id.clone())
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
-        ProcessAgent::new(
-            ProcessAgentConfig::new(command)
-                .with_agent_id(binding.agent.clone())
-                .with_default_model(binding.model.clone())
-                .with_args(binding.args.clone())
-                .with_static_models(static_models)
-                .with_working_dir(&self.config.repo_root)
-                .with_timeout(Duration::from_secs(binding.timeout_seconds.unwrap_or(120)))
-                .with_registry_dir(self.config.registry_dir.clone())
-                .with_max_concurrent_spawns(self.config.max_concurrent_spawns)
-                .with_max_lifetime(self.config.max_lifetime)
-                .with_termination_grace(self.config.termination_grace),
-        )
+        process_agent_for_config(&self.config, binding)
     }
 
     fn definition(&self, name: &str) -> FlumeResult<&RoleDefinition> {
@@ -1208,6 +1215,40 @@ impl TeamRuntime {
         self.team_mut(team_id)?.events.push(event.clone());
         Ok(event)
     }
+}
+
+fn process_agent_for_config(config: &TeamRuntimeConfig, binding: &AgentBinding) -> ProcessAgent {
+    let command = binding
+        .command
+        .clone()
+        .unwrap_or_else(|| binding.agent.clone());
+    let static_models = config
+        .catalog
+        .agents
+        .iter()
+        .find(|entry| entry.agent == binding.agent)
+        .map(|entry| {
+            entry
+                .models
+                .iter()
+                .filter(|model| model.reachable)
+                .map(|model| model.id.clone())
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    ProcessAgent::new(
+        ProcessAgentConfig::new(command)
+            .with_agent_id(binding.agent.clone())
+            .with_default_model(binding.model.clone())
+            .with_args(binding.args.clone())
+            .with_static_models(static_models)
+            .with_working_dir(&config.repo_root)
+            .with_timeout(Duration::from_secs(binding.timeout_seconds.unwrap_or(120)))
+            .with_registry_dir(config.registry_dir.clone())
+            .with_max_concurrent_spawns(config.max_concurrent_spawns)
+            .with_max_lifetime(config.max_lifetime)
+            .with_termination_grace(config.termination_grace),
+    )
 }
 
 #[derive(Debug, Clone)]
