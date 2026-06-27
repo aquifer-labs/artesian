@@ -17,11 +17,13 @@ use artesian_mcp::{
     SessionCheckpointRequest, SessionResumeByTaskRequest, SessionResumeRequest, SkillProcedureStep,
     SkillReplayRequest, SkillsRequest, StoreRequest, TeamCreateRequest, TeamMessageKindRequest,
     TeamMessageRequest, TeamSpawnRequest, TeamStatusRequest, TeamTaskAddRequest,
-    TeamTaskClaimRequest, TeamTaskCompleteRequest, ToolsFindRequest,
+    TeamTaskAwaitRequest, TeamTaskClaimRequest, TeamTaskCompleteRequest, ToolsFindRequest,
 };
 use artesian_test_support::TempDir;
 use rmcp::handler::server::wrapper::Parameters;
 use tokio_util::sync::CancellationToken;
+
+type TestProgressCallback = Arc<dyn Fn(f64, Option<f64>, Option<String>) + Send + Sync>;
 
 #[tokio::test]
 async fn memory_tools_store_and_find_with_files_backend() {
@@ -488,6 +490,7 @@ async fn orchestration_tools_are_mode_gated_and_agents_list_reflects_catalog() {
     assert!(!memory_tools.contains(&"agents.list".to_string()));
     assert!(!memory_tools.contains(&"orchestrate.delegate".to_string()));
     assert!(!memory_tools.contains(&"team.create".to_string()));
+    assert!(!memory_tools.contains(&"team.task.await".to_string()));
 
     let catalog = AgentCatalog {
         generated_at: Some("test".to_string()),
@@ -512,6 +515,7 @@ async fn orchestration_tools_are_mode_gated_and_agents_list_reflects_catalog() {
     assert!(tools.contains(&"agents.list".to_string()));
     assert!(tools.contains(&"orchestrate.delegate".to_string()));
     assert!(tools.contains(&"team.create".to_string()));
+    assert!(tools.contains(&"team.task.await".to_string()));
     assert!(tools.contains(&"team.cleanup".to_string()));
     let response = orchestrate
         .agents_list()
@@ -890,6 +894,151 @@ async fn team_lifecycle_uses_definitions_plan_gate_and_cleanup() {
 }
 
 #[tokio::test]
+async fn team_task_await_returns_completed_task_and_progress() {
+    use std::sync::atomic::{AtomicU32, Ordering};
+
+    let tempdir = TempDir::new("mcp-team-await-complete");
+    let server = await_test_server(&tempdir);
+    create_await_test_team(&server).await;
+    let task_id = add_await_test_task(&server, "Await completion", "completed by test").await;
+
+    let completer = server.clone();
+    let completed_task_id = task_id.clone();
+    let complete_handle = tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(120)).await;
+        completer
+            .team_task_complete(Parameters(TeamTaskCompleteRequest {
+                team_id: "team".to_string(),
+                task_id: completed_task_id,
+                reviewer: "master".to_string(),
+                approved: true,
+            }))
+            .await
+            .expect("task should complete");
+    });
+
+    let event_count = Arc::new(AtomicU32::new(0));
+    let ec = Arc::clone(&event_count);
+    let on_progress: Option<TestProgressCallback> = Some(Arc::new(
+        move |_p: f64, _t: Option<f64>, _m: Option<String>| {
+            ec.fetch_add(1, Ordering::Relaxed);
+        },
+    ));
+
+    let response = server
+        .team_task_await_inner(
+            TeamTaskAwaitRequest {
+                team_id: "team".to_string(),
+                task_id: Some(task_id.clone()),
+                task_ids: Vec::new(),
+                timeout_secs: Some(5),
+                poll_interval_ms: Some(50),
+            },
+            CancellationToken::new(),
+            on_progress,
+        )
+        .await
+        .expect("await should complete")
+        .0;
+
+    complete_handle.await.expect("completer task should join");
+    assert_eq!(response.outcome, "completed");
+    assert_eq!(response.task_ids, vec![task_id]);
+    assert_eq!(response.tasks.len(), 1);
+    assert_eq!(response.tasks[0]["status"], "done");
+    assert_eq!(response.tasks[0]["description"], "completed by test");
+    assert!(
+        event_count.load(Ordering::Relaxed) >= 1,
+        "progress callback should fire while waiting"
+    );
+}
+
+#[tokio::test]
+async fn team_task_await_cancels_promptly() {
+    let tempdir = TempDir::new("mcp-team-await-cancel");
+    let server = await_test_server(&tempdir);
+    create_await_test_team(&server).await;
+    let task_id = add_await_test_task(&server, "Await cancellation", "left pending").await;
+    let ct = CancellationToken::new();
+    let cancel = ct.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(80)).await;
+        cancel.cancel();
+    });
+
+    let started = Instant::now();
+    let result = server
+        .team_task_await_inner(
+            TeamTaskAwaitRequest {
+                team_id: "team".to_string(),
+                task_id: Some(task_id),
+                task_ids: Vec::new(),
+                timeout_secs: Some(30),
+                poll_interval_ms: Some(50),
+            },
+            ct,
+            None,
+        )
+        .await;
+
+    assert!(result.is_err(), "cancelled wait should return an MCP error");
+    assert!(
+        started.elapsed() < Duration::from_secs(1),
+        "cancelled wait should not linger"
+    );
+}
+
+#[tokio::test]
+async fn team_task_await_timeout_returns_current_task_state() {
+    let tempdir = TempDir::new("mcp-team-await-timeout");
+    let server = await_test_server(&tempdir);
+    create_await_test_team(&server).await;
+    let task_id = add_await_test_task(&server, "Await timeout", "not complete").await;
+
+    let response = server
+        .team_task_await_inner(
+            TeamTaskAwaitRequest {
+                team_id: "team".to_string(),
+                task_id: Some(task_id),
+                task_ids: Vec::new(),
+                timeout_secs: Some(0),
+                poll_interval_ms: Some(50),
+            },
+            CancellationToken::new(),
+            None,
+        )
+        .await
+        .expect("timeout should be a normal await response")
+        .0;
+
+    assert_eq!(response.outcome, "timeout");
+    assert_eq!(response.tasks.len(), 1);
+    assert_eq!(response.tasks[0]["status"], "todo");
+    assert_eq!(response.tasks[0]["description"], "not complete");
+}
+
+#[tokio::test]
+async fn team_status_remains_non_blocking_snapshot() {
+    let tempdir = TempDir::new("mcp-team-status-nonblocking");
+    let server = await_test_server(&tempdir);
+    create_await_test_team(&server).await;
+    let _task_id = add_await_test_task(&server, "Pending task", "status should not wait").await;
+
+    let response = tokio::time::timeout(
+        Duration::from_millis(100),
+        server.team_status(Parameters(TeamStatusRequest {
+            team_id: "team".to_string(),
+        })),
+    )
+    .await
+    .expect("team.status should return without waiting")
+    .expect("team.status should succeed")
+    .0;
+
+    assert_eq!(response.team["id"], "team");
+}
+
+#[tokio::test]
 async fn team_message_redacts_success_output_and_event_log() {
     let tempdir = TempDir::new("mcp-team-secret");
     write_team_definitions(tempdir.path());
@@ -1006,6 +1155,43 @@ async fn memory_tools_store_and_find_with_sqlite_vec_backend() {
 
     assert_eq!(found.hits.len(), 1);
     assert_eq!(found.hits[0].node_id, "node:mcp-sqlite");
+}
+
+fn await_test_server(tempdir: &TempDir) -> MemoryServer {
+    MemoryServer::new(tempdir.join("memory"))
+        .with_mode(Mode::Orchestrate)
+        .with_task_root(tempdir.join("tasks"))
+        .with_repo_root(tempdir.path())
+        .with_process_registry_dir(tempdir.join("spawns"))
+        .with_bindings(Vec::new())
+}
+
+async fn create_await_test_team(server: &MemoryServer) {
+    server
+        .team_create(Parameters(TeamCreateRequest {
+            id: Some("team".to_string()),
+            name: "Await Test Team".to_string(),
+            max_teammates: Some(1),
+            plan_approval_required: Some(false),
+            plan_approval_roles: None,
+        }))
+        .await
+        .expect("team should create");
+}
+
+async fn add_await_test_task(server: &MemoryServer, title: &str, description: &str) -> String {
+    server
+        .team_task_add(Parameters(TeamTaskAddRequest {
+            team_id: "team".to_string(),
+            title: title.to_string(),
+            description: Some(description.to_string()),
+            definition: None,
+            blockers: None,
+        }))
+        .await
+        .expect("task should add")
+        .0
+        .task_id
 }
 
 fn write_team_definitions(root: &std::path::Path) {

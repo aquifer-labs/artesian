@@ -26,7 +26,7 @@ use artesian_core::{
 };
 use artesian_process_agent::{
     fallback_agent_catalog, load_or_refresh_agent_catalog, validate_binding_model, ProcessAgent,
-    ProcessAgentConfig,
+    ProcessAgentConfig, ProcessSupervisor,
 };
 use flume::{
     load_role_definitions, loop_core, role_summaries, Lane, LaneBudget, LaneContract, TeamCreate,
@@ -40,7 +40,9 @@ use headgate::{
     RecallItem, RecallStore, Resolution, SnapshotEntry, TokenSavingsRollup, WorkingContextBundle,
     WorkingContextSnapshot,
 };
-use headrace::{ClaimRequest, FilesTaskStore, NewTask, TaskStatus, TaskStore, TransitionTask};
+use headrace::{
+    ClaimRequest, FilesTaskStore, NewTask, Task, TaskStatus, TaskStore, TransitionTask,
+};
 use rmcp::{
     handler::server::{
         router::tool::ToolRouter,
@@ -60,9 +62,13 @@ use aquifer::{QdrantVectorStore, QdrantVectorStoreConfig};
 
 const TOOL_INSTRUCTIONS: &str =
     "ALWAYS search the project memory before non-trivial work; store durable, reusable learnings.";
-const MASTER_ROLE_SKILL: &str = "In orchestrate/full mode, first call agents.list to inspect reachable agents, models, and role definitions. Use memory.context for compact project recall, create Flume teams with team.create/team.spawn when several teammates are useful, delegate bounded subtasks through team.task.* or orchestrate.delegate(worker), and gate accepted outcomes through the judge/master path before marking work done.";
+const MASTER_ROLE_SKILL: &str = "In orchestrate/full mode, first call agents.list to inspect reachable agents, models, and role definitions. Use memory.context for compact project recall, create Flume teams with team.create/team.spawn when several teammates are useful, delegate bounded subtasks through team.task.* or orchestrate.delegate(worker), and gate accepted outcomes through the judge/master path before marking work done. After adding a teammate task, BLOCK on team.task.await until it completes, or use orchestrate.delegate for a single worker; do not end your turn or poll in a loop, because blocking keeps the client request active and interruptible.";
 const INVARIANT_TAG: &str = "invariant";
 const GOAL_INVARIANT_LIMIT: usize = 8;
+const TEAM_TASK_AWAIT_DEFAULT_TIMEOUT: Duration = Duration::from_secs(30 * 60);
+const TEAM_TASK_AWAIT_DEFAULT_POLL: Duration = Duration::from_millis(500);
+const TEAM_TASK_AWAIT_MIN_POLL: Duration = Duration::from_millis(50);
+const TEAM_TASK_AWAIT_MAX_POLL: Duration = Duration::from_secs(5);
 const ORCHESTRATION_TOOLS: &[&str] = &[
     "agents.list",
     "orchestrate.bind",
@@ -73,6 +79,7 @@ const ORCHESTRATION_TOOLS: &[&str] = &[
     "team.create",
     "team.spawn",
     "team.task.add",
+    "team.task.await",
     "team.task.claim",
     "team.task.complete",
     "team.message",
@@ -1798,6 +1805,30 @@ pub struct TeamTaskCompleteRequest {
     pub approved: bool,
 }
 
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+pub struct TeamTaskAwaitRequest {
+    pub team_id: String,
+    /// Singular task id for the common one-task wait path.
+    pub task_id: Option<String>,
+    /// Optional batch of task ids to wait for in one blocking MCP call.
+    #[serde(default)]
+    pub task_ids: Vec<String>,
+    /// Maximum wait time in seconds. Defaults to 30 minutes; 0 performs one check then times out.
+    pub timeout_secs: Option<u64>,
+    /// Poll cadence in milliseconds. Defaults to 500 ms and is clamped to 50 ms..=5 s.
+    pub poll_interval_ms: Option<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, schemars::JsonSchema)]
+pub struct TeamTaskAwaitResponse {
+    pub team_id: String,
+    pub task_ids: Vec<String>,
+    /// `completed`, `failed`, `timeout`, or `spawn-exited`.
+    pub outcome: String,
+    pub elapsed_ms: u64,
+    pub tasks: Vec<serde_json::Value>,
+}
+
 #[derive(Debug, Clone, Copy, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum TeamMessageKindRequest {
@@ -3009,7 +3040,7 @@ verified skill + spec + auto-invariants to memory. Brakes: max_turns (default 10
 
     #[tool(
         name = "team.spawn",
-        description = "Admit and spawn a teammate from a .agent/agents or .claude/agents definition through the supervised ProcessAgent path."
+        description = "Admit and spawn a teammate from a .agent/agents or .claude/agents definition through the supervised ProcessAgent path. After adding work for a spawned teammate, block on team.task.await until it completes so the client request remains active and interruptible; for one-off work, prefer orchestrate.delegate."
     )]
     pub async fn team_spawn(
         &self,
@@ -3032,7 +3063,7 @@ verified skill + spec + auto-invariants to memory. Brakes: max_turns (default 10
 
     #[tool(
         name = "team.task.add",
-        description = "Add a task to the shared headrace task board for a Flume team."
+        description = "Add a task to the shared headrace task board for a Flume team. After adding a teammate task, immediately call team.task.await for that task instead of ending the turn or polling manually; the blocking wait keeps the request active and interruptible."
     )]
     pub async fn team_task_add(
         &self,
@@ -3109,6 +3140,116 @@ verified skill + spec + auto-invariants to memory. Brakes: max_turns (default 10
             task: serde_json::to_value(task)
                 .map_err(|error| ErrorData::internal_error(error.to_string(), None))?,
         }))
+    }
+
+    #[tool(
+        name = "team.task.await",
+        description = "Block on one or more team tasks until every task reaches a terminal state (`done` or `blocked`), a matching task spawn exits, or timeout/cancel fires. Use this immediately after team.task.add so the MCP request stays active and interruptible; do not end the master turn or poll team.status in a loop."
+    )]
+    pub async fn team_task_await(
+        &self,
+        peer: Peer<RoleServer>,
+        meta: Meta,
+        ct: CancellationToken,
+        Parameters(request): Parameters<TeamTaskAwaitRequest>,
+    ) -> Result<Json<TeamTaskAwaitResponse>, ErrorData> {
+        let progress_token = meta.get_progress_token();
+        let heartbeat = spawn_progress_heartbeat(
+            peer,
+            progress_token,
+            Duration::from_secs(5),
+            "team.task.await waiting",
+        );
+        let result = self.team_task_await_inner(request, ct, None).await;
+        heartbeat.abort();
+        result
+    }
+
+    /// Core implementation of `team.task.await`, callable without MCP context for tests.
+    pub async fn team_task_await_inner(
+        &self,
+        request: TeamTaskAwaitRequest,
+        ct: CancellationToken,
+        on_progress: Option<loop_core::LoopProgressCallback>,
+    ) -> Result<Json<TeamTaskAwaitResponse>, ErrorData> {
+        self.ensure_orchestration_enabled()?;
+        let task_ids = normalize_await_task_ids(&request)?;
+        {
+            let runtime = self.team_runtime.lock().await;
+            runtime
+                .status(&request.team_id)
+                .map_err(|error| ErrorData::internal_error(error.to_string(), None))?;
+        }
+
+        let timeout = await_timeout(request.timeout_secs);
+        let poll_interval = await_poll_interval(request.poll_interval_ms);
+        let deadline = tokio::time::Instant::now() + timeout;
+        let started = std::time::Instant::now();
+        let task_store = FilesTaskStore::new(&self.task_root);
+        let mut saw_matching_spawn = false;
+
+        loop {
+            let tasks = load_await_tasks(&task_store, &task_ids).await?;
+            if tasks.iter().all(|task| task.status.is_terminal()) {
+                let outcome = if tasks.iter().any(|task| task.status == TaskStatus::Blocked) {
+                    "failed"
+                } else {
+                    "completed"
+                };
+                return await_response(&request.team_id, &task_ids, outcome, started, tasks);
+            }
+
+            let active_spawns = self.active_matching_spawn_count(&task_ids)?;
+            if active_spawns > 0 {
+                saw_matching_spawn = true;
+            } else if saw_matching_spawn {
+                return await_response(&request.team_id, &task_ids, "spawn-exited", started, tasks);
+            }
+
+            if let Some(on_progress) = &on_progress {
+                on_progress(
+                    started.elapsed().as_secs_f64(),
+                    (timeout > Duration::ZERO).then_some(timeout.as_secs_f64()),
+                    Some(format!(
+                        "waiting for {} team task(s) to finish",
+                        task_ids.len()
+                    )),
+                );
+            }
+
+            tokio::select! {
+                () = ct.cancelled() => {
+                    return Err(ErrorData::invalid_request(
+                        "request cancelled by client".to_string(),
+                        None,
+                    ));
+                }
+                () = tokio::time::sleep_until(deadline) => {
+                    let tasks = load_await_tasks(&task_store, &task_ids).await?;
+                    return await_response(&request.team_id, &task_ids, "timeout", started, tasks);
+                }
+                () = tokio::time::sleep(poll_interval) => {}
+            }
+        }
+    }
+
+    fn active_matching_spawn_count(&self, task_ids: &[String]) -> Result<usize, ErrorData> {
+        let supervisor = ProcessSupervisor::new(self.process_defaults.registry_dir.clone())
+            .with_termination_grace(self.process_defaults.termination_grace)
+            .with_max_concurrent_spawns(self.process_defaults.max_concurrent_spawns);
+        let entries = supervisor
+            .entries()
+            .map_err(|error| ErrorData::internal_error(error.to_string(), None))?;
+        Ok(entries
+            .into_iter()
+            .filter(|entry| {
+                entry
+                    .task_id
+                    .as_ref()
+                    .is_some_and(|task_id| task_ids.iter().any(|id| id == task_id))
+                    && supervisor.group_alive(entry.pgid)
+            })
+            .count())
     }
 
     #[tool(
@@ -3193,7 +3334,7 @@ verified skill + spec + auto-invariants to memory. Brakes: max_turns (default 10
 
     #[tool(
         name = "team.status",
-        description = "Return Flume team lifecycle, teammates, and redacted EventEnvelope pool."
+        description = "Return Flume team lifecycle, teammates, and redacted EventEnvelope pool. This remains a non-blocking snapshot; do not poll it in a loop after team.task.add. Use team.task.await to block on teammate completion, or orchestrate.delegate for a single worker."
     )]
     pub async fn team_status(
         &self,
@@ -3881,11 +4022,15 @@ fn tool_registry() -> &'static [RegisteredTool] {
         },
         RegisteredTool {
             name: "team.spawn",
-            description: "Spawn a defined teammate through the supervised ProcessAgent path.",
+            description: "Spawn a defined teammate; after adding work, block with team.task.await so the request stays active.",
         },
         RegisteredTool {
             name: "team.task.add",
-            description: "Add a task to the shared headrace task board for a team.",
+            description: "Add a team task, then immediately block on team.task.await instead of ending the turn or polling.",
+        },
+        RegisteredTool {
+            name: "team.task.await",
+            description: "Blocking, heartbeated wait for one or more team tasks to finish; keeps the client request active and interruptible.",
         },
         RegisteredTool {
             name: "team.task.claim",
@@ -3901,7 +4046,7 @@ fn tool_registry() -> &'static [RegisteredTool] {
         },
         RegisteredTool {
             name: "team.status",
-            description: "Inspect team lifecycle state, teammates, and redacted message pool.",
+            description: "Inspect a non-blocking team snapshot; use team.task.await to block on teammate completion.",
         },
         RegisteredTool {
             name: "team.presence",
@@ -3924,6 +4069,88 @@ fn tool_registry() -> &'static [RegisteredTool] {
             description: "Garbage-collect orphaned, expired, or hung teammate process groups across the registry.",
         },
     ]
+}
+
+fn normalize_await_task_ids(request: &TeamTaskAwaitRequest) -> Result<Vec<String>, ErrorData> {
+    let mut task_ids = Vec::new();
+    if let Some(task_id) = request
+        .task_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|task_id| !task_id.is_empty())
+    {
+        task_ids.push(task_id.to_string());
+    }
+    for task_id in request
+        .task_ids
+        .iter()
+        .map(|task_id| task_id.trim())
+        .filter(|task_id| !task_id.is_empty())
+    {
+        if task_ids.iter().all(|existing| existing != task_id) {
+            task_ids.push(task_id.to_string());
+        }
+    }
+    if task_ids.is_empty() {
+        return Err(ErrorData::invalid_params(
+            "team.task.await requires task_id or task_ids".to_string(),
+            None,
+        ));
+    }
+    Ok(task_ids)
+}
+
+fn await_timeout(timeout_secs: Option<u64>) -> Duration {
+    timeout_secs
+        .map(Duration::from_secs)
+        .unwrap_or(TEAM_TASK_AWAIT_DEFAULT_TIMEOUT)
+}
+
+fn await_poll_interval(poll_interval_ms: Option<u64>) -> Duration {
+    poll_interval_ms
+        .map(Duration::from_millis)
+        .unwrap_or(TEAM_TASK_AWAIT_DEFAULT_POLL)
+        .clamp(TEAM_TASK_AWAIT_MIN_POLL, TEAM_TASK_AWAIT_MAX_POLL)
+}
+
+async fn load_await_tasks(
+    task_store: &FilesTaskStore,
+    task_ids: &[String],
+) -> Result<Vec<Task>, ErrorData> {
+    let mut tasks = Vec::with_capacity(task_ids.len());
+    for task_id in task_ids {
+        let task = task_store
+            .get(task_id)
+            .await
+            .map_err(|error| ErrorData::internal_error(error.to_string(), None))?
+            .ok_or_else(|| {
+                ErrorData::invalid_params(format!("team task not found: {task_id}"), None)
+            })?;
+        tasks.push(task);
+    }
+    Ok(tasks)
+}
+
+fn await_response(
+    team_id: &str,
+    task_ids: &[String],
+    outcome: &str,
+    started: std::time::Instant,
+    tasks: Vec<Task>,
+) -> Result<Json<TeamTaskAwaitResponse>, ErrorData> {
+    let elapsed_ms = started.elapsed().as_millis().min(u128::from(u64::MAX)) as u64;
+    let tasks = tasks
+        .into_iter()
+        .map(serde_json::to_value)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| ErrorData::internal_error(error.to_string(), None))?;
+    Ok(Json(TeamTaskAwaitResponse {
+        team_id: team_id.to_string(),
+        task_ids: task_ids.to_vec(),
+        outcome: outcome.to_string(),
+        elapsed_ms,
+        tasks,
+    }))
 }
 
 fn lexical_score(task: &str, description: &str) -> f32 {
