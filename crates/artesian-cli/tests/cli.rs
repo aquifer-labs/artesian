@@ -534,6 +534,86 @@ fn cli_loop_stop_sentinel_exits_nonzero() {
     assert!(stderr(&output).contains("stopped by sentinel"));
 }
 
+#[test]
+fn cli_runs_lists_fixture_run_logs() {
+    let tempdir = TempDir::new("cli-runs-list");
+    let runs = tempdir.join("runs");
+    std::fs::create_dir_all(&runs).expect("runs dir should exist");
+    std::fs::write(
+        runs.join("done-run.jsonl"),
+        r#"{"type":"turn","run_id":"done-run","timestamp":"2026-06-28T10:00:00Z","turn":1,"action":"cargo test","verify":{"passed":true}}
+{"type":"summary","run_id":"done-run","outcome":"success","turns":1,"why_stopped":"goal held"}
+"#,
+    )
+    .expect("done fixture should be written");
+    std::fs::write(
+        runs.join("active-run.jsonl"),
+        r#"{"type":"turn","run_id":"active-run","timestamp":"2026-06-28T11:00:00Z","turn":1,"action":"fix","verify":{"passed":false}}
+{"type":"turn","run_id":"active-run","turn":2,"action":"fix again","verify":{"passed":false}}
+"#,
+    )
+    .expect("active fixture should be written");
+    let binary = env!("CARGO_BIN_EXE_artesian");
+
+    let output = Command::new(binary)
+        .args(["runs", "--root", runs.to_str().expect("utf8 path")])
+        .current_dir(tempdir.path())
+        .output()
+        .expect("runs should list fixture logs");
+
+    assert!(output.status.success(), "{}", stderr(&output));
+    let out = stdout(&output);
+    assert!(out.contains("done-run"), "{out}");
+    assert!(out.contains("success"), "{out}");
+    assert!(out.contains("active-run"), "{out}");
+    assert!(out.contains("active"), "{out}");
+    assert!(out.contains("2026-06-28T10:00:00Z"), "{out}");
+}
+
+#[test]
+fn cli_runs_watch_renders_fixture_turns_and_summary() {
+    let tempdir = TempDir::new("cli-runs-watch");
+    let runs = tempdir.join("runs");
+    std::fs::create_dir_all(&runs).expect("runs dir should exist");
+    std::fs::write(
+        runs.join("watch-run.jsonl"),
+        r#"{"type":"turn","run_id":"watch-run","timestamp":"2026-06-28T12:00:00Z","turn":1,"action":"fix docs","verify":{"passed":false}}
+{"type":"turn","run_id":"watch-run","turn":2,"action":"run tests","verify":{"passed":true}}
+{"type":"summary","run_id":"watch-run","outcome":"success","turns":2,"why_stopped":"goal held"}
+"#,
+    )
+    .expect("watch fixture should be written");
+    let binary = env!("CARGO_BIN_EXE_artesian");
+
+    let output = Command::new(binary)
+        .args([
+            "runs",
+            "watch",
+            "watch-run",
+            "--root",
+            runs.to_str().expect("utf8 path"),
+        ])
+        .current_dir(tempdir.path())
+        .output()
+        .expect("runs watch should render fixture log and exit");
+
+    assert!(output.status.success(), "{}", stderr(&output));
+    let out = stdout(&output);
+    assert!(out.contains("watching watch-run"), "{out}");
+    assert!(
+        out.contains("turn 1  action: fix docs  -> verify: failed"),
+        "{out}"
+    );
+    assert!(
+        out.contains("turn 2  action: run tests  -> verify: passed"),
+        "{out}"
+    );
+    assert!(
+        out.contains("summary  outcome: success  turns: 2  why: goal held"),
+        "{out}"
+    );
+}
+
 fn stdout(output: &std::process::Output) -> String {
     String::from_utf8_lossy(&output.stdout).into_owned()
 }

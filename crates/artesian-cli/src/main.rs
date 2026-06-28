@@ -85,6 +85,7 @@ Use the `artesian-memory` MCP server and its `memory.find`, `memory.store`, `mem
 
 mod artesiand;
 mod import;
+mod runs;
 mod runtime;
 mod update;
 use import::{import_directory, ImportOptions};
@@ -177,6 +178,18 @@ enum Command {
         dry_run: bool,
         #[arg(long)]
         once: bool,
+    },
+    Runs {
+        #[arg(long)]
+        root: Option<PathBuf>,
+        #[command(subcommand)]
+        command: Option<RunsCommand>,
+    },
+    /// Alias for `artesian runs watch`.
+    Watch {
+        run_id: Option<String>,
+        #[arg(long)]
+        root: Option<PathBuf>,
     },
     Memory {
         #[command(subcommand)]
@@ -491,6 +504,15 @@ enum AgentsCommand {
         config: PathBuf,
         #[arg(long)]
         cache: Option<PathBuf>,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+enum RunsCommand {
+    Watch {
+        run_id: Option<String>,
+        #[arg(long)]
+        root: Option<PathBuf>,
     },
 }
 
@@ -1276,6 +1298,14 @@ async fn main() -> Result<()> {
             dry_run,
             once,
         } => run_orchestrator(config, root, dry_run, once).await,
+        Command::Runs { root, command } => match command {
+            Some(RunsCommand::Watch {
+                run_id,
+                root: watch_root,
+            }) => runs::watch(&runs_root(watch_root.or(root))?, run_id.as_deref()).await,
+            None => runs::list(&runs_root(root)?),
+        },
+        Command::Watch { run_id, root } => runs::watch(&runs_root(root)?, run_id.as_deref()).await,
         Command::Memory { command } => memory(command, &raw_args).await,
         Command::Qualify {
             candidate,
@@ -1463,6 +1493,10 @@ async fn main() -> Result<()> {
 }
 
 // LoopCommands, LoopCommandFuture, LoopRunOptions are imported from flume::loop_core above.
+
+fn runs_root(root: Option<PathBuf>) -> Result<PathBuf> {
+    root.map_or_else(loop_run_log_dir, Ok)
+}
 
 struct ShellLoopCommands;
 
