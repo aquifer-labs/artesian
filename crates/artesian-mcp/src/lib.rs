@@ -62,13 +62,15 @@ use aquifer::{QdrantVectorStore, QdrantVectorStoreConfig};
 
 const TOOL_INSTRUCTIONS: &str =
     "ALWAYS search the project memory before non-trivial work; store durable, reusable learnings.";
-const MASTER_ROLE_SKILL: &str = "In orchestrate/full mode, first call agents.list to inspect reachable agents, models, and role definitions. Use memory.context for compact project recall, create Flume teams with team.create/team.spawn when several teammates are useful, delegate bounded subtasks through team.task.* or orchestrate.delegate(worker), and gate accepted outcomes through the judge/master path before marking work done. After adding a teammate task, BLOCK on team.task.await until it completes, or use orchestrate.delegate for a single worker; do not end your turn or poll in a loop, because blocking keeps the client request active and interruptible.";
+const MASTER_ROLE_SKILL: &str = "In orchestrate/full mode, first call agents.list to inspect reachable agents, models, and role definitions. Use memory.context for compact project recall. For multi-worker work, call team.run ONCE and do the final synthesis in the SAME turn; never spawn-then-yield and never poll in a loop, because yielding makes the MCP client think the request finished and forces a fresh full-context master turn. Use orchestrate.delegate for a single worker, or team.task.add plus team.task.await only when manually composing an existing team.";
 const INVARIANT_TAG: &str = "invariant";
 const GOAL_INVARIANT_LIMIT: usize = 8;
 const TEAM_TASK_AWAIT_DEFAULT_TIMEOUT: Duration = Duration::from_secs(30 * 60);
 const TEAM_TASK_AWAIT_DEFAULT_POLL: Duration = Duration::from_millis(500);
 const TEAM_TASK_AWAIT_MIN_POLL: Duration = Duration::from_millis(50);
 const TEAM_TASK_AWAIT_MAX_POLL: Duration = Duration::from_secs(5);
+const TEAM_OUTPUT_DEFAULT_MAX_CHARS: usize = 4_000;
+const TEAM_OUTPUT_HARD_MAX_CHARS: usize = 64 * 1024;
 const ORCHESTRATION_TOOLS: &[&str] = &[
     "agents.list",
     "orchestrate.bind",
@@ -77,6 +79,7 @@ const ORCHESTRATION_TOOLS: &[&str] = &[
     "orchestrate.status",
     "orchestrate.handoff",
     "team.create",
+    "team.run",
     "team.spawn",
     "team.task.add",
     "team.task.await",
@@ -1707,6 +1710,10 @@ pub struct BindResponse {
 pub struct DelegateRequest {
     pub role: String,
     pub task: String,
+    /// Maximum returned worker-output characters. Defaults to 4000; the full process output
+    /// remains internal to the delegated task path.
+    #[serde(default)]
+    pub max_output_chars: Option<usize>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, schemars::JsonSchema)]
@@ -1717,11 +1724,15 @@ pub struct DelegateResponse {
     pub agent: String,
     pub model: Option<String>,
     pub result: Option<String>,
+    pub result_truncated: bool,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct StatusRequest {
     pub task_id: String,
+    /// Maximum returned result characters. Defaults to 4000.
+    #[serde(default)]
+    pub max_output_chars: Option<usize>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, schemars::JsonSchema)]
@@ -1729,6 +1740,7 @@ pub struct StatusResponse {
     pub task_id: String,
     pub status: String,
     pub result: Option<String>,
+    pub result_truncated: bool,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -1767,6 +1779,59 @@ pub struct TeamSpawnRequest {
 #[derive(Debug, Serialize, schemars::JsonSchema)]
 pub struct TeamSpawnResponse {
     pub teammate: serde_json::Value,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct TeamRunRequest {
+    /// Existing team id to reuse, or omitted to create an ephemeral atomic-run team.
+    pub team_id: Option<String>,
+    /// Team name when creating an ephemeral team. Defaults to `team.run`.
+    pub team_name: Option<String>,
+    /// Bounded worker tasks to dispatch in one atomic MCP call.
+    pub tasks: Vec<TeamRunTaskRequest>,
+    /// Maximum wait time in seconds. Defaults to 30 minutes.
+    pub timeout_secs: Option<u64>,
+    /// Poll/progress cadence in milliseconds. Defaults to 500 ms and is clamped to 50 ms..=5 s.
+    pub poll_interval_ms: Option<u64>,
+    /// Maximum returned worker-output characters per task. Defaults to 4000.
+    #[serde(default)]
+    pub max_output_chars: Option<usize>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct TeamRunTaskRequest {
+    /// Worker instruction sent to the selected teammate.
+    pub instruction: String,
+    /// Optional task title. Defaults to the instruction's first non-empty line.
+    pub title: Option<String>,
+    /// Optional role definition name or canonical role alias (`worker`, `judge`, `master`).
+    pub role: Option<String>,
+    /// Optional preferred agent id; used to choose among matching role definitions.
+    pub agent: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, schemars::JsonSchema)]
+pub struct TeamRunResponse {
+    pub team_id: String,
+    /// `completed`, `failed`, or `timeout`.
+    pub outcome: String,
+    pub elapsed_ms: u64,
+    pub task_ids: Vec<String>,
+    pub results: Vec<TeamRunTaskResult>,
+    pub await_outcome: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, schemars::JsonSchema)]
+pub struct TeamRunTaskResult {
+    pub task_id: String,
+    pub status: String,
+    pub role: String,
+    pub agent: String,
+    pub model: Option<String>,
+    pub output: Option<String>,
+    pub output_truncated: bool,
+    pub error: Option<String>,
+    pub error_truncated: bool,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -1817,6 +1882,9 @@ pub struct TeamTaskAwaitRequest {
     pub timeout_secs: Option<u64>,
     /// Poll cadence in milliseconds. Defaults to 500 ms and is clamped to 50 ms..=5 s.
     pub poll_interval_ms: Option<u64>,
+    /// Maximum returned task-description/output characters per task. Defaults to 4000.
+    #[serde(default)]
+    pub max_output_chars: Option<usize>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, schemars::JsonSchema)]
@@ -1827,6 +1895,7 @@ pub struct TeamTaskAwaitResponse {
     pub outcome: String,
     pub elapsed_ms: u64,
     pub tasks: Vec<serde_json::Value>,
+    pub tasks_truncated: bool,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, schemars::JsonSchema)]
@@ -1948,6 +2017,62 @@ pub struct TeamLaneAssignRequest {
 struct DelegateRecord {
     status: String,
     result: Option<String>,
+}
+
+struct BoundedText {
+    text: String,
+    truncated: bool,
+}
+
+impl BoundedText {
+    fn new(text: &str, max_output_chars: Option<usize>) -> Self {
+        let limit = output_char_limit(max_output_chars);
+        let compact = loop_core::compact_inline(text, limit.saturating_add(1));
+        let truncated = compact.chars().count() > limit;
+        let text = if truncated {
+            compact.chars().take(limit).collect()
+        } else {
+            compact
+        };
+        Self { text, truncated }
+    }
+}
+
+struct ResolvedTeamRunTask {
+    definition: String,
+    title: String,
+    instruction: String,
+}
+
+struct TeamRunTaskMeta {
+    task_id: String,
+    role: String,
+    agent: String,
+    model: Option<String>,
+}
+
+impl Clone for TeamRunTaskMeta {
+    fn clone(&self) -> Self {
+        Self {
+            task_id: self.task_id.clone(),
+            role: self.role.clone(),
+            agent: self.agent.clone(),
+            model: self.model.clone(),
+        }
+    }
+}
+
+struct TeamRunPlan {
+    team_id: String,
+    teammate: String,
+    config: TeamRuntimeConfig,
+    meta: TeamRunTaskMeta,
+    delegation: flume::Delegation,
+}
+
+struct TeamRunRunning {
+    meta: TeamRunTaskMeta,
+    handle: tokio::task::JoinHandle<flume::FlumeResult<flume::TeamExecution>>,
 }
 
 // ── orchestrate.loop ──────────────────────────────────────────────────────────────────────────
@@ -2829,13 +2954,15 @@ Call when the project vision or current phase changes."
                     "done".to_string(),
                     Some(response.content.clone()),
                 )?;
+                let result = BoundedText::new(&response.content, request.max_output_chars);
                 Ok(Json(DelegateResponse {
                     task_id,
                     status: "done".to_string(),
                     role: role.canonical_alias().to_string(),
                     agent: binding.agent,
                     model: binding.model,
-                    result: Some(response.content),
+                    result: Some(result.text),
+                    result_truncated: result.truncated,
                 }))
             }
             Err(error) => {
@@ -2874,10 +3001,19 @@ Call when the project vision or current phase changes."
                 status: "unknown".to_string(),
                 result: None,
             });
+        let (result, result_truncated) = record
+            .result
+            .as_deref()
+            .map(|result| {
+                let result = BoundedText::new(result, request.max_output_chars);
+                (Some(result.text), result.truncated)
+            })
+            .unwrap_or((None, false));
         Ok(Json(StatusResponse {
             task_id: request.task_id,
             status: record.status,
-            result: record.result,
+            result,
+            result_truncated,
         }))
     }
 
@@ -3040,8 +3176,443 @@ verified skill + spec + auto-invariants to memory. Brakes: max_turns (default 10
     }
 
     #[tool(
+        name = "team.run",
+        description = "Atomic blocking Flume fan-out: create/reuse a team, spawn needed teammates, dispatch all requested tasks, wait for every task to reach done/blocked, and return concise bounded results in this one MCP call. For multi-worker work, call this once and do final synthesis in the same turn; never spawn-then-yield or poll in a loop."
+    )]
+    pub async fn team_run(
+        &self,
+        peer: Peer<RoleServer>,
+        meta: Meta,
+        ct: CancellationToken,
+        Parameters(request): Parameters<TeamRunRequest>,
+    ) -> Result<Json<TeamRunResponse>, ErrorData> {
+        let progress_token = meta.get_progress_token();
+        let on_progress = make_mcp_progress_callback(peer.clone(), progress_token.clone());
+        let heartbeat = spawn_progress_heartbeat(
+            peer,
+            progress_token,
+            Duration::from_secs(5),
+            "team.run running",
+        );
+        let result = self.team_run_inner(request, ct, on_progress).await;
+        heartbeat.abort();
+        result
+    }
+
+    /// Core implementation of `team.run`, callable without MCP context for tests.
+    pub async fn team_run_inner(
+        &self,
+        request: TeamRunRequest,
+        ct: CancellationToken,
+        on_progress: Option<loop_core::LoopProgressCallback>,
+    ) -> Result<Json<TeamRunResponse>, ErrorData> {
+        self.ensure_orchestration_enabled()?;
+        if request.tasks.is_empty() {
+            return Err(ErrorData::invalid_params(
+                "team.run requires at least one task".to_string(),
+                None,
+            ));
+        }
+        let max_output_chars = output_char_limit(request.max_output_chars);
+        let timeout = await_timeout(request.timeout_secs);
+        let poll_interval = await_poll_interval(request.poll_interval_ms);
+        let deadline = tokio::time::Instant::now() + timeout;
+        let started = std::time::Instant::now();
+        let bindings = self
+            .bindings
+            .lock()
+            .map_err(|error| ErrorData::internal_error(error.to_string(), None))?
+            .clone();
+
+        let mut resolved = Vec::with_capacity(request.tasks.len());
+        {
+            let runtime = self.team_runtime.lock().await;
+            for (index, task) in request.tasks.iter().enumerate() {
+                let instruction = task.instruction.trim();
+                if instruction.is_empty() {
+                    return Err(ErrorData::invalid_params(
+                        format!("team.run task {} has an empty instruction", index + 1),
+                        None,
+                    ));
+                }
+                let definition =
+                    resolve_team_run_definition(runtime.definitions(), &bindings, task)?;
+                resolved.push(ResolvedTeamRunTask {
+                    definition,
+                    title: task
+                        .title
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|title| !title.is_empty())
+                        .map(str::to_string)
+                        .unwrap_or_else(|| first_line_or_default(instruction)),
+                    instruction: instruction.to_string(),
+                });
+            }
+        }
+
+        let team_id = self.ensure_team_run_team(&request, &resolved).await?;
+        let plans = self.prepare_team_run_plans(&team_id, resolved).await?;
+        let task_ids = plans
+            .iter()
+            .map(|plan| plan.meta.task_id.clone())
+            .collect::<Vec<_>>();
+        if let Some(on_progress) = &on_progress {
+            on_progress(
+                0.0,
+                (timeout > Duration::ZERO).then_some(timeout.as_secs_f64()),
+                Some(format!("team.run dispatched {} task(s)", plans.len())),
+            );
+        }
+
+        let mut pending = plans
+            .into_iter()
+            .map(|plan| TeamRunRunning {
+                meta: plan.meta,
+                handle: tokio::spawn(async move {
+                    TeamRuntime::execute_delegation_with_config(
+                        plan.config,
+                        plan.delegation,
+                        &plan.team_id,
+                        &plan.teammate,
+                        None,
+                    )
+                    .await
+                }),
+            })
+            .collect::<Vec<_>>();
+        let mut results = Vec::with_capacity(pending.len());
+
+        while !pending.is_empty() {
+            let current = pending.remove(0);
+            let join = loop {
+                if ct.is_cancelled() {
+                    let mut handles = vec![current.handle];
+                    handles.extend(pending.into_iter().map(|running| running.handle));
+                    abort_team_run_handles(handles).await;
+                    self.cleanup_team_after_atomic_run(&team_id).await?;
+                    return Err(ErrorData::invalid_request(
+                        "request cancelled by client".to_string(),
+                        None,
+                    ));
+                }
+                if current.handle.is_finished() {
+                    break current.handle.await;
+                }
+                tokio::select! {
+                    () = ct.cancelled() => {
+                        let mut handles = vec![current.handle];
+                        handles.extend(pending.into_iter().map(|running| running.handle));
+                        abort_team_run_handles(handles).await;
+                        self.cleanup_team_after_atomic_run(&team_id).await?;
+                        return Err(ErrorData::invalid_request(
+                            "request cancelled by client".to_string(),
+                            None,
+                        ));
+                    }
+                    () = tokio::time::sleep_until(deadline) => {
+                        let timeout_text = BoundedText::new(
+                            "team.run timed out before every worker finished",
+                            Some(max_output_chars),
+                        );
+                        let mut blocked = vec![current.meta.clone()];
+                        blocked.extend(pending.iter().map(|running| running.meta.clone()));
+                        let mut handles = vec![current.handle];
+                        handles.extend(pending.into_iter().map(|running| running.handle));
+                        abort_team_run_handles(handles).await;
+                        self.block_team_run_tasks(&team_id, &blocked).await?;
+                        self.cleanup_team_after_atomic_run(&team_id).await?;
+                        results.extend(blocked.iter().map(|meta| {
+                            team_run_error_result(meta, &timeout_text)
+                        }));
+                        return self.finish_team_run_response(
+                            team_id,
+                            task_ids,
+                            "timeout",
+                            started,
+                            results,
+                            request.timeout_secs,
+                            request.poll_interval_ms,
+                            Some(max_output_chars),
+                            on_progress,
+                            ct,
+                        ).await;
+                    }
+                    () = tokio::time::sleep(poll_interval) => {
+                        if let Some(on_progress) = &on_progress {
+                            on_progress(
+                                started.elapsed().as_secs_f64(),
+                                (timeout > Duration::ZERO).then_some(timeout.as_secs_f64()),
+                                Some(format!(
+                                    "team.run waiting for {} worker task(s)",
+                                    pending.len() + 1
+                                )),
+                            );
+                        }
+                    }
+                }
+            };
+
+            let meta = current.meta;
+            match join {
+                Ok(Ok(execution)) => {
+                    self.complete_team_run_task(&team_id, &meta.task_id, true)
+                        .await?;
+                    let output = BoundedText::new(&execution.response, Some(max_output_chars));
+                    results.push(TeamRunTaskResult {
+                        task_id: meta.task_id,
+                        status: "done".to_string(),
+                        role: meta.role,
+                        agent: meta.agent,
+                        model: meta.model,
+                        output: Some(output.text),
+                        output_truncated: output.truncated,
+                        error: None,
+                        error_truncated: false,
+                    });
+                }
+                Ok(Err(error)) => {
+                    self.complete_team_run_task(&team_id, &meta.task_id, false)
+                        .await?;
+                    let error = BoundedText::new(&error.to_string(), Some(max_output_chars));
+                    results.push(team_run_error_result(&meta, &error));
+                }
+                Err(error) => {
+                    self.complete_team_run_task(&team_id, &meta.task_id, false)
+                        .await?;
+                    let error = BoundedText::new(&error.to_string(), Some(max_output_chars));
+                    results.push(team_run_error_result(&meta, &error));
+                }
+            }
+        }
+
+        let outcome = if results.iter().any(|result| result.status == "blocked") {
+            "failed"
+        } else {
+            "completed"
+        };
+        self.finish_team_run_response(
+            team_id,
+            task_ids,
+            outcome,
+            started,
+            results,
+            request.timeout_secs,
+            request.poll_interval_ms,
+            Some(max_output_chars),
+            on_progress,
+            ct,
+        )
+        .await
+    }
+
+    async fn ensure_team_run_team(
+        &self,
+        request: &TeamRunRequest,
+        tasks: &[ResolvedTeamRunTask],
+    ) -> Result<String, ErrorData> {
+        let mut runtime = self.team_runtime.lock().await;
+        let team_id = if let Some(team_id) = request
+            .team_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|team_id| !team_id.is_empty())
+        {
+            if runtime.status(team_id).is_err() {
+                runtime.create_team(TeamCreate {
+                    id: Some(team_id.to_string()),
+                    name: request
+                        .team_name
+                        .clone()
+                        .unwrap_or_else(|| team_id.to_string()),
+                    max_teammates: Some(tasks.len().max(1)),
+                    plan_approval_required: false,
+                    plan_approval_roles: Vec::new(),
+                });
+            }
+            team_id.to_string()
+        } else {
+            runtime
+                .create_team(TeamCreate {
+                    id: None,
+                    name: request
+                        .team_name
+                        .clone()
+                        .unwrap_or_else(|| "team.run".to_string()),
+                    max_teammates: Some(tasks.len().max(1)),
+                    plan_approval_required: false,
+                    plan_approval_roles: Vec::new(),
+                })
+                .id
+        };
+
+        let mut needed = Vec::<String>::new();
+        for task in tasks {
+            if needed.iter().all(|existing| existing != &task.definition) {
+                needed.push(task.definition.clone());
+            }
+        }
+        let existing = runtime
+            .status(&team_id)
+            .map_err(|error| ErrorData::internal_error(error.to_string(), None))?
+            .teammates
+            .into_iter()
+            .map(|teammate| teammate.name)
+            .collect::<Vec<_>>();
+        for definition in needed {
+            if existing.iter().any(|name| name == &definition) {
+                continue;
+            }
+            let teammate = runtime
+                .spawn_teammate(TeamSpawn {
+                    team_id: team_id.clone(),
+                    definition: definition.clone(),
+                })
+                .await
+                .map_err(|error| ErrorData::internal_error(error.to_string(), None))?;
+            if let Some(reason) = teammate.paused_reason {
+                return Err(ErrorData::internal_error(
+                    format!("team.run could not spawn {definition}: {reason}"),
+                    None,
+                ));
+            }
+        }
+        Ok(team_id)
+    }
+
+    async fn prepare_team_run_plans(
+        &self,
+        team_id: &str,
+        tasks: Vec<ResolvedTeamRunTask>,
+    ) -> Result<Vec<TeamRunPlan>, ErrorData> {
+        let mut runtime = self.team_runtime.lock().await;
+        let config = runtime.config().clone();
+        let mut plans = Vec::with_capacity(tasks.len());
+        for task in tasks {
+            let task_record = runtime
+                .add_task(TeamTaskAdd {
+                    team_id: team_id.to_string(),
+                    title: task.title,
+                    description: task.instruction.clone(),
+                    definition: Some(task.definition.clone()),
+                    blockers: Vec::new(),
+                })
+                .await
+                .map_err(|error| ErrorData::internal_error(error.to_string(), None))?;
+            runtime
+                .claim_task(TeamTaskClaim {
+                    team_id: team_id.to_string(),
+                    task_id: Some(task_record.id.clone()),
+                    teammate: task.definition.clone(),
+                })
+                .await
+                .map_err(|error| ErrorData::internal_error(error.to_string(), None))?;
+            let instruction = format!("Task ID: {}\n\n{}", task_record.id, task.instruction);
+            let delegation = runtime
+                .delegation_for_teammate(team_id, &task.definition, &instruction, None)
+                .map_err(|error| ErrorData::internal_error(error.to_string(), None))?;
+            let binding = delegation.binding.clone();
+            plans.push(TeamRunPlan {
+                team_id: team_id.to_string(),
+                teammate: task.definition.clone(),
+                config: config.clone(),
+                meta: TeamRunTaskMeta {
+                    task_id: task_record.id,
+                    role: binding.role.canonical_alias().to_string(),
+                    agent: binding.agent,
+                    model: binding.model,
+                },
+                delegation,
+            });
+        }
+        Ok(plans)
+    }
+
+    async fn complete_team_run_task(
+        &self,
+        team_id: &str,
+        task_id: &str,
+        approved: bool,
+    ) -> Result<(), ErrorData> {
+        let mut runtime = self.team_runtime.lock().await;
+        runtime
+            .complete_task(TeamTaskComplete {
+                team_id: team_id.to_string(),
+                task_id: task_id.to_string(),
+                reviewer: "master".to_string(),
+                approved,
+            })
+            .await
+            .map_err(|error| ErrorData::internal_error(error.to_string(), None))?;
+        Ok(())
+    }
+
+    async fn block_team_run_tasks(
+        &self,
+        team_id: &str,
+        tasks: &[TeamRunTaskMeta],
+    ) -> Result<(), ErrorData> {
+        for task in tasks {
+            self.complete_team_run_task(team_id, &task.task_id, false)
+                .await?;
+        }
+        Ok(())
+    }
+
+    async fn cleanup_team_after_atomic_run(&self, _team_id: &str) -> Result<(), ErrorData> {
+        let runtime = self.team_runtime.lock().await;
+        let _ = runtime.gc(TeamGcOptions::default());
+        Ok(())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn finish_team_run_response(
+        &self,
+        team_id: String,
+        task_ids: Vec<String>,
+        outcome: &str,
+        started: std::time::Instant,
+        mut results: Vec<TeamRunTaskResult>,
+        timeout_secs: Option<u64>,
+        poll_interval_ms: Option<u64>,
+        max_output_chars: Option<usize>,
+        on_progress: Option<loop_core::LoopProgressCallback>,
+        ct: CancellationToken,
+    ) -> Result<Json<TeamRunResponse>, ErrorData> {
+        results.sort_by_key(|result| {
+            task_ids
+                .iter()
+                .position(|task_id| task_id == &result.task_id)
+                .unwrap_or(usize::MAX)
+        });
+        let awaited = self
+            .team_task_await_inner(
+                TeamTaskAwaitRequest {
+                    team_id: team_id.clone(),
+                    task_id: None,
+                    task_ids: task_ids.clone(),
+                    timeout_secs,
+                    poll_interval_ms,
+                    max_output_chars,
+                },
+                ct,
+                on_progress,
+            )
+            .await?
+            .0;
+        Ok(Json(TeamRunResponse {
+            team_id,
+            outcome: outcome.to_string(),
+            elapsed_ms: started.elapsed().as_millis().min(u128::from(u64::MAX)) as u64,
+            task_ids,
+            results,
+            await_outcome: awaited.outcome,
+        }))
+    }
+
+    #[tool(
         name = "team.spawn",
-        description = "Admit and spawn a teammate from a .agent/agents or .claude/agents definition through the supervised ProcessAgent path. After adding work for a spawned teammate, block on team.task.await until it completes so the client request remains active and interruptible; for one-off work, prefer orchestrate.delegate."
+        description = "Admit and spawn a teammate from a .agent/agents or .claude/agents definition through the supervised ProcessAgent path. For multi-worker work, prefer one atomic team.run call and finish synthesis in that same turn. If manually composing primitives, add work and immediately block on team.task.await; never spawn-then-yield or poll."
     )]
     pub async fn team_spawn(
         &self,
@@ -3064,7 +3635,7 @@ verified skill + spec + auto-invariants to memory. Brakes: max_turns (default 10
 
     #[tool(
         name = "team.task.add",
-        description = "Add a task to the shared headrace task board for a Flume team. After adding a teammate task, immediately call team.task.await for that task instead of ending the turn or polling manually; the blocking wait keeps the request active and interruptible."
+        description = "Add a task to the shared headrace task board for a Flume team. For multi-worker fan-out, use team.run once instead. If using this primitive manually, immediately call team.task.await for the task in the same turn; never yield or poll, because yielding makes the client mark the request finished and burns a fresh master turn."
     )]
     pub async fn team_task_add(
         &self,
@@ -3197,14 +3768,28 @@ verified skill + spec + auto-invariants to memory. Brakes: max_turns (default 10
                 } else {
                     "completed"
                 };
-                return await_response(&request.team_id, &task_ids, outcome, started, tasks);
+                return await_response(
+                    &request.team_id,
+                    &task_ids,
+                    outcome,
+                    started,
+                    tasks,
+                    request.max_output_chars,
+                );
             }
 
             let active_spawns = self.active_matching_spawn_count(&task_ids)?;
             if active_spawns > 0 {
                 saw_matching_spawn = true;
             } else if saw_matching_spawn {
-                return await_response(&request.team_id, &task_ids, "spawn-exited", started, tasks);
+                return await_response(
+                    &request.team_id,
+                    &task_ids,
+                    "spawn-exited",
+                    started,
+                    tasks,
+                    request.max_output_chars,
+                );
             }
 
             if let Some(on_progress) = &on_progress {
@@ -3227,7 +3812,14 @@ verified skill + spec + auto-invariants to memory. Brakes: max_turns (default 10
                 }
                 () = tokio::time::sleep_until(deadline) => {
                     let tasks = load_await_tasks(&task_store, &task_ids).await?;
-                    return await_response(&request.team_id, &task_ids, "timeout", started, tasks);
+                    return await_response(
+                        &request.team_id,
+                        &task_ids,
+                        "timeout",
+                        started,
+                        tasks,
+                        request.max_output_chars,
+                    );
                 }
                 () = tokio::time::sleep(poll_interval) => {}
             }
@@ -4068,12 +4660,16 @@ fn tool_registry() -> &'static [RegisteredTool] {
             description: "Create a Flume agent team topology in orchestrate or full mode.",
         },
         RegisteredTool {
+            name: "team.run",
+            description: "Atomic blocking multi-worker fan-out; returns bounded results after every task reaches done or blocked.",
+        },
+        RegisteredTool {
             name: "team.spawn",
-            description: "Spawn a defined teammate; after adding work, block with team.task.await so the request stays active.",
+            description: "Spawn a defined teammate; for multi-worker work prefer one team.run call.",
         },
         RegisteredTool {
             name: "team.task.add",
-            description: "Add a team task, then immediately block on team.task.await instead of ending the turn or polling.",
+            description: "Add a team task; for fan-out use team.run, otherwise immediately block on team.task.await.",
         },
         RegisteredTool {
             name: "team.task.await",
@@ -4147,6 +4743,117 @@ fn normalize_await_task_ids(request: &TeamTaskAwaitRequest) -> Result<Vec<String
     Ok(task_ids)
 }
 
+fn output_char_limit(max_output_chars: Option<usize>) -> usize {
+    max_output_chars
+        .unwrap_or(TEAM_OUTPUT_DEFAULT_MAX_CHARS)
+        .clamp(1, TEAM_OUTPUT_HARD_MAX_CHARS)
+}
+
+fn resolve_team_run_definition(
+    definitions: &[flume::RoleDefinition],
+    bindings: &[AgentBinding],
+    task: &TeamRunTaskRequest,
+) -> Result<String, ErrorData> {
+    if definitions.is_empty() {
+        return Err(ErrorData::invalid_params(
+            "team.run requires at least one .agent/agents or .claude/agents role definition"
+                .to_string(),
+            None,
+        ));
+    }
+    let requested_role = task
+        .role
+        .as_deref()
+        .map(str::trim)
+        .filter(|role| !role.is_empty());
+    let requested_agent = task
+        .agent
+        .as_deref()
+        .map(str::trim)
+        .filter(|agent| !agent.is_empty());
+    if requested_role.is_none() && requested_agent.is_none() {
+        return definitions
+            .iter()
+            .find(|definition| definition.kind == Role::Worker)
+            .or_else(|| definitions.first())
+            .map(|definition| definition.name.clone())
+            .ok_or_else(|| {
+                ErrorData::invalid_params(
+                    "team.run found no usable role definition".to_string(),
+                    None,
+                )
+            });
+    }
+    let parsed_role = requested_role
+        .filter(|role| {
+            definitions
+                .iter()
+                .all(|definition| definition.name != *role)
+        })
+        .map(Role::from_str)
+        .transpose()
+        .map_err(|error| ErrorData::invalid_params(error.to_string(), None))?;
+
+    let matches = definitions
+        .iter()
+        .filter(|definition| {
+            requested_role.is_none_or(|role| definition.name == role)
+                || parsed_role.is_some_and(|role| definition.kind == role)
+        })
+        .filter(|definition| {
+            requested_agent
+                .is_none_or(|agent| definition_matches_agent(definition, bindings, agent))
+        })
+        .collect::<Vec<_>>();
+
+    if let Some(definition) = matches.first() {
+        return Ok(definition.name.clone());
+    }
+
+    Err(ErrorData::invalid_params(
+        format!(
+            "team.run found no role definition matching role={:?} agent={:?}",
+            requested_role, requested_agent
+        ),
+        None,
+    ))
+}
+
+fn definition_matches_agent(
+    definition: &flume::RoleDefinition,
+    bindings: &[AgentBinding],
+    agent: &str,
+) -> bool {
+    definition.agent.as_deref() == Some(agent)
+        || (definition.agent.is_none()
+            && bindings
+                .iter()
+                .any(|binding| binding.role == definition.kind && binding.agent == agent))
+}
+
+async fn abort_team_run_handles(
+    handles: Vec<tokio::task::JoinHandle<flume::FlumeResult<flume::TeamExecution>>>,
+) {
+    for handle in handles {
+        handle.abort();
+    }
+    tokio::task::yield_now().await;
+}
+
+fn team_run_error_result(meta: &TeamRunTaskMeta, error: &BoundedText) -> TeamRunTaskResult {
+    TeamRunTaskResult {
+        task_id: meta.task_id.clone(),
+        status: "blocked".to_string(),
+        role: meta.role.clone(),
+        agent: meta.agent.clone(),
+        model: meta.model.clone(),
+        output: None,
+        output_truncated: false,
+        error: Some(error.text.clone()),
+        error_truncated: error.truncated,
+    }
+}
+
 fn await_timeout(timeout_secs: Option<u64>) -> Duration {
     timeout_secs
         .map(Duration::from_secs)
@@ -4184,20 +4891,54 @@ fn await_response(
     outcome: &str,
     started: std::time::Instant,
     tasks: Vec<Task>,
+    max_output_chars: Option<usize>,
 ) -> Result<Json<TeamTaskAwaitResponse>, ErrorData> {
     let elapsed_ms = started.elapsed().as_millis().min(u128::from(u64::MAX)) as u64;
     let tasks = tasks
         .into_iter()
-        .map(serde_json::to_value)
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|error| ErrorData::internal_error(error.to_string(), None))?;
+        .map(|task| bounded_task_value(task, max_output_chars))
+        .collect::<Result<Vec<_>, _>>()?;
+    let tasks_truncated = tasks.iter().any(|task| {
+        task.get("description_truncated")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false)
+    });
     Ok(Json(TeamTaskAwaitResponse {
         team_id: team_id.to_string(),
         task_ids: task_ids.to_vec(),
         outcome: outcome.to_string(),
         elapsed_ms,
+        tasks_truncated,
         tasks,
     }))
+}
+
+fn bounded_task_value(
+    task: Task,
+    max_output_chars: Option<usize>,
+) -> Result<serde_json::Value, ErrorData> {
+    let mut value = serde_json::to_value(task)
+        .map_err(|error| ErrorData::internal_error(error.to_string(), None))?;
+    if let Some(description) = value
+        .get("description")
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string)
+    {
+        let bounded = BoundedText::new(&description, max_output_chars);
+        if let Some(object) = value.as_object_mut() {
+            object.insert(
+                "description".to_string(),
+                serde_json::Value::String(bounded.text),
+            );
+            if bounded.truncated {
+                object.insert(
+                    "description_truncated".to_string(),
+                    serde_json::Value::Bool(true),
+                );
+            }
+        }
+    }
+    Ok(value)
 }
 
 fn lexical_score(task: &str, description: &str) -> f32 {
