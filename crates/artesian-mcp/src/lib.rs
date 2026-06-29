@@ -539,6 +539,12 @@ pub struct FindHit {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub author_id: Option<String>,
+    #[serde(skip_serializing_if = "is_zero_u32")]
+    pub useful_count: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session_distance: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub confidence: Option<f32>,
 }
 
@@ -657,6 +663,7 @@ pub struct StoreRequest {
     pub node_id: Option<String>,
     pub relations: Option<Vec<RelationRequest>>,
     pub source: Option<String>,
+    pub author_id: Option<String>,
     pub confidence: Option<f32>,
     pub scope: Option<ScopeRequest>,
     pub agent_id: Option<String>,
@@ -1333,8 +1340,15 @@ fn find_hit(hit: SearchHit) -> FindHit {
         score: hit.score,
         tags: hit.record.tags,
         source: hit.record.source,
+        author_id: hit.record.author_id,
+        useful_count: hit.record.useful_count,
+        session_distance: hit.telemetry.session_distance,
         confidence: hit.record.confidence,
     }
+}
+
+fn is_zero_u32(value: &u32) -> bool {
+    *value == 0
 }
 
 async fn checkpoint_anchor(
@@ -2683,6 +2697,7 @@ impl MemoryServer {
                 user_id: request.user_id,
                 project: Some(effective_project(request.project, self.project.as_deref())),
                 source: request.source,
+                author_id: request.author_id,
                 confidence,
                 relations: request
                     .relations
@@ -3492,6 +3507,7 @@ Call when the project vision or current phase changes."
                 user_id: None,
                 project: None,
                 source: None,
+                author_id: None,
                 confidence: None,
                 relations: Vec::new(),
             })
@@ -4188,6 +4204,7 @@ verified skill + spec + auto-invariants to memory. Brakes: max_turns (default 10
                 user_id: None,
                 project: self.project.clone(),
                 source: Some("flume-routing".to_string()),
+                author_id: None,
                 confidence: Some(if outcome == "pass" { 1.0 } else { 0.6 }),
                 relations: Vec::new(),
             })
@@ -4841,6 +4858,7 @@ Optional procedure steps enable guarded replay without per-step model calls."
                 user_id: None,
                 project: None,
                 source,
+                author_id: None,
                 confidence: None,
                 relations: Vec::new(),
             })

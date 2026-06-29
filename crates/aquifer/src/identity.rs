@@ -20,6 +20,7 @@ pub fn stable_memory_id(memory: &StoreMemory) -> MemoryId {
         &memory.task_id,
         &memory.user_id,
         &memory.project,
+        &memory.author_id,
     ]
     .into_iter()
     .flatten()

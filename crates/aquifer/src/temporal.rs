@@ -190,14 +190,17 @@ mod tests {
                 user_id: None,
                 project: None,
                 source: None,
+                author_id: None,
                 confidence: None,
                 relations: Vec::new(),
                 last_access: None,
                 access_count: 0,
+                useful_count: 0,
                 state: crate::MemoryState::Active,
             },
             score,
             source: SearchSource::Hybrid,
+            telemetry: Default::default(),
         }
     }
 
@@ -282,10 +285,12 @@ mod tests {
             user_id: None,
             project: None,
             source: None,
+            author_id: None,
             confidence: None,
             relations: Vec::new(),
             last_access: None,
             access_count: 0,
+            useful_count: 0,
             state: crate::MemoryState::Active,
         }
     }
@@ -360,10 +365,12 @@ mod tests {
             user_id: None,
             project: None,
             source: None,
+            author_id: None,
             confidence: None,
             relations: Vec::new(),
             last_access: None,
             access_count: 0,
+            useful_count: 0,
             state: crate::MemoryState::Active,
         };
         let timeline = entity_timeline(&[record], "BackgroundJobRetryPolicy");

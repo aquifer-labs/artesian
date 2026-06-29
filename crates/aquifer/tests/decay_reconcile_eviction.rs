@@ -454,6 +454,8 @@ fn backward_compat_record_loads_as_active() {
     );
     assert_eq!(record.last_access, None);
     assert_eq!(record.access_count, 0);
+    assert_eq!(record.author_id, None);
+    assert_eq!(record.useful_count, 0);
 }
 
 /// Round-trip: render an Archived record to OKF and parse it back; state is preserved.

@@ -27,6 +27,7 @@ async fn files_backend_stores_okf_markdown_and_finds_it() {
             user_id: None,
             project: None,
             source: None,
+            author_id: None,
             confidence: None,
             relations: Vec::new(),
         })
@@ -76,6 +77,7 @@ async fn files_backend_drills_down_by_node_id() {
             user_id: None,
             project: None,
             source: None,
+            author_id: None,
             confidence: None,
             relations: Vec::new(),
         })

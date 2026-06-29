@@ -7,8 +7,9 @@ use std::{
 
 use aquifer::{
     expand_hits_with_neighbors, FilesBackend, MemoryBackend, MemoryId, MemoryQuery, MemoryRecord,
-    MemoryResult, MemoryScope, MemoryTier, Relation, RrfOptions, SearchHit, SqliteVecVectorStore,
-    StoreMemory, TextEmbedder, VectorMemoryBackend, VectorMemoryConfig, DEFAULT_GRAPH_HOPS,
+    MemoryResult, MemoryScope, MemoryState, MemoryTier, Relation, RrfOptions, SearchHit,
+    SqliteVecVectorStore, StoreMemory, TextEmbedder, VectorMemoryBackend, VectorMemoryConfig,
+    DEFAULT_GRAPH_HOPS,
 };
 use artesian_test_support::TempDir;
 use futures_util::{future::BoxFuture, FutureExt};
@@ -73,6 +74,7 @@ impl MemoryBackend for MockMemoryBackend {
                     && record.task_id == memory.task_id
                     && record.user_id == memory.user_id
                     && record.source == memory.source
+                    && record.author_id == memory.author_id
                     && record.confidence == memory.confidence
             }) {
                 return Ok(existing.clone());
@@ -93,6 +95,7 @@ impl MemoryBackend for MockMemoryBackend {
             record.session_id = memory.session_id;
             record.task_id = memory.task_id;
             record.user_id = memory.user_id;
+            record.author_id = memory.author_id;
             record.source = memory.source;
             record.confidence = memory.confidence;
             record.relations = memory.relations;
@@ -383,6 +386,50 @@ async fn sqlite_vec_backend_round_trips_source_and_confidence() {
 }
 
 #[tokio::test]
+async fn files_backend_marks_used_and_retracts() {
+    let tempdir = TempDir::new("files-utility-retract");
+    assert_mark_used_and_retract(&FilesBackend::new(tempdir.path())).await;
+}
+
+#[tokio::test]
+async fn sqlite_vec_backend_marks_used_and_retracts() {
+    let store = SqliteVecVectorStore::in_memory().expect("sqlite-vec store should open");
+    let backend = VectorMemoryBackend::with_embedder(
+        store,
+        VectorMemoryConfig {
+            collection: "utility-retract".to_string(),
+            dimensions: TEST_DIMENSIONS,
+            ..VectorMemoryConfig::new("utility-retract")
+        },
+        Arc::new(TestEmbedder),
+    )
+    .expect("backend should construct");
+    assert_mark_used_and_retract(&backend).await;
+}
+
+#[tokio::test]
+async fn files_backend_surfaces_session_distance() {
+    let tempdir = TempDir::new("files-session-distance");
+    assert_session_distance(&FilesBackend::new(tempdir.path())).await;
+}
+
+#[tokio::test]
+async fn sqlite_vec_backend_surfaces_session_distance() {
+    let store = SqliteVecVectorStore::in_memory().expect("sqlite-vec store should open");
+    let backend = VectorMemoryBackend::with_embedder(
+        store,
+        VectorMemoryConfig {
+            collection: "session-distance".to_string(),
+            dimensions: TEST_DIMENSIONS,
+            ..VectorMemoryConfig::new("session-distance")
+        },
+        Arc::new(TestEmbedder),
+    )
+    .expect("backend should construct");
+    assert_session_distance(&backend).await;
+}
+
+#[tokio::test]
 async fn files_backend_project_union_prevents_cross_project_leaks() {
     let tempdir = TempDir::new("files-project-union");
     assert_project_union_recall(&FilesBackend::new(tempdir.path())).await;
@@ -489,19 +536,23 @@ async fn assert_provenance_round_trip<B: MemoryBackend>(backend: &B) {
             tier: MemoryTier::L1Atom,
             node_id: Some("node:provenance".to_string()),
             created_at: None,
-            scope: None,
+            scope: Some(MemoryScope::Agent),
             agent_id: None,
             session_id: None,
             task_id: None,
-            user_id: None,
+            user_id: Some("user:operator".to_string()),
             project: None,
             source: Some("docs/provenance.md".to_string()),
+            author_id: Some("agent:writer".to_string()),
             confidence: Some(0.82),
             relations: Vec::new(),
         })
         .await
         .expect("store should succeed");
     assert_eq!(stored.source.as_deref(), Some("docs/provenance.md"));
+    assert_eq!(stored.author_id.as_deref(), Some("agent:writer"));
+    assert_eq!(stored.user_id.as_deref(), Some("user:operator"));
+    assert_eq!(stored.scope, Some(MemoryScope::Agent));
     assert_eq!(stored.confidence, Some(0.82));
 
     let hit = backend
@@ -512,6 +563,9 @@ async fn assert_provenance_round_trip<B: MemoryBackend>(backend: &B) {
         .find(|hit| hit.record.node_id == "node:provenance")
         .expect("provenance record should be found");
     assert_eq!(hit.record.source.as_deref(), Some("docs/provenance.md"));
+    assert_eq!(hit.record.author_id.as_deref(), Some("agent:writer"));
+    assert_eq!(hit.record.user_id.as_deref(), Some("user:operator"));
+    assert_eq!(hit.record.scope, Some(MemoryScope::Agent));
     assert_eq!(hit.record.confidence, Some(0.82));
 
     let drill_down = backend
@@ -520,7 +574,100 @@ async fn assert_provenance_round_trip<B: MemoryBackend>(backend: &B) {
         .expect("get_node should succeed")
         .expect("node should exist");
     assert_eq!(drill_down.source.as_deref(), Some("docs/provenance.md"));
+    assert_eq!(drill_down.author_id.as_deref(), Some("agent:writer"));
+    assert_eq!(drill_down.user_id.as_deref(), Some("user:operator"));
+    assert_eq!(drill_down.scope, Some(MemoryScope::Agent));
     assert_eq!(drill_down.confidence, Some(0.82));
+}
+
+async fn assert_mark_used_and_retract<B: MemoryBackend>(backend: &B) {
+    backend
+        .store(StoreMemory {
+            content: "critical architecture decision".to_string(),
+            node_id: Some("node:decision".to_string()),
+            author_id: Some("agent:author".to_string()),
+            ..StoreMemory::atom("")
+        })
+        .await
+        .expect("store should succeed");
+
+    let used = backend
+        .mark_used("node:decision")
+        .await
+        .expect("mark_used should succeed")
+        .expect("record should exist");
+    assert_eq!(used.useful_count, 1);
+
+    let report = backend
+        .retract("node:decision")
+        .await
+        .expect("retract should succeed")
+        .expect("record should exist");
+    assert_eq!(report.retracted.state, MemoryState::Retracted);
+    assert_eq!(report.supersede.source.as_deref(), Some("artesian.retract"));
+    assert!(report
+        .supersede
+        .relations
+        .iter()
+        .any(|relation| relation.predicate == "superseded_by"));
+
+    let default_hits = backend
+        .find(MemoryQuery::new("critical architecture").with_limit(10))
+        .await
+        .expect("default find should succeed");
+    assert!(
+        !default_hits
+            .iter()
+            .any(|hit| hit.record.node_id == "node:decision"),
+        "retracted records must be excluded from default recall: {default_hits:?}"
+    );
+
+    let mut query = MemoryQuery::new("critical architecture").with_limit(10);
+    query.include_archived = true;
+    let include_retracted = backend
+        .find(query)
+        .await
+        .expect("include archived/retracted should succeed");
+    assert!(
+        include_retracted
+            .iter()
+            .any(|hit| hit.record.state == MemoryState::Retracted),
+        "include_archived should surface retracted records: {include_retracted:?}"
+    );
+}
+
+async fn assert_session_distance<B: MemoryBackend>(backend: &B) {
+    for (node, session, days_ago) in [
+        ("node:older", "session-a", 3),
+        ("node:middle", "session-b", 2),
+        ("node:current", "session-c", 1),
+    ] {
+        backend
+            .store(StoreMemory {
+                content: "session distance sentinel".to_string(),
+                node_id: Some(node.to_string()),
+                created_at: Some(chrono::Utc::now() - chrono::Duration::days(days_ago)),
+                session_id: Some(session.to_string()),
+                ..StoreMemory::atom("")
+            })
+            .await
+            .expect("store should succeed");
+    }
+
+    let hits = backend
+        .find(MemoryQuery::new("session distance sentinel").with_limit(10))
+        .await
+        .expect("find should succeed");
+    let older = hits
+        .iter()
+        .find(|hit| hit.record.node_id == "node:older")
+        .expect("older session hit should be present");
+    assert_eq!(older.telemetry.session_distance, Some(2));
+    let current = hits
+        .iter()
+        .find(|hit| hit.record.node_id == "node:current")
+        .expect("current session hit should be present");
+    assert_eq!(current.telemetry.session_distance, Some(0));
 }
 
 #[tokio::test]
@@ -578,6 +725,7 @@ async fn vector_collections_isolate_two_projects_on_one_store() {
             user_id: Some("user-a".to_string()),
             project: None,
             source: None,
+            author_id: None,
             confidence: None,
             relations: Vec::new(),
         })
@@ -598,6 +746,7 @@ async fn vector_collections_isolate_two_projects_on_one_store() {
             user_id: Some("user-b".to_string()),
             project: None,
             source: None,
+            author_id: None,
             confidence: None,
             relations: Vec::new(),
         })
@@ -635,6 +784,7 @@ async fn assert_backend_contract<B: MemoryBackend>(backend: &B) {
             user_id: None,
             project: None,
             source: None,
+            author_id: None,
             confidence: None,
             relations: Vec::new(),
         })
@@ -656,6 +806,7 @@ async fn assert_backend_contract<B: MemoryBackend>(backend: &B) {
             user_id: None,
             project: None,
             source: None,
+            author_id: None,
             confidence: None,
             relations: Vec::new(),
         })
@@ -707,6 +858,7 @@ async fn assert_backend_contract<B: MemoryBackend>(backend: &B) {
             user_id: None,
             project: None,
             source: None,
+            author_id: None,
             confidence: None,
             relations: Vec::new(),
         })
@@ -727,6 +879,7 @@ async fn assert_backend_contract<B: MemoryBackend>(backend: &B) {
             user_id: None,
             project: None,
             source: None,
+            author_id: None,
             confidence: None,
             relations: Vec::new(),
         })
@@ -814,6 +967,7 @@ async fn large_content_is_chunked_so_recall_stays_bounded() {
             user_id: None,
             project: None,
             source: None,
+            author_id: None,
             confidence: None,
             relations: Vec::new(),
         })
@@ -916,6 +1070,7 @@ async fn single_chunk_records_are_unaffected_by_small_to_big() {
                 user_id: None,
                 project: None,
                 source: None,
+                author_id: None,
                 confidence: None,
                 relations: Vec::new(),
             })

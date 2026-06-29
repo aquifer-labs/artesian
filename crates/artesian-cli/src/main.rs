@@ -857,6 +857,8 @@ enum MemoryCommand {
         node_id: Option<String>,
         #[arg(long)]
         source: Option<String>,
+        #[arg(long = "author")]
+        author_id: Option<String>,
         #[arg(long, value_parser = parse_confidence)]
         confidence: Option<f32>,
         #[arg(long, value_enum)]
@@ -917,9 +919,32 @@ enum MemoryCommand {
         /// MMR relevance/novelty trade-off in [0,1] (1 = pure relevance). Implies --mmr.
         #[arg(long)]
         mmr_lambda: Option<f32>,
+        /// Minimum candidate-pool size before MMR applies. Smaller pools keep relevance order.
+        #[arg(long, default_value_t = aquifer::MMR_MIN_CANDIDATES)]
+        mmr_min_candidates: usize,
         /// Include Archived records in results (excluded by default).
         #[arg(long, default_value_t = false)]
         include_archived: bool,
+        #[arg(long, default_value = DEFAULT_CONFIG)]
+        config: PathBuf,
+        #[arg(long, default_value = ".artesian")]
+        root: PathBuf,
+        #[arg(long, value_enum)]
+        backend: Option<BackendArg>,
+    },
+    /// Mark a recalled memory as actually used downstream.
+    MarkUsed {
+        node_id: String,
+        #[arg(long, default_value = DEFAULT_CONFIG)]
+        config: PathBuf,
+        #[arg(long, default_value = ".artesian")]
+        root: PathBuf,
+        #[arg(long, value_enum)]
+        backend: Option<BackendArg>,
+    },
+    /// Retract a memory without hard-deleting it; emits an auditable supersede record.
+    Retract {
+        node_id: String,
         #[arg(long, default_value = DEFAULT_CONFIG)]
         config: PathBuf,
         #[arg(long, default_value = ".artesian")]
@@ -3045,6 +3070,7 @@ async fn memory(command: MemoryCommand, raw_args: &[OsString]) -> Result<()> {
             tags,
             node_id,
             source,
+            author_id,
             confidence,
             scope,
             agent_id,
@@ -3074,6 +3100,7 @@ async fn memory(command: MemoryCommand, raw_args: &[OsString]) -> Result<()> {
                     user_id,
                     project: Some(project),
                     source,
+                    author_id,
                     confidence,
                     relations: Vec::new(),
                 })
@@ -3108,6 +3135,7 @@ async fn memory(command: MemoryCommand, raw_args: &[OsString]) -> Result<()> {
             expand,
             mmr,
             mmr_lambda,
+            mmr_min_candidates,
             include_archived,
             config,
             root,
@@ -3120,7 +3148,7 @@ async fn memory(command: MemoryCommand, raw_args: &[OsString]) -> Result<()> {
             let diversify = mmr || mmr_lambda.is_some();
             // For MMR, fetch a larger pool so the re-rank has duplicates to shed.
             let fetch_limit = if diversify {
-                limit.saturating_mul(3).max(limit)
+                limit.saturating_mul(3).max(mmr_min_candidates).max(limit)
             } else {
                 limit
             };
@@ -3137,10 +3165,11 @@ async fn memory(command: MemoryCommand, raw_args: &[OsString]) -> Result<()> {
             memory_query.include_archived = include_archived;
             let mut hits = backend.find(memory_query).await?;
             if diversify {
-                hits = aquifer::mmr_diversify(
+                hits = aquifer::mmr_diversify_when_large(
                     hits,
                     limit,
                     mmr_lambda.unwrap_or(aquifer::MMR_DEFAULT_LAMBDA),
+                    mmr_min_candidates,
                 );
             }
             if expand {
@@ -3175,6 +3204,38 @@ async fn memory(command: MemoryCommand, raw_args: &[OsString]) -> Result<()> {
                 baseline_tokens,
                 memory_config.track_savings,
             );
+        }
+        MemoryCommand::MarkUsed {
+            node_id,
+            config,
+            root,
+            backend,
+        } => {
+            let memory_config = memory_config_for_command(&config, root, backend)?;
+            let backend = open_memory_backend(&memory_config)?;
+            match backend.mark_used(&node_id).await? {
+                Some(record) => println!(
+                    "marked used node_id={} useful_count={}",
+                    record.node_id, record.useful_count
+                ),
+                None => bail!("memory node not found: {node_id}"),
+            }
+        }
+        MemoryCommand::Retract {
+            node_id,
+            config,
+            root,
+            backend,
+        } => {
+            let memory_config = memory_config_for_command(&config, root, backend)?;
+            let backend = open_memory_backend(&memory_config)?;
+            match backend.retract(&node_id).await? {
+                Some(report) => println!(
+                    "retracted node_id={} state={:?} supersede_node_id={}",
+                    report.retracted.node_id, report.retracted.state, report.supersede.node_id
+                ),
+                None => bail!("memory node not found: {node_id}"),
+            }
         }
         MemoryCommand::Context {
             query,
@@ -3430,6 +3491,7 @@ async fn memory(command: MemoryCommand, raw_args: &[OsString]) -> Result<()> {
                     user_id: None,
                     project: None,
                     source,
+                    author_id: None,
                     confidence: None,
                     relations: Vec::new(),
                 })
@@ -4329,6 +4391,15 @@ fn format_memory_hit(hit: &SearchHit) -> String {
     ];
     if let Some(source) = &hit.record.source {
         fields.push(format!("source={source}"));
+    }
+    if let Some(author_id) = &hit.record.author_id {
+        fields.push(format!("author={author_id}"));
+    }
+    if hit.record.useful_count > 0 {
+        fields.push(format!("useful_count={}", hit.record.useful_count));
+    }
+    if let Some(session_distance) = hit.telemetry.session_distance {
+        fields.push(format!("session_distance={session_distance}"));
     }
     if let Some(confidence) = hit.record.confidence {
         fields.push(format!("confidence={confidence}"));

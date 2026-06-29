@@ -273,6 +273,7 @@ mod tests {
             ),
             score: 1.0,
             source: SearchSource::Keyword,
+            telemetry: Default::default(),
         }
     }
 

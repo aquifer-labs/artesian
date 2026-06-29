@@ -187,6 +187,7 @@ fn parse_json_memory(text: &str, path: &Path) -> MemoryResult<Vec<StoreMemory>> 
             user_id: record.user_id,
             project: record.project,
             source: record.source,
+            author_id: record.author_id,
             confidence: record.confidence,
             relations: record.relations,
         }]);
@@ -220,6 +221,7 @@ fn parse_markdown_memory(text: &str, path: &Path) -> MemoryResult<Vec<StoreMemor
             user_id: record.user_id,
             project: record.project,
             source: record.source,
+            author_id: record.author_id,
             confidence: record.confidence,
             relations: record.relations,
         };
@@ -245,6 +247,7 @@ fn parse_markdown_memory(text: &str, path: &Path) -> MemoryResult<Vec<StoreMemor
         user_id: None,
         project: None,
         source: None,
+        author_id: None,
         confidence: None,
         relations: Vec::new(),
     };

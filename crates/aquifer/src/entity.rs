@@ -64,6 +64,7 @@ impl EntityIndex {
                     record: record.clone(),
                     score: count as f32 / query_entity_count,
                     source: SearchSource::Keyword,
+                    telemetry: Default::default(),
                 })
             })
             .collect();
@@ -198,10 +199,12 @@ mod tests {
             user_id: None,
             project: None,
             source: None,
+            author_id: None,
             confidence: None,
             relations: Vec::new(),
             last_access: None,
             access_count: 0,
+            useful_count: 0,
             state: crate::MemoryState::Active,
         }
     }
