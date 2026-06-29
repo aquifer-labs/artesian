@@ -3,7 +3,7 @@
 use futures_util::{future::BoxFuture, FutureExt};
 use serde::{Deserialize, Serialize};
 
-use crate::{CommittedContextState, RecallItem};
+use crate::{CommittedContextState, JudgeTokenCost, RecallItem};
 
 /// The qualify-gate's verdict on a single recall candidate.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -48,6 +48,30 @@ pub struct QualifyAudit {
     /// Fleiss/Cohen-style chance-corrected agreement over the binary signal votes.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub chance_corrected_agreement: Option<f32>,
+    /// Cohen's kappa for exactly two binary signal/judge votes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cohen_kappa: Option<f32>,
+    /// Krippendorff's alpha over binary signal/judge votes when more than two votes exist.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub krippendorff_alpha: Option<f32>,
+    /// Name of the chance-corrected statistic used for `chance_corrected_agreement`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chance_corrected_method: Option<String>,
+    /// Position-swap disagreement rate for order-sensitive pairwise judges, when measured.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub position_bias: Option<f32>,
+    /// Threshold used to flag position bias.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub position_bias_threshold: Option<f32>,
+    /// Whether `position_bias` exceeded `position_bias_threshold`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub position_bias_flagged: Option<bool>,
+    /// Judge tier used for this decision, when tiering was configured.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub judge_tier: Option<String>,
+    /// Estimated token costs for judge calls that contributed to this decision.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub judge_costs: Vec<JudgeTokenCost>,
     /// Derived decision confidence in `[0, 1]`, combining agreement with threshold distance.
     pub confidence: f32,
 }
@@ -55,14 +79,44 @@ pub struct QualifyAudit {
 impl QualifyAudit {
     pub fn from_signals(admitted: bool, signals: Vec<QualifySignal>) -> Self {
         let agreement = signal_agreement(admitted, &signals);
-        let chance_corrected_agreement = chance_corrected_signal_agreement(&signals);
+        let stats = chance_corrected_signal_agreement(&signals);
         let confidence = decision_confidence(admitted, agreement, &signals);
         Self {
             signals,
             agreement,
-            chance_corrected_agreement,
+            chance_corrected_agreement: stats.value,
+            cohen_kappa: stats.cohen_kappa,
+            krippendorff_alpha: stats.krippendorff_alpha,
+            chance_corrected_method: stats.method,
+            position_bias: None,
+            position_bias_threshold: None,
+            position_bias_flagged: None,
+            judge_tier: None,
+            judge_costs: Vec::new(),
             confidence,
         }
+    }
+
+    pub fn with_position_bias(mut self, bias: f32, threshold: f32) -> Self {
+        self.position_bias = Some(bias);
+        self.position_bias_threshold = Some(threshold);
+        self.position_bias_flagged = Some(bias > threshold);
+        self
+    }
+
+    pub fn with_judge_tier(mut self, tier: impl Into<String>) -> Self {
+        self.judge_tier = Some(tier.into());
+        self
+    }
+
+    pub fn with_judge_cost(mut self, cost: JudgeTokenCost) -> Self {
+        self.judge_costs.push(cost);
+        self
+    }
+
+    pub fn with_judge_costs(mut self, costs: Vec<JudgeTokenCost>) -> Self {
+        self.judge_costs.extend(costs);
+        self
     }
 }
 
@@ -270,12 +324,45 @@ fn signal_agreement(admitted: bool, signals: &[QualifySignal]) -> f32 {
     agreeing as f32 / signals.len() as f32
 }
 
-fn chance_corrected_signal_agreement(signals: &[QualifySignal]) -> Option<f32> {
-    let n = signals.len();
+#[derive(Debug, Clone, Default, PartialEq)]
+struct ChanceCorrectedStats {
+    value: Option<f32>,
+    cohen_kappa: Option<f32>,
+    krippendorff_alpha: Option<f32>,
+    method: Option<String>,
+}
+
+fn chance_corrected_signal_agreement(signals: &[QualifySignal]) -> ChanceCorrectedStats {
+    chance_corrected_binary_votes(signals.iter().map(|signal| signal.passed))
+}
+
+fn chance_corrected_binary_votes(votes: impl IntoIterator<Item = bool>) -> ChanceCorrectedStats {
+    let votes: Vec<bool> = votes.into_iter().collect();
+    let n = votes.len();
     if n < 2 {
-        return None;
+        return ChanceCorrectedStats::default();
     }
-    let yes = signals.iter().filter(|signal| signal.passed).count() as f32;
+    let statistic = binary_pairwise_kappa_alpha(&votes);
+    if n == 2 {
+        ChanceCorrectedStats {
+            value: Some(statistic),
+            cohen_kappa: Some(statistic),
+            krippendorff_alpha: None,
+            method: Some("cohen_kappa".to_string()),
+        }
+    } else {
+        ChanceCorrectedStats {
+            value: Some(statistic),
+            cohen_kappa: None,
+            krippendorff_alpha: Some(statistic),
+            method: Some("krippendorff_alpha".to_string()),
+        }
+    }
+}
+
+fn binary_pairwise_kappa_alpha(votes: &[bool]) -> f32 {
+    let n = votes.len();
+    let yes = votes.iter().filter(|vote| **vote).count() as f32;
     let total = n as f32;
     let no = total - yes;
     let observed = (yes.mul_add(yes - 1.0, no * (no - 1.0))) / (total * (total - 1.0));
@@ -284,9 +371,9 @@ fn chance_corrected_signal_agreement(signals: &[QualifySignal]) -> Option<f32> {
     let expected = yes_rate.mul_add(yes_rate, no_rate * no_rate);
     let denominator = 1.0 - expected;
     if denominator.abs() <= f32::EPSILON {
-        Some(1.0)
+        1.0
     } else {
-        Some(((observed - expected) / denominator).clamp(-1.0, 1.0))
+        ((observed - expected) / denominator).clamp(-1.0, 1.0)
     }
 }
 
@@ -383,7 +470,36 @@ mod tests {
         assert_eq!(audit.signals.len(), 3);
         assert!((0.0..=1.0).contains(&audit.agreement));
         assert!(audit.chance_corrected_agreement.is_some());
+        assert_eq!(audit.chance_corrected_agreement, audit.krippendorff_alpha);
+        assert_eq!(
+            audit.chance_corrected_method.as_deref(),
+            Some("krippendorff_alpha")
+        );
         assert!((0.0..=1.0).contains(&audit.confidence));
+    }
+
+    #[test]
+    fn cohen_kappa_for_two_votes_matches_hand_computed_values() {
+        let disagree = chance_corrected_binary_votes([true, false]);
+        assert_eq!(disagree.cohen_kappa, Some(-1.0));
+        assert_eq!(disagree.krippendorff_alpha, None);
+        assert_eq!(disagree.method.as_deref(), Some("cohen_kappa"));
+
+        let agree = chance_corrected_binary_votes([true, true]);
+        assert_eq!(agree.cohen_kappa, Some(1.0));
+        assert_eq!(agree.value, Some(1.0));
+    }
+
+    #[test]
+    fn krippendorff_alpha_for_three_votes_matches_hand_computed_value() {
+        let stats = chance_corrected_binary_votes([true, true, false]);
+        assert_eq!(stats.cohen_kappa, None);
+        assert_eq!(stats.method.as_deref(), Some("krippendorff_alpha"));
+        let alpha = stats.krippendorff_alpha.expect("alpha for >2 votes");
+        assert!(
+            (alpha - -0.5).abs() < 1e-6,
+            "2 yes / 1 no: observed agreement=1/3, expected=5/9, alpha=-0.5; got {alpha}"
+        );
     }
 
     #[test]

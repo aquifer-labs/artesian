@@ -135,6 +135,60 @@ async fn judge_gate_drives_a_cycle_and_rejects_drift() {
 
 #[cfg(feature = "llm")]
 #[tokio::test]
+async fn qualify_reject_records_session_and_judge_token_cost() {
+    use headgate::{JudgeQualifyGate, StaticLlmClient};
+
+    let stats_dir = make_temp_dir("artesian-qualify-reject-judge-cost");
+    let recall = Arc::new(StaticRecallStore::new(vec![RecallItem::new(
+        "n1",
+        "the team chose Go",
+        1.0,
+    )]));
+    let client = Arc::new(StaticLlmClient::new(
+        "{\"relevance\":0.9,\"novelty\":0.9,\"drift\":0.9,\"reason\":\"contradiction\"}",
+    ));
+    let gate = Arc::new(JudgeQualifyGate::new(client));
+    let mut headgate = Headgate::new(recall, HeadgateConfig::default())
+        .with_gate(gate)
+        .with_savings("test-col", true)
+        .with_savings_session("session-a")
+        .with_savings_dir(stats_dir.clone());
+
+    let metrics = headgate.cycle("which language").await.expect("cycle");
+    assert_eq!(metrics.rejected_relevance, 1);
+
+    let log_path = stats_dir.join("token_savings.jsonl");
+    let line = std::fs::read_to_string(&log_path).expect("read savings log");
+    let entry: serde_json::Value = serde_json::from_str(line.trim()).expect("valid JSON");
+    assert_eq!(entry["op"], "qualify.reject");
+    assert_eq!(entry["session_id"], "session-a");
+    assert_eq!(entry["saved_tokens"], entry["baseline_tokens"]);
+    assert!(
+        entry["judge_costs"][0]["total_tokens"]
+            .as_u64()
+            .unwrap_or(0)
+            > 0,
+        "judge cost should be recorded for LLM reject"
+    );
+
+    let rollup_path = stats_dir.join("token_savings.json");
+    let rollup: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&rollup_path).expect("read rollup"))
+            .expect("valid rollup");
+    assert_eq!(
+        rollup["by_session"]["session-a"]["saved_total"],
+        rollup["saved_total"]
+    );
+    assert!(
+        rollup["judge_cost_total"].as_u64().unwrap_or(0) > 0,
+        "rollup should aggregate judge token cost"
+    );
+
+    let _ = std::fs::remove_dir_all(&stats_dir);
+}
+
+#[cfg(feature = "llm")]
+#[tokio::test]
 async fn judge_gate_admits_clean_candidate() {
     use headgate::{JudgeQualifyGate, StaticLlmClient};
 

@@ -5,11 +5,13 @@ use std::{path::PathBuf, sync::Arc};
 use serde::{Deserialize, Serialize};
 
 use crate::metrics::count_tokens;
-use crate::savings::{record_savings, record_savings_to_dir};
+use crate::savings::{
+    record_savings_to_dir_with_metadata, record_savings_with_metadata, TokenSavingsMetadata,
+};
 use crate::{
     CcsSchema, CommittedContextState, CommittedEntry, Compressor, DefaultQualifyGate,
-    ExtractiveCompressor, GaugeMetrics, HeadgateResult, NoopCompressor, QualifyDecision,
-    QualifyGate, RecallItem, RecallStore,
+    ExtractiveCompressor, GaugeMetrics, HeadgateResult, JudgeTierConfig, NoopCompressor,
+    QualifyDecision, QualifyGate, RecallItem, RecallStore,
 };
 
 /// Tunables for the ACC commit-loop.
@@ -25,6 +27,9 @@ pub struct HeadgateConfig {
     pub redundancy_threshold: f32,
     /// Compress an admitted candidate to fit remaining headroom instead of rejecting it.
     pub compress_on_saturation: bool,
+    /// Optional cheap/frontier judge bindings and stakes threshold.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub judge_tiering: Option<JudgeTierConfig>,
 }
 
 impl Default for HeadgateConfig {
@@ -35,6 +40,7 @@ impl Default for HeadgateConfig {
             min_score: 0.2,
             redundancy_threshold: 0.8,
             compress_on_saturation: true,
+            judge_tiering: None,
         }
     }
 }
@@ -47,6 +53,7 @@ impl From<&artesian_core::AccConfig> for HeadgateConfig {
             min_score: config.min_score,
             redundancy_threshold: config.redundancy_threshold,
             compress_on_saturation: config.compress_on_saturation,
+            judge_tiering: None,
         }
     }
 }
@@ -68,6 +75,8 @@ pub struct Headgate {
     savings_collection: String,
     /// Whether to record `qualify.reject` savings entries.  Mirrors `config.memory.track_savings`.
     track_savings: bool,
+    /// Optional session id used for per-session token-savings rollups.
+    savings_session_id: Option<String>,
     /// Optional override for the statistics directory.  `None` → resolved from `ARTESIAN_STATS_DIR`
     /// env var (the normal production path).  Set via [`Headgate::with_savings_dir`] in tests to
     /// avoid env-var races between parallel test threads.
@@ -96,6 +105,7 @@ impl Headgate {
             config,
             savings_collection: String::new(),
             track_savings: false,
+            savings_session_id: None,
             savings_dir: None,
         }
     }
@@ -128,6 +138,12 @@ impl Headgate {
     pub fn with_savings(mut self, collection: impl Into<String>, track: bool) -> Self {
         self.savings_collection = collection.into();
         self.track_savings = track;
+        self
+    }
+
+    /// Attach a session id to future `qualify.reject` savings entries.
+    pub fn with_savings_session(mut self, session_id: impl Into<String>) -> Self {
+        self.savings_session_id = Some(session_id.into());
         self
     }
 
@@ -185,19 +201,30 @@ impl Headgate {
                 // future context.  Best-effort — stats I/O errors are silently swallowed.
                 if self.track_savings && !self.savings_collection.is_empty() {
                     let rejected_tokens = count_tokens(&item.content);
+                    let judge_costs = decision
+                        .audit
+                        .as_ref()
+                        .map(|audit| audit.judge_costs.clone())
+                        .unwrap_or_default();
+                    let metadata = TokenSavingsMetadata {
+                        session_id: self.savings_session_id.clone(),
+                        judge_costs,
+                    };
                     match &self.savings_dir {
-                        Some(dir) => record_savings_to_dir(
+                        Some(dir) => record_savings_to_dir_with_metadata(
                             dir,
                             "qualify.reject",
                             &self.savings_collection,
                             0,
                             rejected_tokens,
+                            metadata,
                         ),
-                        None => record_savings(
+                        None => record_savings_with_metadata(
                             "qualify.reject",
                             &self.savings_collection,
                             0,
                             rejected_tokens,
+                            metadata,
                             true,
                         ),
                     }

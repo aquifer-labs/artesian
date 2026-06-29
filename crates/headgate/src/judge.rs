@@ -16,8 +16,8 @@ use futures_util::{future::BoxFuture, FutureExt};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    CommittedContextState, LlmClient, LlmRequest, QualifyAudit, QualifyDecision, QualifyGate,
-    QualifySignal, RecallItem,
+    count_tokens, CommittedContextState, JudgeTokenCost, LlmClient, LlmRequest, QualifyAudit,
+    QualifyDecision, QualifyGate, QualifySignal, RecallItem,
 };
 
 const JUDGE_SYSTEM: &str = "You are a memory-control judge for an AI agent. You score whether a \
@@ -151,7 +151,10 @@ impl QualifyGate for JudgeQualifyGate {
         ccs: &'a CommittedContextState,
     ) -> BoxFuture<'a, QualifyDecision> {
         async move {
-            let request = LlmRequest::new(Self::prompt(item, ccs))
+            let prompt = Self::prompt(item, ccs);
+            let prompt_tokens = count_tokens(JUDGE_SYSTEM).saturating_add(count_tokens(&prompt));
+            let judge_label = self.client.label().to_string();
+            let request = LlmRequest::new(prompt)
                 .with_system(JUDGE_SYSTEM)
                 .with_temperature(0.0)
                 .with_max_tokens(200);
@@ -162,15 +165,28 @@ impl QualifyGate for JudgeQualifyGate {
                     return QualifyDecision::reject(
                         format!("judge unavailable: {error}"),
                         item.score,
+                    )
+                    .with_audit(
+                        QualifyAudit::from_signals(false, Vec::new())
+                            .with_judge_cost(JudgeTokenCost::new(judge_label, prompt_tokens, 0)),
                     );
                 }
             };
+            let completion_tokens = count_tokens(&raw);
+            let cost = JudgeTokenCost::new(judge_label, prompt_tokens, completion_tokens);
             match parse_verdict(&raw) {
-                Some(verdict) => self.decide(&verdict, ccs),
+                Some(verdict) => {
+                    let mut decision = self.decide(&verdict, ccs);
+                    if let Some(audit) = decision.audit.take() {
+                        decision.audit = Some(audit.with_judge_cost(cost));
+                    }
+                    decision
+                }
                 None => QualifyDecision::reject(
                     "judge returned unparseable verdict".to_string(),
                     item.score,
-                ),
+                )
+                .with_audit(QualifyAudit::from_signals(false, Vec::new()).with_judge_cost(cost)),
             }
         }
         .boxed()
