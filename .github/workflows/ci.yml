@@ -27,6 +27,8 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Test
         run: cargo test --workspace
+      - name: Gauge retrieval regression
+        run: cargo run -p gauge --features ci-eval --bin gauge-ci-eval -- --summary-dir target/gauge-retrieval-regression
       - name: Test all features
         run: cargo test --workspace --all-features
       - name: Build all features

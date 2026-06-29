@@ -1,0 +1,233 @@
+{
+  "_spdx_license": "Apache-2.0",
+  "schema_version": 1,
+  "k": 3,
+  "tolerance": 0.02,
+  "cases": 6,
+  "backends": [
+    {
+      "backend": "files",
+      "cases": 6,
+      "recall_at_k": 1.0,
+      "rouge_l_f1": 1.0,
+      "task_success": 1.0,
+      "case_metrics": [
+        {
+          "id": "locomo-single-hop-language",
+          "dataset": "locomo",
+          "category": "single-hop",
+          "gold_fact_ids": [
+            "locomo-language-gold"
+          ],
+          "retrieved_fact_ids": [
+            "locomo-language-gold",
+            "locomo-language-distractor-1",
+            "locomo-language-distractor-2"
+          ],
+          "recall_at_k": 1.0,
+          "rouge_l_f1": 1.0,
+          "task_success": true
+        },
+        {
+          "id": "locomo-temporal-update-ood",
+          "dataset": "locomo",
+          "category": "temporal-update-ood",
+          "gold_fact_ids": [
+            "locomo-invoice-gold"
+          ],
+          "retrieved_fact_ids": [
+            "locomo-invoice-gold",
+            "locomo-invoice-old",
+            "locomo-invoice-distractor"
+          ],
+          "recall_at_k": 1.0,
+          "rouge_l_f1": 1.0,
+          "task_success": true
+        },
+        {
+          "id": "locomo-preference-ood",
+          "dataset": "locomo",
+          "category": "preference-ood",
+          "gold_fact_ids": [
+            "locomo-pastry-gold"
+          ],
+          "retrieved_fact_ids": [
+            "locomo-pastry-gold",
+            "locomo-pastry-distractor-1",
+            "locomo-pastry-distractor-2"
+          ],
+          "recall_at_k": 1.0,
+          "rouge_l_f1": 1.0,
+          "task_success": true
+        },
+        {
+          "id": "longmemeval-multi-hop",
+          "dataset": "longmemeval",
+          "category": "multi-session",
+          "gold_fact_ids": [
+            "longmem-rehearsal-date",
+            "longmem-rehearsal-cluster"
+          ],
+          "retrieved_fact_ids": [
+            "longmem-rehearsal-date",
+            "longmem-rehearsal-cluster",
+            "longmem-rehearsal-distractor-2"
+          ],
+          "recall_at_k": 1.0,
+          "rouge_l_f1": 1.0,
+          "task_success": true
+        },
+        {
+          "id": "longmemeval-policy-negation-ood",
+          "dataset": "longmemeval",
+          "category": "policy-negation-ood",
+          "gold_fact_ids": [
+            "longmem-policy-gold"
+          ],
+          "retrieved_fact_ids": [
+            "longmem-policy-gold",
+            "longmem-policy-distractor-1",
+            "longmem-policy-distractor-2"
+          ],
+          "recall_at_k": 1.0,
+          "rouge_l_f1": 1.0,
+          "task_success": true
+        },
+        {
+          "id": "longmemeval-entity-disambiguation-ood",
+          "dataset": "longmemeval",
+          "category": "entity-disambiguation-ood",
+          "gold_fact_ids": [
+            "longmem-backend-gold"
+          ],
+          "retrieved_fact_ids": [
+            "longmem-backend-gold",
+            "longmem-backend-distractor-2",
+            "longmem-backend-distractor-1"
+          ],
+          "recall_at_k": 1.0,
+          "rouge_l_f1": 1.0,
+          "task_success": true
+        }
+      ]
+    },
+    {
+      "backend": "sqlite-vec",
+      "cases": 6,
+      "recall_at_k": 1.0,
+      "rouge_l_f1": 1.0,
+      "task_success": 1.0,
+      "case_metrics": [
+        {
+          "id": "locomo-single-hop-language",
+          "dataset": "locomo",
+          "category": "single-hop",
+          "gold_fact_ids": [
+            "locomo-language-gold"
+          ],
+          "retrieved_fact_ids": [
+            "locomo-language-gold",
+            "locomo-language-distractor-1",
+            "locomo-language-distractor-2"
+          ],
+          "recall_at_k": 1.0,
+          "rouge_l_f1": 1.0,
+          "task_success": true
+        },
+        {
+          "id": "locomo-temporal-update-ood",
+          "dataset": "locomo",
+          "category": "temporal-update-ood",
+          "gold_fact_ids": [
+            "locomo-invoice-gold"
+          ],
+          "retrieved_fact_ids": [
+            "locomo-invoice-gold",
+            "locomo-invoice-old",
+            "locomo-invoice-distractor"
+          ],
+          "recall_at_k": 1.0,
+          "rouge_l_f1": 1.0,
+          "task_success": true
+        },
+        {
+          "id": "locomo-preference-ood",
+          "dataset": "locomo",
+          "category": "preference-ood",
+          "gold_fact_ids": [
+            "locomo-pastry-gold"
+          ],
+          "retrieved_fact_ids": [
+            "locomo-pastry-gold",
+            "locomo-pastry-distractor-1",
+            "locomo-pastry-distractor-2"
+          ],
+          "recall_at_k": 1.0,
+          "rouge_l_f1": 1.0,
+          "task_success": true
+        },
+        {
+          "id": "longmemeval-multi-hop",
+          "dataset": "longmemeval",
+          "category": "multi-session",
+          "gold_fact_ids": [
+            "longmem-rehearsal-date",
+            "longmem-rehearsal-cluster"
+          ],
+          "retrieved_fact_ids": [
+            "longmem-rehearsal-date",
+            "longmem-rehearsal-cluster",
+            "longmem-rehearsal-distractor-1"
+          ],
+          "recall_at_k": 1.0,
+          "rouge_l_f1": 1.0,
+          "task_success": true
+        },
+        {
+          "id": "longmemeval-policy-negation-ood",
+          "dataset": "longmemeval",
+          "category": "policy-negation-ood",
+          "gold_fact_ids": [
+            "longmem-policy-gold"
+          ],
+          "retrieved_fact_ids": [
+            "longmem-policy-distractor-1",
+            "longmem-policy-gold",
+            "longmem-policy-distractor-2"
+          ],
+          "recall_at_k": 1.0,
+          "rouge_l_f1": 1.0,
+          "task_success": true
+        },
+        {
+          "id": "longmemeval-entity-disambiguation-ood",
+          "dataset": "longmemeval",
+          "category": "entity-disambiguation-ood",
+          "gold_fact_ids": [
+            "longmem-backend-gold"
+          ],
+          "retrieved_fact_ids": [
+            "longmem-backend-gold",
+            "longmem-backend-distractor-2",
+            "longmem-backend-distractor-1"
+          ],
+          "recall_at_k": 1.0,
+          "rouge_l_f1": 1.0,
+          "task_success": true
+        }
+      ]
+    }
+  ],
+  "leak_gate": {
+    "backend": "files",
+    "project": "A",
+    "project_hits": [
+      "node:partition-shared",
+      "node:partition-a"
+    ],
+    "default_hits": [
+      "node:partition-shared"
+    ],
+    "passed": true
+  }
+}

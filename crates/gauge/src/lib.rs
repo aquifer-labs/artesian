@@ -6,6 +6,8 @@
 pub mod agentic;
 pub mod bench;
 pub mod eval;
+#[cfg(feature = "ci-eval")]
+pub mod retrieval_regression;
 
 pub use agentic::{load_agent_tasks, AgentTask, ScaleLane, TaskSession};
 #[cfg(feature = "llm")]
@@ -21,6 +23,12 @@ pub use eval::{load_locomo, load_longmemeval, LoadReport, QaCase};
 pub use eval::{
     run_case, run_qa_eval, CaseOutcome, EvalSummary, ExpandingRecall, ExpandingRecallStore,
     LexicalRecall, RecallFactory,
+};
+#[cfg(feature = "ci-eval")]
+pub use retrieval_regression::{
+    compare_to_baseline, load_report, render_regression_markdown, run_regression_suite,
+    write_report, BackendMetrics, BaselineComparison, CaseMetrics, LeakGateReport,
+    RegressionReport, DEFAULT_K, DEFAULT_TOLERANCE,
 };
 
 use serde::{Deserialize, Serialize};

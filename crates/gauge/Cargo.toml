@@ -9,9 +9,10 @@ license.workspace = true
 
 [features]
 default = []
+ci-eval = ["dep:aquifer"]
 llm = ["headgate/llm", "dep:futures-util"]
 # Vector recall for the QA eval (real VectorMemoryBackend + fastembed via aquifer).
-vector = ["dep:aquifer", "dep:futures-util"]
+vector = ["ci-eval", "dep:futures-util"]
 
 [dependencies]
 headgate = { path = "../headgate" }
@@ -32,6 +33,10 @@ path = "src/bin/gauge_eval.rs"
 [[bin]]
 name = "gauge-agent"
 path = "src/bin/gauge_agent.rs"
+
+[[bin]]
+name = "gauge-ci-eval"
+path = "src/bin/gauge_ci_eval.rs"
 
 [dev-dependencies]
 futures-util.workspace = true
