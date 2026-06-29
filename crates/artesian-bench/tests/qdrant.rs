@@ -42,6 +42,7 @@ async fn live_qdrant_benchmark_path_uses_real_vector_backend() {
                 user_id: None,
                 project: None,
                 source: None,
+                author_id: None,
                 confidence: None,
                 relations: Vec::new(),
             })

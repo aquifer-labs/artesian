@@ -12,12 +12,13 @@ use serde::{Deserialize, Serialize};
 use tokio::{fs, io::AsyncWriteExt};
 
 use crate::{
+    annotate_session_distances,
     decay::{retrieval_strength, DecayConfig},
     graph::{by_entity_node_ids, neighbor_node_ids, normalize_relations, records_by_node_ids},
     identity::stable_memory_id,
     MemoryBackend, MemoryError, MemoryId, MemoryQuery, MemoryRecord, MemoryResult, MemoryScope,
-    MemoryState, MemoryTier, Relation, SearchHit, SearchSource, SessionLaneLock, StoreMemory,
-    SHARED_PROJECT,
+    MemoryState, MemoryTier, Relation, RetractReport, SearchHit, SearchSource, SessionLaneLock,
+    StoreMemory, SHARED_PROJECT,
 };
 
 #[derive(Debug, Clone)]
@@ -121,6 +122,26 @@ impl FilesBackend {
         log.flush().await?;
         Ok(())
     }
+
+    fn load_record_with_path(
+        &self,
+        node_id: &str,
+    ) -> MemoryResult<Option<(PathBuf, MemoryRecord)>> {
+        let memory_dir = self.memory_dir();
+        if !memory_dir.exists() {
+            return Ok(None);
+        }
+        let mut paths = Vec::new();
+        collect_paths(&memory_dir, &mut paths)?;
+        for path in paths {
+            let text = std::fs::read_to_string(&path)?;
+            let record = parse_record(&text)?;
+            if record.node_id == node_id || record.id.as_str() == node_id {
+                return Ok(Some((path, record)));
+            }
+        }
+        Ok(None)
+    }
 }
 
 impl MemoryBackend for FilesBackend {
@@ -131,8 +152,8 @@ impl MemoryBackend for FilesBackend {
             let include_archived = query.include_archived;
             let decay_config = self.decay_config.clone();
 
-            let mut hits = self
-                .load_records()?
+            let all_records = self.load_records()?;
+            let mut hits = all_records
                 .into_iter()
                 // Exclude Archived records unless --include-archived is set.
                 .filter(|record| {
@@ -156,6 +177,11 @@ impl MemoryBackend for FilesBackend {
                     .then_with(|| right.record.created_at.cmp(&left.record.created_at))
             });
             hits.truncate(query.limit);
+            annotate_session_distances(
+                &mut hits,
+                &self.load_records()?,
+                query.session_id.as_deref(),
+            );
 
             // Access tracking: bump access_count / last_access on returned records.
             // Best-effort, non-blocking: a failed write must never fail the query result.
@@ -222,10 +248,12 @@ impl MemoryBackend for FilesBackend {
                 user_id: memory.user_id,
                 project: memory.project,
                 source: memory.source,
+                author_id: memory.author_id,
                 confidence: memory.confidence,
                 relations,
                 last_access: None,
                 access_count: 0,
+                useful_count: 0,
                 state: MemoryState::Active,
             };
             let path = self.record_path(&date_tag, &record.id);
@@ -246,6 +274,80 @@ impl MemoryBackend for FilesBackend {
                 .load_records()?
                 .into_iter()
                 .find(|record| record.node_id == node_id || record.id.as_str() == node_id))
+        }
+        .boxed()
+    }
+
+    fn mark_used(&self, node_id: &str) -> BoxFuture<'_, MemoryResult<Option<MemoryRecord>>> {
+        let node_id = node_id.to_string();
+        async move {
+            let Some((path, mut record)) = self.load_record_with_path(&node_id)? else {
+                return Ok(None);
+            };
+            record.useful_count = record.useful_count.saturating_add(1);
+            fs::write(path, render_record(&record)?).await?;
+            Ok(Some(record))
+        }
+        .boxed()
+    }
+
+    fn retract(&self, node_id: &str) -> BoxFuture<'_, MemoryResult<Option<RetractReport>>> {
+        let node_id = node_id.to_string();
+        async move {
+            let Some((path, mut record)) = self.load_record_with_path(&node_id)? else {
+                return Ok(None);
+            };
+            let now = Utc::now();
+            record.state = MemoryState::Retracted;
+            record
+                .metadata
+                .insert("retracted_at".to_string(), now.to_rfc3339());
+            let supersede_node = format!("retract:{}", record.node_id);
+            let supersede_relation = Relation::new(
+                record.node_id.clone(),
+                "superseded_by",
+                supersede_node.clone(),
+                supersede_node.clone(),
+            );
+            record.relations = normalize_relations(
+                record
+                    .relations
+                    .iter()
+                    .cloned()
+                    .chain(std::iter::once(supersede_relation.clone())),
+                &record.node_id,
+            );
+            fs::write(path, render_record(&record)?).await?;
+
+            let supersede = self
+                .store(StoreMemory {
+                    content: format!("Memory {} was retracted.", record.node_id),
+                    tags: vec!["retraction".to_string(), "supersede".to_string()],
+                    metadata: BTreeMap::from([
+                        ("retracted_node_id".to_string(), record.node_id.clone()),
+                        ("retracted_record_id".to_string(), record.id.to_string()),
+                        ("retracted_at".to_string(), now.to_rfc3339()),
+                    ]),
+                    tier: record.tier,
+                    node_id: Some(supersede_node),
+                    created_at: Some(now),
+                    scope: record.scope,
+                    agent_id: record.agent_id.clone(),
+                    session_id: record.session_id.clone(),
+                    task_id: record.task_id.clone(),
+                    user_id: record.user_id.clone(),
+                    project: record.project.clone(),
+                    source: Some("artesian.retract".to_string()),
+                    author_id: record.author_id.clone(),
+                    confidence: record.confidence,
+                    relations: vec![supersede_relation],
+                })
+                .await?;
+
+            Ok(Some(RetractReport {
+                retracted: record,
+                supersede,
+            }))
         }
         .boxed()
     }
@@ -312,6 +414,8 @@ struct FileHeader {
     #[serde(default)]
     source: Option<String>,
     #[serde(default)]
+    author_id: Option<String>,
+    #[serde(default)]
     confidence: Option<f32>,
     #[serde(default)]
     relations: Vec<Relation>,
@@ -319,6 +423,8 @@ struct FileHeader {
     last_access: Option<DateTime<Utc>>,
     #[serde(default)]
     access_count: u32,
+    #[serde(default)]
+    useful_count: u32,
     /// Lifecycle state; serde-default `Active` for backward-compat.
     #[serde(default)]
     state: MemoryState,
@@ -375,6 +481,9 @@ struct OkfHeader {
     source: Option<String>,
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
+    author_id: Option<String>,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     confidence: Option<f32>,
     #[serde(default)]
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -386,6 +495,10 @@ struct OkfHeader {
     #[serde(default)]
     #[serde(skip_serializing_if = "is_zero_u32")]
     access_count: u32,
+    /// Persisted downstream-use signal. Omitted when zero (backward-compat).
+    #[serde(default)]
+    #[serde(skip_serializing_if = "is_zero_u32")]
+    useful_count: u32,
     /// Lifecycle state; omitted when Active (serde default) for backward-compat.
     #[serde(default)]
     #[serde(skip_serializing_if = "is_active_state")]
@@ -425,10 +538,12 @@ pub fn render_record(record: &MemoryRecord) -> MemoryResult<String> {
         user_id: record.user_id.clone(),
         project: record.project.clone(),
         source: record.source.clone(),
+        author_id: record.author_id.clone(),
         confidence: record.confidence,
         relations: record.relations.clone(),
         last_access: record.last_access,
         access_count: record.access_count,
+        useful_count: record.useful_count,
         state: record.state,
     };
     Ok(format!(
@@ -456,10 +571,12 @@ fn render_okf_header(header: FileHeader) -> String {
         user_id: header.user_id,
         project: header.project,
         source: header.source,
+        author_id: header.author_id,
         confidence: header.confidence,
         relations: header.relations,
         last_access: header.last_access,
         access_count: header.access_count,
+        useful_count: header.useful_count,
         state: header.state,
         unknown: BTreeMap::new(),
     };
@@ -502,10 +619,12 @@ pub fn parse_record(text: &str) -> MemoryResult<MemoryRecord> {
         user_id: header.user_id,
         project: header.project,
         source: header.source,
+        author_id: header.author_id,
         confidence: header.confidence,
         relations,
         last_access: header.last_access,
         access_count: header.access_count,
+        useful_count: header.useful_count,
         state: header.state,
     })
 }
@@ -561,6 +680,7 @@ fn parse_okf_record(text: &str) -> MemoryResult<MemoryRecord> {
         user_id: header.user_id.clone(),
         project: header.project.clone(),
         source: header.source.clone(),
+        author_id: header.author_id.clone(),
         confidence: header.confidence,
         relations: header.relations.clone(),
     };
@@ -582,10 +702,12 @@ fn parse_okf_record(text: &str) -> MemoryResult<MemoryRecord> {
         user_id: header.user_id,
         project: header.project,
         source: header.source,
+        author_id: header.author_id,
         confidence: header.confidence,
         relations,
         last_access: header.last_access,
         access_count: header.access_count,
+        useful_count: header.useful_count,
         state: header.state,
     })
 }
@@ -677,6 +799,7 @@ fn score_record(record: MemoryRecord, terms: &[String], keep_zero: bool) -> Opti
             record,
             score: 1.0,
             source: SearchSource::Keyword,
+            telemetry: Default::default(),
         });
     }
 
@@ -700,6 +823,7 @@ fn score_record(record: MemoryRecord, terms: &[String], keep_zero: bool) -> Opti
         record,
         score,
         source: SearchSource::Keyword,
+        telemetry: Default::default(),
     })
 }
 

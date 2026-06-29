@@ -62,7 +62,7 @@ pub use graph::{
 };
 pub use identity::stable_memory_id;
 pub use lane_lock::{SessionLaneGuard, SessionLaneLock};
-pub use mmr::{mmr_diversify, MMR_DEFAULT_LAMBDA};
+pub use mmr::{mmr_diversify, mmr_diversify_when_large, MMR_DEFAULT_LAMBDA, MMR_MIN_CANDIDATES};
 #[cfg(feature = "pgvector")]
 pub use pgvector::{PgVectorBackend, PgVectorStore};
 #[cfg(feature = "qdrant")]
@@ -90,10 +90,11 @@ pub use temporal::{
 };
 pub use txn::{sync_okf_directory, CommitLog, SyncReport, TransactionalMemory, TxnError, TxnSeq};
 pub use types::{
-    insert_skill_procedure_metadata, normalize_project, skill_procedure_from_metadata, MemoryError,
-    MemoryId, MemoryQuery, MemoryRecord, MemoryResult, MemoryScope, MemoryState, MemoryTier,
-    ProcedureStep, RrfOptions, SearchHit, SearchSource, StoreMemory, SHARED_PROJECT,
-    SKILL_PROCEDURE_METADATA_KEY, UNTAGGED_PROJECT_LABEL,
+    annotate_session_distances, insert_skill_procedure_metadata, normalize_project,
+    skill_procedure_from_metadata, MemoryError, MemoryId, MemoryQuery, MemoryRecord, MemoryResult,
+    MemoryScope, MemoryState, MemoryTier, ProcedureStep, RecallTelemetry, RetractReport,
+    RrfOptions, SearchHit, SearchSource, StoreMemory, SHARED_PROJECT, SKILL_PROCEDURE_METADATA_KEY,
+    UNTAGGED_PROJECT_LABEL,
 };
 pub use upgrade::{
     default_migration_collection, export_okf_bundle, migrate_okf_bundle, migration_manifest_path,

@@ -8,10 +8,10 @@
 //! (`~/.artesian/eviction.jsonl`) so forgetting is auditable.
 //!
 //! ## Policies (applied in combination; any matching record is evicted)
-//! - `--ttl-days N`: archive records whose `last_access` (or `created_at` if never accessed)
-//!   is older than N days.
-//! - `--lru`: archive records with the lowest retrieval_strength (computed with the default
-//!   [`DecayConfig`]).
+//! - `--ttl-days N`: archive low-utility records whose `last_access` (or `created_at` if never
+//!   accessed) is older than N days; high downstream-use records are protected from age-only TTL.
+//! - `--lru`: archive records with the lowest utility-weighted retrieval_strength (computed with
+//!   the default [`DecayConfig`]).
 //! - `--min-score S`: archive records whose stored search score (from prior find) is below S.
 //!   Since `MemoryRecord` has no stored score, this is applied to the decay-adjusted composite.
 //! - `--max-keep N`: after other policies, if more than N Active records remain, archive the
@@ -119,7 +119,10 @@ pub fn evict(records: &[MemoryRecord], policy: &EvictionPolicy) -> EvictionRepor
     if let Some(ttl_days) = policy.ttl_days {
         for (record, strength) in &scored {
             let age_days = age_in_days(record, now);
-            if age_days > ttl_days && archived_ids.insert(record.id.to_string()) {
+            if age_days > ttl_days
+                && !utility_protected(record, *strength)
+                && archived_ids.insert(record.id.to_string())
+            {
                 log_entries.push(EvictionLogEntry {
                     ts: now,
                     record_id: record.id.to_string(),
@@ -228,6 +231,10 @@ fn age_in_days(record: &MemoryRecord, now: DateTime<Utc>) -> f32 {
     now.signed_duration_since(ref_time).num_seconds().max(0) as f32 / 86_400.0
 }
 
+fn utility_protected(record: &MemoryRecord, strength: f32) -> bool {
+    record.useful_count > 0 && strength >= 1.0
+}
+
 /// Append eviction log entries to the default audit log path
 /// (`~/.artesian/eviction.jsonl`), creating the directory if needed.
 ///
@@ -276,6 +283,16 @@ mod tests {
         r.last_access = last_access_days_ago
             .map(|days| Utc::now() - Duration::seconds((days * 86_400.0) as i64));
         r
+    }
+
+    fn make_useful_record(
+        id: &str,
+        last_access_days_ago: Option<f32>,
+        useful: u32,
+    ) -> MemoryRecord {
+        let mut record = make_record(id, last_access_days_ago, 0);
+        record.useful_count = useful;
+        record
     }
 
     fn make_archived(id: &str) -> MemoryRecord {
@@ -340,6 +357,50 @@ mod tests {
         };
         let report = evict(&records, &policy);
         assert_eq!(report.archived, 3, "should archive 3 to keep only 2");
+    }
+
+    #[test]
+    fn utility_weighted_eviction_keeps_old_useful_record() {
+        let old_useful = make_useful_record("old-useful", Some(180.0), 10);
+        let fresh_unused = make_record("fresh-unused", Some(1.0), 0);
+        let policy = EvictionPolicy {
+            max_keep: Some(1),
+            ..EvictionPolicy::default()
+        };
+
+        let report = evict(&[old_useful, fresh_unused], &policy);
+
+        assert_eq!(report.archived, 1);
+        assert!(report
+            .log_entries
+            .iter()
+            .any(|entry| entry.record_id == "fresh-unused"));
+        assert!(!report
+            .log_entries
+            .iter()
+            .any(|entry| entry.record_id == "old-useful"));
+    }
+
+    #[test]
+    fn ttl_does_not_prune_old_useful_record_by_age_alone() {
+        let old_useful = make_useful_record("old-useful", Some(180.0), 10);
+        let old_unused = make_record("old-unused", Some(180.0), 0);
+        let policy = EvictionPolicy {
+            ttl_days: Some(30.0),
+            ..EvictionPolicy::default()
+        };
+
+        let report = evict(&[old_useful, old_unused], &policy);
+
+        assert_eq!(report.archived, 1);
+        assert!(report
+            .log_entries
+            .iter()
+            .any(|entry| entry.record_id == "old-unused"));
+        assert!(!report
+            .log_entries
+            .iter()
+            .any(|entry| entry.record_id == "old-useful"));
     }
 
     #[test]

@@ -10,8 +10,10 @@ use std::collections::BTreeSet;
 
 use crate::SearchHit;
 
-/// Default relevance/novelty trade-off — favors relevance while still shedding duplicates.
-pub const MMR_DEFAULT_LAMBDA: f32 = 0.7;
+/// Default relevance/novelty trade-off — balanced relevance and diversity.
+pub const MMR_DEFAULT_LAMBDA: f32 = 0.5;
+/// Below this pool size, MMR is skipped because diversity estimates are too brittle/noisy.
+pub const MMR_MIN_CANDIDATES: usize = 50;
 
 fn word_set(text: &str) -> BTreeSet<String> {
     text.to_lowercase()
@@ -75,6 +77,19 @@ pub fn mmr_diversify(hits: Vec<SearchHit>, limit: usize, lambda: f32) -> Vec<Sea
         .collect()
 }
 
+pub fn mmr_diversify_when_large(
+    mut hits: Vec<SearchHit>,
+    limit: usize,
+    lambda: f32,
+    min_candidates: usize,
+) -> Vec<SearchHit> {
+    if hits.len() < min_candidates.max(1) {
+        hits.truncate(limit);
+        return hits;
+    }
+    mmr_diversify(hits, limit, lambda)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -121,5 +136,17 @@ mod tests {
         let out = mmr_diversify(hits, 3, 1.0);
         let ids: Vec<String> = out.iter().map(|h| h.record.id.to_string()).collect();
         assert_eq!(ids, vec!["a", "b", "c"], "lambda=1 is pure relevance order");
+    }
+
+    #[test]
+    fn skips_small_candidate_pools() {
+        let hits = vec![
+            hit("a", "deploy the service to production cluster", 1.0),
+            hit("b", "deploy the service to production cluster now", 0.95),
+            hit("c", "rotate the database credentials quarterly", 0.6),
+        ];
+        let out = mmr_diversify_when_large(hits, 2, 0.5, MMR_MIN_CANDIDATES);
+        let ids: Vec<String> = out.iter().map(|h| h.record.id.to_string()).collect();
+        assert_eq!(ids, vec!["a", "b"], "small pools keep relevance order");
     }
 }

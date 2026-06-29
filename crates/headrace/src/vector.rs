@@ -55,6 +55,7 @@ impl VectorTaskStore {
                 user_id: None,
                 project: None,
                 source: None,
+                author_id: None,
                 confidence: None,
                 relations: Vec::new(),
             })

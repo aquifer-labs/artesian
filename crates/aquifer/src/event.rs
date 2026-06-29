@@ -72,8 +72,9 @@ pub struct Event {
 ///     tier: MemoryTier::L1Atom,
 ///     created_at: Utc::now() - ChronoDuration::days(days_old),
 ///     scope: None, agent_id: None, session_id: None, task_id: None,
-///     user_id: None, project: None, source: None, confidence: None, relations: Vec::new(),
-///     last_access: None, access_count: 0, state: MemoryState::Active,
+///     user_id: None, project: None, source: None, author_id: None, confidence: None,
+///     relations: Vec::new(), last_access: None, access_count: 0, useful_count: 0,
+///     state: MemoryState::Active,
 /// };
 /// let records = vec![
 ///     make("a", vec!["RateLimit"], 3),
@@ -264,10 +265,12 @@ mod tests {
             user_id: None,
             project: None,
             source: None,
+            author_id: None,
             confidence: None,
             relations: Vec::new(),
             last_access: None,
             access_count: 0,
+            useful_count: 0,
             state: MemoryState::Active,
         }
     }

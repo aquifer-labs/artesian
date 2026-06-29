@@ -84,6 +84,7 @@ async fn live_qdrant_vector_backend_satisfies_memory_contract() {
             user_id: None,
             project: None,
             source: None,
+            author_id: None,
             confidence: None,
             relations: Vec::new(),
         })
@@ -104,6 +105,7 @@ async fn live_qdrant_vector_backend_satisfies_memory_contract() {
             user_id: None,
             project: None,
             source: None,
+            author_id: None,
             confidence: None,
             relations: Vec::new(),
         })
@@ -188,6 +190,7 @@ async fn live_qdrant_small_to_big_expands_and_reconstructs() {
             user_id: None,
             project: None,
             source: None,
+            author_id: None,
             confidence: None,
             relations: Vec::new(),
         })
@@ -273,6 +276,7 @@ async fn live_qdrant_collections_isolate_two_projects() {
             user_id: Some("user-a".to_string()),
             project: None,
             source: None,
+            author_id: None,
             confidence: None,
             relations: Vec::new(),
         })
@@ -293,6 +297,7 @@ async fn live_qdrant_collections_isolate_two_projects() {
             user_id: Some("user-b".to_string()),
             project: None,
             source: None,
+            author_id: None,
             confidence: None,
             relations: Vec::new(),
         })

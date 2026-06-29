@@ -3,8 +3,8 @@
 use futures_util::{future::BoxFuture, FutureExt};
 
 use crate::{
-    reciprocal_rank_fusion, MemoryQuery, MemoryRecord, MemoryResult, RrfOptions, SearchHit,
-    StoreMemory,
+    reciprocal_rank_fusion, MemoryQuery, MemoryRecord, MemoryResult, RetractReport, RrfOptions,
+    SearchHit, StoreMemory,
 };
 
 /// Aggregate counts returned by `MemoryBackend::bulk_store`.
@@ -71,6 +71,22 @@ pub trait MemoryBackend: Send + Sync {
 
     fn get_node(&self, node_id: &str) -> BoxFuture<'_, MemoryResult<Option<MemoryRecord>>>;
 
+    /// Mark a recalled memory as actually used downstream.
+    ///
+    /// Backends that persist utility signals should increment `useful_count` and return the
+    /// updated record. The default keeps third-party backends source-compatible.
+    fn mark_used(&self, _node_id: &str) -> BoxFuture<'_, MemoryResult<Option<MemoryRecord>>> {
+        async { Ok(None) }.boxed()
+    }
+
+    /// Retract a memory without hard-deleting it.
+    ///
+    /// Implementations should mark the original record `Retracted` and emit an auditable
+    /// supersede/retraction record. The default keeps third-party backends source-compatible.
+    fn retract(&self, _node_id: &str) -> BoxFuture<'_, MemoryResult<Option<RetractReport>>> {
+        async { Ok(None) }.boxed()
+    }
+
     fn neighbors(
         &self,
         _node_id: &str,
@@ -128,6 +144,14 @@ impl MemoryBackend for std::sync::Arc<dyn MemoryBackend> {
 
     fn get_node(&self, node_id: &str) -> BoxFuture<'_, MemoryResult<Option<MemoryRecord>>> {
         (**self).get_node(node_id)
+    }
+
+    fn mark_used(&self, node_id: &str) -> BoxFuture<'_, MemoryResult<Option<MemoryRecord>>> {
+        (**self).mark_used(node_id)
+    }
+
+    fn retract(&self, node_id: &str) -> BoxFuture<'_, MemoryResult<Option<RetractReport>>> {
+        (**self).retract(node_id)
     }
 
     fn neighbors(

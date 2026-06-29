@@ -90,6 +90,7 @@ async fn sqlite_vec_multi_writer_integrity_and_tenant_isolation() {
                     user_id: Some(format!("user-{}", index % 2)),
                     project: None,
                     source: None,
+                    author_id: None,
                     confidence: None,
                     relations: Vec::new(),
                 })
@@ -142,6 +143,7 @@ async fn assert_concurrent_scope_isolation(backend: Arc<dyn MemoryBackend>) {
                     user_id: None,
                     project: None,
                     source: None,
+                    author_id: None,
                     confidence: None,
                     relations: Vec::new(),
                 })
@@ -183,6 +185,7 @@ async fn assert_concurrent_scope_isolation(backend: Arc<dyn MemoryBackend>) {
                     user_id: None,
                     project: None,
                     source: None,
+                    author_id: None,
                     confidence: None,
                     relations: Vec::new(),
                 })
@@ -247,6 +250,7 @@ async fn transactional_memory_n_agents_m_operators_zero_corruption() {
                         user_id: Some(format!("operator-{op}")),
                         project: None,
                         source: None,
+                        author_id: None,
                         confidence: None,
                         relations: Vec::new(),
                     },

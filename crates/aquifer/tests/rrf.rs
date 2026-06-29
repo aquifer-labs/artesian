@@ -24,10 +24,12 @@ fn record(id: &str, node_id: &str) -> MemoryRecord {
         user_id: None,
         project: None,
         source: None,
+        author_id: None,
         confidence: None,
         relations: Vec::new(),
         last_access: None,
         access_count: 0,
+        useful_count: 0,
         state: MemoryState::Active,
     }
 }

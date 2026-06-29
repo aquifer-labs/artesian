@@ -30,6 +30,8 @@ pub enum MemoryState {
     Active,
     /// Soft-archived: excluded from default `find`, stored, drillable via `get_node`.
     Archived,
+    /// Explicitly retracted: excluded from default `find`, stored for audit/drill-down.
+    Retracted,
 }
 
 pub type MemoryResult<T> = Result<T, MemoryError>;
@@ -138,6 +140,9 @@ pub struct MemoryRecord {
     pub project: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<String>,
+    /// Writer identity/provenance. Distinct from `scope`, `user_id`, and project routing keys.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub author_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub confidence: Option<f32>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -149,6 +154,9 @@ pub struct MemoryRecord {
     /// Number of times this record has been returned by `find`. Zero for legacy records.
     #[serde(default)]
     pub access_count: u32,
+    /// Number of times downstream code confirmed this record was actually used/kept.
+    #[serde(default)]
+    pub useful_count: u32,
     /// Lifecycle state: `Active` (default) or `Archived` (soft-deleted, excluded from default find).
     /// Serde-default `Active` preserves backward-compat for records that pre-date this field.
     #[serde(default)]
@@ -181,10 +189,12 @@ impl MemoryRecord {
             user_id: None,
             project: None,
             source: None,
+            author_id: None,
             confidence: None,
             relations: Vec::new(),
             last_access: None,
             access_count: 0,
+            useful_count: 0,
             state: MemoryState::Active,
         }
     }
@@ -216,6 +226,9 @@ pub struct StoreMemory {
     pub project: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<String>,
+    /// Writer identity/provenance. Distinct from `scope`, `user_id`, and project routing keys.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub author_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub confidence: Option<f32>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -240,6 +253,7 @@ impl StoreMemory {
             user_id: None,
             project: None,
             source: None,
+            author_id: None,
             confidence: None,
             relations: Vec::new(),
         }
@@ -293,6 +307,12 @@ pub fn skill_procedure_from_metadata(
         .get(SKILL_PROCEDURE_METADATA_KEY)
         .map(|raw| serde_json::from_str(raw).map_err(MemoryError::from))
         .transpose()
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RetractReport {
+    pub retracted: MemoryRecord,
+    pub supersede: MemoryRecord,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -356,6 +376,14 @@ pub fn normalize_project(project: impl Into<String>) -> Option<String> {
     (!project.is_empty()).then(|| project.to_string())
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RecallTelemetry {
+    /// Number of distinct session IDs between the record's write session and the recall session.
+    /// `None` means neither session_id nor corpus timestamps were sufficient to infer it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session_distance: Option<usize>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum SearchSource {
@@ -369,6 +397,8 @@ pub struct SearchHit {
     pub record: MemoryRecord,
     pub score: f32,
     pub source: SearchSource,
+    #[serde(default, skip_serializing_if = "RecallTelemetry::is_empty")]
+    pub telemetry: RecallTelemetry,
 }
 
 impl SearchHit {
@@ -377,7 +407,67 @@ impl SearchHit {
             record,
             score,
             source: SearchSource::Keyword,
+            telemetry: RecallTelemetry::default(),
         }
+    }
+}
+
+impl RecallTelemetry {
+    pub fn is_empty(&self) -> bool {
+        self.session_distance.is_none()
+    }
+}
+
+pub fn annotate_session_distances(
+    hits: &mut [SearchHit],
+    corpus: &[MemoryRecord],
+    current_session_id: Option<&str>,
+) {
+    let mut session_times: BTreeMap<String, DateTime<Utc>> = BTreeMap::new();
+    for record in corpus.iter().chain(hits.iter().map(|hit| &hit.record)) {
+        let Some(session_id) = record.session_id.as_ref().filter(|value| !value.is_empty()) else {
+            continue;
+        };
+        session_times
+            .entry(session_id.clone())
+            .and_modify(|seen_at| *seen_at = (*seen_at).max(record.created_at))
+            .or_insert(record.created_at);
+    }
+    if let Some(session_id) = current_session_id.filter(|value| !value.is_empty()) {
+        session_times
+            .entry(session_id.to_string())
+            .or_insert_with(Utc::now);
+    }
+
+    if session_times.is_empty() {
+        return;
+    }
+
+    let mut ordered = session_times.into_iter().collect::<Vec<_>>();
+    ordered.sort_by(|left, right| left.1.cmp(&right.1).then_with(|| left.0.cmp(&right.0)));
+    let ranks = ordered
+        .iter()
+        .enumerate()
+        .map(|(index, (session_id, _))| (session_id.clone(), index))
+        .collect::<BTreeMap<_, _>>();
+    let current_rank = current_session_id
+        .and_then(|session_id| ranks.get(session_id).copied())
+        .unwrap_or_else(|| ordered.len().saturating_sub(1));
+
+    for hit in hits {
+        hit.telemetry.session_distance = hit
+            .record
+            .session_id
+            .as_ref()
+            .and_then(|session_id| ranks.get(session_id).copied())
+            .map(|record_rank| current_rank.saturating_sub(record_rank))
+            .or_else(|| {
+                let newer_sessions = ordered
+                    .iter()
+                    .filter(|(_, created_at)| *created_at > hit.record.created_at)
+                    .count();
+                (newer_sessions > 0).then_some(newer_sessions)
+            });
     }
 }
 

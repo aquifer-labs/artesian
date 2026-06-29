@@ -193,6 +193,7 @@ pub fn expand_hits_with_neighbors<'a, B: MemoryBackend + ?Sized>(
                         record,
                         score: 0.0,
                         source: SearchSource::Keyword,
+                        telemetry: Default::default(),
                     });
                     appended += 1;
                     if appended >= GRAPH_EXPANSION_LIMIT {

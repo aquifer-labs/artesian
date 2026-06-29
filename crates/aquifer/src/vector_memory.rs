@@ -8,6 +8,7 @@ use futures_util::{future::BoxFuture, FutureExt};
 use serde::{Deserialize, Serialize};
 
 use crate::{
+    annotate_session_distances,
     backend::BulkStoreReport,
     chunking::{chunk_text, ChunkConfig},
     entity::EntityIndex,
@@ -21,9 +22,9 @@ use crate::{
     temporal::{apply_knowledge_supersession, apply_recency_decay},
     CollectionCompat, Distance, Filter, FilterCondition, FilterValue, MemoryBackend, MemoryError,
     MemoryId, MemoryQuery, MemoryRecord, MemoryResult, MemoryScope, MemoryState, MemoryTier,
-    PayloadIndex, Relation, RrfOptions, SearchHit, SearchSource, SessionLaneLock, StoreMemory,
-    VectorCollection, VectorPoint, VectorSearch, VectorSearchHit, VectorSearchSource, VectorStore,
-    COMPAT_POINT_ID,
+    PayloadIndex, Relation, RetractReport, RrfOptions, SearchHit, SearchSource, SessionLaneLock,
+    StoreMemory, VectorCollection, VectorPoint, VectorSearch, VectorSearchHit, VectorSearchSource,
+    VectorStore, COMPAT_POINT_ID,
 };
 
 pub const PINNED_FASTEMBED_MODEL: &str = "intfloat/multilingual-e5-small";
@@ -165,6 +166,18 @@ pub struct VectorMemoryConfig {
     #[serde(default)]
     pub rerank: bool,
 
+    /// Opt-in Maximal Marginal Relevance diversity pass after hybrid fusion / reranking.
+    #[serde(default)]
+    pub mmr: bool,
+
+    /// MMR relevance/novelty trade-off in [0, 1]. Defaults to balanced 0.5.
+    #[serde(default = "default_mmr_lambda")]
+    pub mmr_lambda: f32,
+
+    /// Minimum candidate-pool size before MMR is applied. Smaller pools skip MMR.
+    #[serde(default = "default_mmr_min_candidates")]
+    pub mmr_min_candidates: usize,
+
     /// When `true` (the default), every `find` call bumps `access_count` and `last_access`
     /// on returned records (best-effort, non-blocking upsert writeback). Set to `false` to
     /// disable at the cost of losing reinforcement signals for decay/promotion.
@@ -182,6 +195,14 @@ fn default_parent_context_chars() -> usize {
 
 fn default_true() -> bool {
     true
+}
+
+fn default_mmr_lambda() -> f32 {
+    crate::MMR_DEFAULT_LAMBDA
+}
+
+fn default_mmr_min_candidates() -> usize {
+    crate::MMR_MIN_CANDIDATES
 }
 
 fn default_parent_context_max_chars() -> usize {
@@ -207,6 +228,9 @@ impl VectorMemoryConfig {
             parent_context_max_chars: default_parent_context_max_chars(),
             rerank_candidates: 0,
             rerank: false,
+            mmr: false,
+            mmr_lambda: default_mmr_lambda(),
+            mmr_min_candidates: default_mmr_min_candidates(),
             track_access: true,
         }
     }
@@ -220,6 +244,24 @@ impl VectorMemoryConfig {
     /// Set the reranking candidate pool (`0` disables reranking).
     pub fn with_rerank_candidates(mut self, candidates: usize) -> Self {
         self.rerank_candidates = candidates;
+        self
+    }
+
+    /// Enable or disable MMR diversity after fusion/reranking.
+    pub fn with_mmr(mut self, enabled: bool) -> Self {
+        self.mmr = enabled;
+        self
+    }
+
+    /// Set the MMR relevance/novelty trade-off.
+    pub fn with_mmr_lambda(mut self, lambda: f32) -> Self {
+        self.mmr_lambda = lambda;
+        self
+    }
+
+    /// Set the minimum candidate pool required before MMR is applied.
+    pub fn with_mmr_min_candidates(mut self, candidates: usize) -> Self {
+        self.mmr_min_candidates = candidates.max(1);
         self
     }
 
@@ -359,6 +401,7 @@ impl<V: VectorStore> VectorMemoryBackend<V> {
             "session_id",
             "task_id",
             "user_id",
+            "author_id",
             "project",
             // Indexed for time-range and recency filtering (datetime index on Qdrant, JSON
             // expression index on SQLite) so temporal decay/supersession need not full-scan.
@@ -425,7 +468,7 @@ impl<V: VectorStore> VectorMemoryBackend<V> {
                 },
             )
             .await?;
-        vector_hits_to_memory_hits(hits, SearchSource::Vector)
+        vector_hits_to_memory_hits(hits, SearchSource::Vector, query.include_archived)
     }
 
     async fn keyword_hits(&self, query: MemoryQuery) -> MemoryResult<Vec<SearchHit>> {
@@ -443,7 +486,7 @@ impl<V: VectorStore> VectorMemoryBackend<V> {
                 },
             )
             .await?;
-        vector_hits_to_memory_hits(hits, SearchSource::Keyword)
+        vector_hits_to_memory_hits(hits, SearchSource::Keyword, query.include_archived)
     }
 
     /// Expand hits by fetching episode-mate records up to `window` mates per hit.
@@ -479,6 +522,7 @@ impl<V: VectorStore> VectorMemoryBackend<V> {
                     score: 0.01,
                     record,
                     source: SearchSource::Keyword,
+                    telemetry: Default::default(),
                 });
             }
         }
@@ -582,6 +626,78 @@ impl<V: VectorStore> VectorMemoryBackend<V> {
         Ok(output)
     }
 
+    async fn points_for_node_or_parent(&self, node_id: &str) -> MemoryResult<Vec<VectorPoint>> {
+        self.ensure_ready().await?;
+        let mut points = Vec::new();
+        let mut seen = std::collections::BTreeSet::new();
+
+        if let Some(point) = self.store.get(&self.config.collection, node_id).await? {
+            if seen.insert(point.id.clone()) {
+                points.push(point);
+            }
+        }
+
+        for filter in [Filter::node_id(node_id.to_string()), {
+            let mut filter = Filter::default();
+            filter.must_eq("metadata.parent_node", node_id);
+            filter
+        }] {
+            let hits = self
+                .store
+                .search(
+                    &self.config.collection,
+                    VectorSearch {
+                        vector: None,
+                        text: None,
+                        filter,
+                        limit: 4_096,
+                        source: VectorSearchSource::Keyword,
+                    },
+                )
+                .await?;
+            for hit in hits {
+                if seen.insert(hit.point.id.clone()) {
+                    points.push(hit.point);
+                }
+            }
+        }
+
+        Ok(points)
+    }
+
+    async fn rewrite_record_points<F>(
+        &self,
+        points: Vec<VectorPoint>,
+        mut mutate: F,
+    ) -> MemoryResult<Vec<MemoryRecord>>
+    where
+        F: FnMut(&mut MemoryRecord),
+    {
+        let mut updated_points = Vec::with_capacity(points.len());
+        let mut updated_records = Vec::with_capacity(points.len());
+        for point in points {
+            let mut record = point_to_record(point.clone())?;
+            mutate(&mut record);
+            let vector = if point.vector.is_empty() {
+                self.embedder.embed_passage(&record.content)?
+            } else {
+                point.vector
+            };
+            updated_points.push(VectorPoint {
+                id: record.id.to_string(),
+                vector,
+                payload: serde_json::to_value(MemoryPayload::from(&record))?,
+            });
+            updated_records.push(record);
+        }
+        if !updated_points.is_empty() {
+            self.store
+                .upsert(&self.config.collection, updated_points)
+                .await?;
+        }
+        Ok(updated_records)
+    }
+
     /// Small-to-big expansion: collapse same-parent chunk hits into one hit whose
     /// content is the bounded parent-section window around the matched chunk(s).
     /// Hits that are not chunks (no `parent_node`) pass through unchanged and keep
@@ -653,6 +769,7 @@ impl<V: VectorStore> VectorMemoryBackend<V> {
                     score: group.score,
                     record: group.record,
                     source: group.source,
+                    telemetry: Default::default(),
                 });
                 continue;
             };
@@ -669,6 +786,7 @@ impl<V: VectorStore> VectorMemoryBackend<V> {
                     score: group.score,
                     record: group.record,
                     source: group.source,
+                    telemetry: Default::default(),
                 });
                 continue;
             }
@@ -693,10 +811,12 @@ impl<V: VectorStore> VectorMemoryBackend<V> {
                 user_id,
                 project,
                 source: provenance_source,
+                author_id,
                 confidence,
                 relations,
                 last_access,
                 access_count,
+                useful_count,
                 state,
                 mut metadata,
                 ..
@@ -713,6 +833,7 @@ impl<V: VectorStore> VectorMemoryBackend<V> {
             out.push(SearchHit {
                 score,
                 source,
+                telemetry: Default::default(),
                 record: MemoryRecord {
                     id,
                     node_id: parent_node,
@@ -728,10 +849,12 @@ impl<V: VectorStore> VectorMemoryBackend<V> {
                     user_id,
                     project,
                     source: provenance_source,
+                    author_id,
                     confidence,
                     relations,
                     last_access,
                     access_count,
+                    useful_count,
                     state,
                 },
             });
@@ -890,10 +1013,16 @@ impl<V: VectorStore> MemoryBackend for VectorMemoryBackend<V> {
             // When a reranker is attached, fuse a larger candidate pool and rerank it down to
             // `query.limit` before small-to-big — better precision into the same budget.
             let rerank_active = self.rerank_active_for_limit(query.limit);
-            let pool_limit = if rerank_active {
-                self.config.rerank_candidates
+            let mmr_active = self.config.mmr;
+            let mmr_pool_limit = if mmr_active {
+                query.limit.max(self.config.mmr_min_candidates)
             } else {
                 query.limit
+            };
+            let pool_limit = if rerank_active {
+                self.config.rerank_candidates.max(mmr_pool_limit)
+            } else {
+                mmr_pool_limit
             };
             let mut pool_query = query.clone();
             pool_query.limit = pool_limit;
@@ -956,21 +1085,36 @@ impl<V: VectorStore> MemoryBackend for VectorMemoryBackend<V> {
 
             if rerank_active {
                 if let Some(reranker) = &self.reranker {
-                    raw_hits = reranker.rerank(&query.text, raw_hits, query.limit)?;
+                    let rerank_limit = if mmr_active { pool_limit } else { query.limit };
+                    raw_hits = reranker.rerank(&query.text, raw_hits, rerank_limit)?;
                 }
+            }
+
+            if mmr_active {
+                raw_hits = crate::mmr_diversify_when_large(
+                    raw_hits,
+                    query.limit,
+                    self.config.mmr_lambda,
+                    self.config.mmr_min_candidates,
+                );
             }
 
             // Small-to-big: expand each chunk hit to its bounded parent-section
             // context and collapse same-parent hits. A no-op when disabled or when
             // no hit is a chunk (e.g. single-chunk records), keeping small-document
             // recall byte-identical.
-            let hits = match self.effective_parent_budget() {
+            let mut hits = match self.effective_parent_budget() {
                 Some(budget) => {
                     self.expand_small_to_big(raw_hits, query.limit, budget)
                         .await
                 }
                 None => Ok(raw_hits),
             }?;
+            let telemetry_corpus = hits
+                .iter()
+                .map(|hit| hit.record.clone())
+                .collect::<Vec<_>>();
+            annotate_session_distances(&mut hits, &telemetry_corpus, query.session_id.as_deref());
 
             // Access tracking: bump access_count / last_access on returned records and
             // write back to the vector store. Best-effort — any error is silently
@@ -1074,6 +1218,7 @@ impl<V: VectorStore> MemoryBackend for VectorMemoryBackend<V> {
                     user_id: memory.user_id.clone(),
                     project: memory.project.clone(),
                     source: memory.source.clone(),
+                    author_id: memory.author_id.clone(),
                     confidence: memory.confidence,
                     relations: Vec::new(),
                 };
@@ -1112,10 +1257,12 @@ impl<V: VectorStore> MemoryBackend for VectorMemoryBackend<V> {
                     user_id: memory.user_id.clone(),
                     project: memory.project.clone(),
                     source: memory.source.clone(),
+                    author_id: memory.author_id.clone(),
                     confidence: memory.confidence,
                     relations,
                     last_access: None,
                     access_count: 0,
+                    useful_count: 0,
                     state: MemoryState::Active,
                 };
                 let vector = self.embedder.embed_passage(&record.content)?;
@@ -1180,7 +1327,11 @@ impl<V: VectorStore> MemoryBackend for VectorMemoryBackend<V> {
                         },
                     )
                     .await?;
-                return vector_hits_to_memory_hits(hits, SearchSource::Hybrid);
+                return vector_hits_to_memory_hits(
+                    hits,
+                    SearchSource::Hybrid,
+                    vector_query.include_archived,
+                );
             }
 
             let keyword_hits = self.keyword_hits(keyword_query).await?;
@@ -1223,6 +1374,91 @@ impl<V: VectorStore> MemoryBackend for VectorMemoryBackend<V> {
                 return Ok(None);
             }
             Ok(Some(reconstruct_parent_record(&node_id, siblings)))
+        }
+        .boxed()
+    }
+
+    fn mark_used(&self, node_id: &str) -> BoxFuture<'_, MemoryResult<Option<MemoryRecord>>> {
+        let node_id = node_id.to_string();
+        async move {
+            let points = self.points_for_node_or_parent(&node_id).await?;
+            if points.is_empty() {
+                return Ok(None);
+            }
+            let mut updated = self
+                .rewrite_record_points(points, |record| {
+                    record.useful_count = record.useful_count.saturating_add(1);
+                })
+                .await?;
+            Ok(updated.pop())
+        }
+        .boxed()
+    }
+
+    fn retract(&self, node_id: &str) -> BoxFuture<'_, MemoryResult<Option<RetractReport>>> {
+        let node_id = node_id.to_string();
+        async move {
+            let points = self.points_for_node_or_parent(&node_id).await?;
+            if points.is_empty() {
+                return Ok(None);
+            }
+            let now = Utc::now();
+            let supersede_node = format!("retract:{node_id}");
+            let supersede_relation = Relation::new(
+                node_id.clone(),
+                "superseded_by",
+                supersede_node.clone(),
+                supersede_node.clone(),
+            );
+            let mut updated = self
+                .rewrite_record_points(points, |record| {
+                    record.state = MemoryState::Retracted;
+                    record
+                        .metadata
+                        .insert("retracted_at".to_string(), now.to_rfc3339());
+                    record.relations = normalize_relations(
+                        record
+                            .relations
+                            .iter()
+                            .cloned()
+                            .chain(std::iter::once(supersede_relation.clone())),
+                        &record.node_id,
+                    );
+                })
+                .await?;
+            let Some(retracted) = updated.pop() else {
+                return Ok(None);
+            };
+
+            let supersede = self
+                .store(StoreMemory {
+                    content: format!("Memory {node_id} was retracted."),
+                    tags: vec!["retraction".to_string(), "supersede".to_string()],
+                    metadata: std::collections::BTreeMap::from([
+                        ("retracted_node_id".to_string(), node_id.clone()),
+                        ("retracted_record_id".to_string(), retracted.id.to_string()),
+                        ("retracted_at".to_string(), now.to_rfc3339()),
+                    ]),
+                    tier: retracted.tier,
+                    node_id: Some(supersede_node),
+                    created_at: Some(now),
+                    scope: retracted.scope,
+                    agent_id: retracted.agent_id.clone(),
+                    session_id: retracted.session_id.clone(),
+                    task_id: retracted.task_id.clone(),
+                    user_id: retracted.user_id.clone(),
+                    project: retracted.project.clone(),
+                    source: Some("artesian.retract".to_string()),
+                    author_id: retracted.author_id.clone(),
+                    confidence: retracted.confidence,
+                    relations: vec![supersede_relation],
+                })
+                .await?;
+
+            Ok(Some(RetractReport {
+                retracted,
+                supersede,
+            }))
         }
         .boxed()
     }
@@ -1354,6 +1590,7 @@ impl<V: VectorStore> MemoryBackend for VectorMemoryBackend<V> {
                         user_id: memory.user_id.clone(),
                         project: memory.project.clone(),
                         source: memory.source.clone(),
+                        author_id: memory.author_id.clone(),
                         confidence: memory.confidence,
                         relations: Vec::new(),
                     };
@@ -1383,10 +1620,12 @@ impl<V: VectorStore> MemoryBackend for VectorMemoryBackend<V> {
                         user_id: memory.user_id.clone(),
                         project: memory.project.clone(),
                         source: memory.source.clone(),
+                        author_id: memory.author_id.clone(),
                         confidence: memory.confidence,
                         relations,
                         last_access: None,
                         access_count: 0,
+                        useful_count: 0,
                         state: MemoryState::Active,
                     };
                     match self.embedder.embed_passage(&record.content) {
@@ -1477,10 +1716,12 @@ fn reconstruct_parent_record(parent_node: &str, siblings: Vec<MemoryRecord>) -> 
         user_id: first.user_id.clone(),
         project: first.project.clone(),
         source: first.source.clone(),
+        author_id: first.author_id.clone(),
         confidence: first.confidence,
         relations: first.relations.clone(),
         last_access: first.last_access,
         access_count: first.access_count,
+        useful_count: first.useful_count,
         state: first.state,
     }
 }
@@ -1509,6 +1750,8 @@ struct MemoryPayload {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     source: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    author_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     confidence: Option<f32>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     relations: Vec<Relation>,
@@ -1516,6 +1759,8 @@ struct MemoryPayload {
     last_access: Option<chrono::DateTime<Utc>>,
     #[serde(default)]
     access_count: u32,
+    #[serde(default)]
+    useful_count: u32,
     /// Lifecycle state. Serde-default `Active` for backward-compat with old payloads.
     #[serde(default)]
     state: MemoryState,
@@ -1558,10 +1803,12 @@ impl From<&MemoryRecord> for MemoryPayload {
             user_id: record.user_id.clone(),
             project: record.project.clone(),
             source: record.source.clone(),
+            author_id: record.author_id.clone(),
             confidence: record.confidence,
             relations: record.relations.clone(),
             last_access: record.last_access,
             access_count: record.access_count,
+            useful_count: record.useful_count,
             state: record.state,
         }
     }
@@ -1584,10 +1831,12 @@ impl From<MemoryPayload> for MemoryRecord {
             user_id: payload.user_id,
             project: payload.project,
             source: payload.source,
+            author_id: payload.author_id,
             confidence: payload.confidence,
             relations: payload.relations,
             last_access: payload.last_access,
             access_count: payload.access_count,
+            useful_count: payload.useful_count,
             state: payload.state,
         }
     }
@@ -1629,14 +1878,20 @@ fn filter_from_query(query: &MemoryQuery) -> Filter {
 fn vector_hits_to_memory_hits(
     hits: Vec<VectorSearchHit>,
     source: SearchSource,
+    include_archived: bool,
 ) -> MemoryResult<Vec<SearchHit>> {
     hits.into_iter()
-        .map(|hit| {
-            Ok(SearchHit {
-                record: point_to_record(hit.point)?,
-                score: hit.score,
-                source,
-            })
+        .filter_map(|hit| match point_to_record(hit.point) {
+            Ok(record) if include_archived || record.state == MemoryState::Active => {
+                Some(Ok(SearchHit {
+                    record,
+                    score: hit.score,
+                    source,
+                    telemetry: Default::default(),
+                }))
+            }
+            Ok(_) => None,
+            Err(error) => Some(Err(error)),
         })
         .collect()
 }
@@ -1694,11 +1949,13 @@ mod tests {
         let record = point_to_record(point).expect("legacy payload should decode");
 
         assert_eq!(record.source, None);
+        assert_eq!(record.author_id, None);
         assert_eq!(record.confidence, None);
         assert!(record.relations.is_empty());
         // Access-tracking fields default to None/0 for legacy payloads.
         assert_eq!(record.last_access, None);
         assert_eq!(record.access_count, 0);
+        assert_eq!(record.useful_count, 0);
     }
 
     #[test]
