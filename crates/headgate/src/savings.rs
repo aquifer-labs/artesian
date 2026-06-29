@@ -68,10 +68,32 @@ pub struct TokenSavingsEntry {
     pub baseline_tokens: usize,
     /// `max(0, baseline_tokens - returned_tokens)`.
     pub saved_tokens: usize,
+    /// Optional agent/session identifier for per-session ROI accounting.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
+    /// Estimated per-judge prompt/completion tokens when the operation ran a judge.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub judge_costs: Vec<JudgeTokenCost>,
 }
 
 impl TokenSavingsEntry {
     pub fn new(op: &str, collection: &str, returned_tokens: usize, baseline_tokens: usize) -> Self {
+        Self::with_metadata(
+            op,
+            collection,
+            returned_tokens,
+            baseline_tokens,
+            TokenSavingsMetadata::default(),
+        )
+    }
+
+    pub fn with_metadata(
+        op: &str,
+        collection: &str,
+        returned_tokens: usize,
+        baseline_tokens: usize,
+        metadata: TokenSavingsMetadata,
+    ) -> Self {
         let saved_tokens = baseline_tokens.saturating_sub(returned_tokens);
         Self {
             ts: Utc::now(),
@@ -80,6 +102,50 @@ impl TokenSavingsEntry {
             returned_tokens,
             baseline_tokens,
             saved_tokens,
+            session_id: metadata.session_id,
+            judge_costs: metadata.judge_costs,
+        }
+    }
+}
+
+/// Optional metadata attached to a token-savings entry.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct TokenSavingsMetadata {
+    pub session_id: Option<String>,
+    pub judge_costs: Vec<JudgeTokenCost>,
+}
+
+impl TokenSavingsMetadata {
+    pub fn session(session_id: impl Into<String>) -> Self {
+        Self {
+            session_id: Some(session_id.into()),
+            judge_costs: Vec::new(),
+        }
+    }
+
+    pub fn with_judge_costs(mut self, judge_costs: Vec<JudgeTokenCost>) -> Self {
+        self.judge_costs = judge_costs;
+        self
+    }
+}
+
+/// Estimated token cost for one judge invocation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct JudgeTokenCost {
+    pub judge: String,
+    pub prompt_tokens: usize,
+    pub completion_tokens: usize,
+    pub total_tokens: usize,
+}
+
+impl JudgeTokenCost {
+    pub fn new(judge: impl Into<String>, prompt_tokens: usize, completion_tokens: usize) -> Self {
+        let total_tokens = prompt_tokens.saturating_add(completion_tokens);
+        Self {
+            judge: judge.into(),
+            prompt_tokens,
+            completion_tokens,
+            total_tokens,
         }
     }
 }
@@ -93,6 +159,15 @@ pub struct OpSavings {
     pub saved_total: u64,
 }
 
+/// Per-judge token-cost totals inside the rollup.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct JudgeCostSavings {
+    pub calls: u64,
+    pub prompt_total: u64,
+    pub completion_total: u64,
+    pub total_tokens: u64,
+}
+
 /// Compact rollup written to `token_savings.json` and updated on every recall.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TokenSavingsRollup {
@@ -101,6 +176,15 @@ pub struct TokenSavingsRollup {
     pub baseline_total: u64,
     pub saved_total: u64,
     pub by_op: HashMap<String, OpSavings>,
+    /// Token-savings totals partitioned by `session_id`, when entries provide one.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub by_session: HashMap<String, OpSavings>,
+    /// Estimated judge token cost across measured operations.
+    #[serde(default)]
+    pub judge_cost_total: u64,
+    /// Estimated per-judge prompt/completion/total token cost.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub by_judge: HashMap<String, JudgeCostSavings>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub first_ts: Option<DateTime<Utc>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -118,7 +202,31 @@ pub(crate) fn record_savings_to_dir(
     returned_tokens: usize,
     baseline_tokens: usize,
 ) {
-    let entry = TokenSavingsEntry::new(op, collection, returned_tokens, baseline_tokens);
+    record_savings_to_dir_with_metadata(
+        dir,
+        op,
+        collection,
+        returned_tokens,
+        baseline_tokens,
+        TokenSavingsMetadata::default(),
+    );
+}
+
+pub(crate) fn record_savings_to_dir_with_metadata(
+    dir: &Path,
+    op: &str,
+    collection: &str,
+    returned_tokens: usize,
+    baseline_tokens: usize,
+    metadata: TokenSavingsMetadata,
+) {
+    let entry = TokenSavingsEntry::with_metadata(
+        op,
+        collection,
+        returned_tokens,
+        baseline_tokens,
+        metadata,
+    );
     let _ = try_write_savings(dir, &entry);
 }
 
@@ -137,6 +245,15 @@ fn try_write_savings(dir: &Path, entry: &TokenSavingsEntry) -> std::io::Result<(
     // Read-modify-write the compact rollup so CLI queries are O(1).
     let rollup_path = dir.join(SAVINGS_ROLLUP);
     let mut rollup = try_read_rollup(&rollup_path).unwrap_or_default();
+    apply_entry_to_rollup(&mut rollup, entry);
+
+    let json = serde_json::to_string_pretty(&rollup).map_err(std::io::Error::other)?;
+    fs::write(&rollup_path, json.as_bytes())?;
+
+    Ok(())
+}
+
+fn apply_entry_to_rollup(rollup: &mut TokenSavingsRollup, entry: &TokenSavingsEntry) {
     rollup.calls += 1;
     rollup.returned_total += entry.returned_tokens as u64;
     rollup.baseline_total += entry.baseline_tokens as u64;
@@ -145,16 +262,50 @@ fn try_write_savings(dir: &Path, entry: &TokenSavingsEntry) -> std::io::Result<(
         rollup.first_ts = Some(entry.ts);
     }
     rollup.last_ts = Some(entry.ts);
+
     let op_entry = rollup.by_op.entry(entry.op.clone()).or_default();
-    op_entry.calls += 1;
-    op_entry.returned_total += entry.returned_tokens as u64;
-    op_entry.baseline_total += entry.baseline_tokens as u64;
-    op_entry.saved_total += entry.saved_tokens as u64;
+    accumulate_savings(
+        op_entry,
+        entry.returned_tokens,
+        entry.baseline_tokens,
+        entry.saved_tokens,
+    );
 
-    let json = serde_json::to_string_pretty(&rollup).map_err(std::io::Error::other)?;
-    fs::write(&rollup_path, json.as_bytes())?;
+    if let Some(session_id) = entry
+        .session_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|session_id| !session_id.is_empty())
+    {
+        let session_entry = rollup.by_session.entry(session_id.to_string()).or_default();
+        accumulate_savings(
+            session_entry,
+            entry.returned_tokens,
+            entry.baseline_tokens,
+            entry.saved_tokens,
+        );
+    }
 
-    Ok(())
+    for cost in &entry.judge_costs {
+        rollup.judge_cost_total += cost.total_tokens as u64;
+        let judge = rollup.by_judge.entry(cost.judge.clone()).or_default();
+        judge.calls += 1;
+        judge.prompt_total += cost.prompt_tokens as u64;
+        judge.completion_total += cost.completion_tokens as u64;
+        judge.total_tokens += cost.total_tokens as u64;
+    }
+}
+
+fn accumulate_savings(
+    savings: &mut OpSavings,
+    returned_tokens: usize,
+    baseline_tokens: usize,
+    saved_tokens: usize,
+) {
+    savings.calls += 1;
+    savings.returned_total += returned_tokens as u64;
+    savings.baseline_total += baseline_tokens as u64;
+    savings.saved_total += saved_tokens as u64;
 }
 
 fn try_read_rollup(path: &Path) -> Option<TokenSavingsRollup> {
@@ -193,19 +344,7 @@ fn aggregate_from_log(path: &Path, since: Option<DateTime<Utc>>) -> TokenSavings
                 continue;
             }
         }
-        rollup.calls += 1;
-        rollup.returned_total += entry.returned_tokens as u64;
-        rollup.baseline_total += entry.baseline_tokens as u64;
-        rollup.saved_total += entry.saved_tokens as u64;
-        if rollup.first_ts.is_none() {
-            rollup.first_ts = Some(entry.ts);
-        }
-        rollup.last_ts = Some(entry.ts);
-        let op = rollup.by_op.entry(entry.op.clone()).or_default();
-        op.calls += 1;
-        op.returned_total += entry.returned_tokens as u64;
-        op.baseline_total += entry.baseline_tokens as u64;
-        op.saved_total += entry.saved_tokens as u64;
+        apply_entry_to_rollup(&mut rollup, &entry);
     }
     rollup
 }
@@ -234,6 +373,28 @@ pub fn record_savings(
         collection,
         returned_tokens,
         baseline_tokens,
+    );
+}
+
+/// Record one token-savings measurement with optional session and judge-cost metadata.
+pub fn record_savings_with_metadata(
+    op: &str,
+    collection: &str,
+    returned_tokens: usize,
+    baseline_tokens: usize,
+    metadata: TokenSavingsMetadata,
+    track: bool,
+) {
+    if !track {
+        return;
+    }
+    record_savings_to_dir_with_metadata(
+        &stats_dir(),
+        op,
+        collection,
+        returned_tokens,
+        baseline_tokens,
+        metadata,
     );
 }
 
@@ -271,6 +432,8 @@ mod tests {
         assert_eq!(entry.returned_tokens, 40);
         assert_eq!(entry.baseline_tokens, 200);
         assert_eq!(entry.saved_tokens, 160);
+        assert!(entry.session_id.is_none());
+        assert!(entry.judge_costs.is_empty());
         // Timestamp is recent (within 10 seconds).
         let age = Utc::now().signed_duration_since(entry.ts);
         assert!(age.num_seconds() < 10);
@@ -329,6 +492,8 @@ mod tests {
             returned_tokens: 10,
             baseline_tokens: 100,
             saved_tokens: 90,
+            session_id: None,
+            judge_costs: Vec::new(),
         };
         let log_path = dir.join(SAVINGS_LOG);
         std::fs::write(
@@ -367,6 +532,8 @@ mod tests {
         let rollup = TokenSavingsRollup {
             calls: 3,
             saved_total: 150,
+            by_session: HashMap::new(),
+            by_judge: HashMap::new(),
             by_op: [(
                 "memory.find".to_owned(),
                 OpSavings {
@@ -384,6 +551,10 @@ mod tests {
         assert!(v.get("calls").is_some(), "calls field");
         assert!(v.get("saved_total").is_some(), "saved_total field");
         assert!(v.get("by_op").is_some(), "by_op field");
+        assert!(
+            v.get("judge_cost_total").is_some(),
+            "judge_cost_total field"
+        );
         assert!(v["by_op"]["memory.find"]["calls"].as_u64() == Some(3));
     }
 
@@ -393,6 +564,26 @@ mod tests {
         let rollup = load_rollup_from_dir(&dir, None);
         assert_eq!(rollup.calls, 0);
         assert_eq!(rollup.saved_total, 0);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn rollup_tracks_session_and_judge_costs() {
+        let dir = make_temp_dir();
+        let metadata = TokenSavingsMetadata::session("session-a").with_judge_costs(vec![
+            JudgeTokenCost::new("cheap", 11, 3),
+            JudgeTokenCost::new("frontier", 17, 5),
+        ]);
+
+        record_savings_to_dir_with_metadata(&dir, "qualify.reject", "col", 0, 80, metadata);
+
+        let rollup = load_rollup_from_dir(&dir, None);
+        assert_eq!(rollup.saved_total, 80);
+        assert_eq!(rollup.by_session["session-a"].saved_total, 80);
+        assert_eq!(rollup.judge_cost_total, 36);
+        assert_eq!(rollup.by_judge["cheap"].total_tokens, 14);
+        assert_eq!(rollup.by_judge["frontier"].completion_total, 5);
+
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -46,8 +46,10 @@ mod judge;
 #[cfg(feature = "llm")]
 mod llm;
 mod metrics;
+mod position;
 mod recall;
 mod savings;
+mod tier;
 
 pub use bundle::{
     BundleError, BundleManifest, Decision, LifecycleEntry, LifecycleReason, OcfSession,
@@ -59,11 +61,17 @@ pub use compressor::{Compressor, ExtractiveCompressor, NoopCompressor};
 pub use controller::{Headgate, HeadgateConfig};
 pub use gate::{DefaultQualifyGate, QualifyAudit, QualifyDecision, QualifyGate, QualifySignal};
 pub use metrics::{count_tokens, GaugeMetrics};
+pub use position::{
+    position_swap_debias, PairwiseChoice, PairwiseDecision, PairwiseJudge, PositionSwapAudit,
+    StaticPairwiseJudge, DEFAULT_POSITION_BIAS_THRESHOLD,
+};
 pub use recall::{MemoryRecallStore, RecallItem, RecallStore, StaticRecallStore};
 pub use savings::{
-    load_savings_rollup, record_savings, stats_dir, OpSavings, TokenSavingsEntry,
-    TokenSavingsRollup, ARTESIAN_STATS_DIR_ENV,
+    load_savings_rollup, record_savings, record_savings_with_metadata, stats_dir, JudgeCostSavings,
+    JudgeTokenCost, OpSavings, TokenSavingsEntry, TokenSavingsMetadata, TokenSavingsRollup,
+    ARTESIAN_STATS_DIR_ENV,
 };
+pub use tier::{JudgeTier, JudgeTierConfig, TieredQualifyGate};
 
 #[cfg(feature = "llm")]
 pub use compressor::LlmCompressor;

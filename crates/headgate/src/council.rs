@@ -21,9 +21,10 @@ use futures_util::{future::BoxFuture, FutureExt};
 use serde_json::json;
 
 use crate::{
+    count_tokens,
     judge::{parse_verdict_pub, JudgeVerdict},
-    CommittedContextState, LlmClient, LlmRequest, QualifyAudit, QualifyDecision, QualifyGate,
-    QualifySignal, RecallItem,
+    CommittedContextState, JudgeTokenCost, LlmClient, LlmRequest, QualifyAudit, QualifyDecision,
+    QualifyGate, QualifySignal, RecallItem,
 };
 
 const PANEL_SYSTEM: &str = "You are a memory-control judge for an AI agent. Score whether a \
@@ -190,6 +191,13 @@ impl QualifyGate for CouncilJudge {
     ) -> BoxFuture<'a, QualifyDecision> {
         async move {
             let prompt = Self::panel_prompt(item, ccs);
+            let panel_prompt_tokens =
+                count_tokens(PANEL_SYSTEM).saturating_add(count_tokens(&prompt));
+            let panel_labels: Vec<String> = self
+                .panel
+                .iter()
+                .map(|client| format!("panel:{}", client.label()))
+                .collect();
 
             // Run all panel judges concurrently.
             let panel_futures: Vec<_> = self
@@ -205,10 +213,24 @@ impl QualifyGate for CouncilJudge {
                 .collect();
             let panel_results = futures_util::future::join_all(panel_futures).await;
 
+            let mut judge_costs = Vec::new();
             let verdicts: Vec<JudgeVerdict> = panel_results
                 .into_iter()
-                .filter_map(|r| r.ok())
-                .filter_map(|text| parse_verdict_pub(&text))
+                .zip(panel_labels)
+                .filter_map(|(result, label)| match result {
+                    Ok(text) => {
+                        judge_costs.push(JudgeTokenCost::new(
+                            label,
+                            panel_prompt_tokens,
+                            count_tokens(&text),
+                        ));
+                        parse_verdict_pub(&text)
+                    }
+                    Err(_) => {
+                        judge_costs.push(JudgeTokenCost::new(label, panel_prompt_tokens, 0));
+                        None
+                    }
+                })
                 .collect();
 
             // Fail closed if fewer than half the panel responded.
@@ -222,6 +244,9 @@ impl QualifyGate for CouncilJudge {
                         quorum
                     ),
                     item.score,
+                )
+                .with_audit(
+                    QualifyAudit::from_signals(false, Vec::new()).with_judge_costs(judge_costs),
                 );
             }
 
@@ -231,21 +256,47 @@ impl QualifyGate for CouncilJudge {
                 "Panel verdicts for candidate (id={id}):\n{verdicts_json}\n\nSynthesize a final verdict.",
                 id = item.id,
             );
+            let arbiter_prompt_tokens =
+                count_tokens(ARBITER_SYSTEM).saturating_add(count_tokens(&arbiter_prompt));
             let arbiter_req = LlmRequest::new(arbiter_prompt)
                 .with_system(ARBITER_SYSTEM)
                 .with_temperature(0.0)
                 .with_max_tokens(200);
 
             let final_verdict = match self.arbiter.complete(arbiter_req).await {
-                Ok(text) => parse_verdict_pub(&text).or_else(|| Self::majority_verdict(&verdicts)),
-                Err(_) => Self::majority_verdict(&verdicts),
+                Ok(text) => {
+                    judge_costs.push(JudgeTokenCost::new(
+                        format!("arbiter:{}", self.arbiter.label()),
+                        arbiter_prompt_tokens,
+                        count_tokens(&text),
+                    ));
+                    parse_verdict_pub(&text).or_else(|| Self::majority_verdict(&verdicts))
+                }
+                Err(_) => {
+                    judge_costs.push(JudgeTokenCost::new(
+                        format!("arbiter:{}", self.arbiter.label()),
+                        arbiter_prompt_tokens,
+                        0,
+                    ));
+                    Self::majority_verdict(&verdicts)
+                }
             };
 
             match final_verdict {
-                Some(verdict) => self.decide(&verdict, ccs),
-                None => {
-                    QualifyDecision::reject("council: no verdict produced".to_string(), item.score)
+                Some(verdict) => {
+                    let mut decision = self.decide(&verdict, ccs);
+                    if let Some(audit) = decision.audit.take() {
+                        decision.audit = Some(audit.with_judge_costs(judge_costs));
+                    }
+                    decision
                 }
+                None => QualifyDecision::reject(
+                    "council: no verdict produced".to_string(),
+                    item.score,
+                )
+                .with_audit(
+                    QualifyAudit::from_signals(false, Vec::new()).with_judge_costs(judge_costs),
+                ),
             }
         }
         .boxed()

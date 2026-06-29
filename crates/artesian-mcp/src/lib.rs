@@ -39,7 +39,7 @@ use flume::{
 };
 use headgate::{
     count_tokens, load_savings_rollup, record_savings, CcsSchema, CommittedContextState,
-    CommittedEntry, DefaultQualifyGate, Headgate, HeadgateConfig, LifecycleEntry,
+    CommittedEntry, DefaultQualifyGate, Headgate, HeadgateConfig, JudgeCostSavings, LifecycleEntry,
     MemoryRecallStore, OpSavings, QualifyAudit, QualifyDecision, QualifyGate, QualifySignal,
     RecallItem, RecallStore, Resolution, SnapshotEntry, TokenSavingsRollup, WorkingContextBundle,
     WorkingContextSnapshot,
@@ -624,6 +624,20 @@ pub struct QualifyResponse {
     pub agreement: f32,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub chance_corrected_agreement: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cohen_kappa: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub krippendorff_alpha: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub chance_corrected_method: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub position_bias: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub position_bias_threshold: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub position_bias_flagged: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub judge_tier: Option<String>,
     pub confidence: f32,
 }
 
@@ -1247,6 +1261,13 @@ fn qualify_response_from_decision(decision: QualifyDecision) -> QualifyResponse 
         signals: audit.signals.into_iter().map(Into::into).collect(),
         agreement: audit.agreement,
         chance_corrected_agreement: audit.chance_corrected_agreement,
+        cohen_kappa: audit.cohen_kappa,
+        krippendorff_alpha: audit.krippendorff_alpha,
+        chance_corrected_method: audit.chance_corrected_method,
+        position_bias: audit.position_bias,
+        position_bias_threshold: audit.position_bias_threshold,
+        position_bias_flagged: audit.position_bias_flagged,
+        judge_tier: audit.judge_tier,
         confidence: audit.confidence,
     }
 }
@@ -1633,6 +1654,26 @@ impl From<&OpSavings> for OpSavingsInfo {
     }
 }
 
+/// Per-judge token-cost breakdown returned by `memory.savings`.
+#[derive(Debug, Serialize, schemars::JsonSchema)]
+pub struct JudgeCostInfo {
+    pub calls: u64,
+    pub prompt_total: u64,
+    pub completion_total: u64,
+    pub total_tokens: u64,
+}
+
+impl From<&JudgeCostSavings> for JudgeCostInfo {
+    fn from(cost: &JudgeCostSavings) -> Self {
+        Self {
+            calls: cost.calls,
+            prompt_total: cost.prompt_total,
+            completion_total: cost.completion_total,
+            total_tokens: cost.total_tokens,
+        }
+    }
+}
+
 /// Response for `memory.savings`.
 #[derive(Debug, Serialize, schemars::JsonSchema)]
 pub struct SavingsResponse {
@@ -1646,6 +1687,12 @@ pub struct SavingsResponse {
     pub saved_total: u64,
     /// Per-operation breakdown.
     pub by_op: std::collections::HashMap<String, OpSavingsInfo>,
+    /// Per-session breakdown, when entries include a session id.
+    pub by_session: std::collections::HashMap<String, OpSavingsInfo>,
+    /// Estimated judge-token cost across measured operations.
+    pub judge_cost_total: u64,
+    /// Per-judge estimated prompt/completion/total token costs.
+    pub by_judge: std::collections::HashMap<String, JudgeCostInfo>,
     /// RFC 3339 timestamp of the first recorded recall, if any.
     pub first_ts: Option<String>,
     /// RFC 3339 timestamp of the most recent recorded recall, if any.
@@ -1660,6 +1707,17 @@ impl From<TokenSavingsRollup> for SavingsResponse {
             baseline_total: r.baseline_total,
             saved_total: r.saved_total,
             by_op: r.by_op.iter().map(|(k, v)| (k.clone(), v.into())).collect(),
+            by_session: r
+                .by_session
+                .iter()
+                .map(|(k, v)| (k.clone(), v.into()))
+                .collect(),
+            judge_cost_total: r.judge_cost_total,
+            by_judge: r
+                .by_judge
+                .iter()
+                .map(|(k, v)| (k.clone(), v.into()))
+                .collect(),
             first_ts: r.first_ts.map(|dt| dt.to_rfc3339()),
             last_ts: r.last_ts.map(|dt| dt.to_rfc3339()),
         }
@@ -2500,7 +2558,7 @@ impl MemoryServer {
 
     #[tool(
         name = "memory.qualify",
-        description = "Run the ACC qualify-gate on one candidate without storing it. Returns admitted/rejected plus audited deterministic signals, agreement, chance-corrected agreement, confidence, and reason for use as a PreToolUse-style gate."
+        description = "Run the ACC qualify-gate on one candidate without storing it. Returns admitted/rejected plus audited deterministic signals, raw agreement, kappa/alpha chance-corrected agreement, confidence, and reason for use as a PreToolUse-style gate."
     )]
     pub async fn memory_qualify(
         &self,
@@ -2894,7 +2952,8 @@ the matched task/session ids and any alternative matches."
         description = "Return cumulative token-savings statistics: how many tokens Artesian's \
 targeted recall saved vs loading the full source records. Baseline assumption: each hit's full \
 record content token count is the baseline; the actual response payload is the returned count; \
-saved = max(0, baseline - returned). Pass `since` (ISO 8601) for a time-windowed view."
+saved = max(0, baseline - returned). Includes per-session savings and per-judge token-cost \
+rollups when available. Pass `since` (ISO 8601) for a time-windowed view."
     )]
     pub async fn memory_savings(
         &self,

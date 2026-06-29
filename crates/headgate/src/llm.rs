@@ -54,6 +54,10 @@ impl LlmRequest {
 
 /// A model the ACC components can call for judging or compression.
 pub trait LlmClient: Send + Sync {
+    fn label(&self) -> &str {
+        "judge"
+    }
+
     fn complete(&self, request: LlmRequest) -> BoxFuture<'_, HeadgateResult<String>>;
 }
 
@@ -125,6 +129,10 @@ struct ChatChoiceMessage {
 }
 
 impl LlmClient for OpenAiCompatibleClient {
+    fn label(&self) -> &str {
+        &self.model
+    }
+
     fn complete(&self, request: LlmRequest) -> BoxFuture<'_, HeadgateResult<String>> {
         async move {
             let mut messages = Vec::new();
@@ -212,6 +220,10 @@ impl CommandLlmClient {
 }
 
 impl LlmClient for CommandLlmClient {
+    fn label(&self) -> &str {
+        &self.command
+    }
+
     fn complete(&self, request: LlmRequest) -> BoxFuture<'_, HeadgateResult<String>> {
         async move {
             let system = request.system.clone().unwrap_or_default();
@@ -362,6 +374,10 @@ impl StaticLlmClient {
 }
 
 impl LlmClient for StaticLlmClient {
+    fn label(&self) -> &str {
+        "static"
+    }
+
     fn complete(&self, _request: LlmRequest) -> BoxFuture<'_, HeadgateResult<String>> {
         let response = self.response.clone();
         async move { Ok(response) }.boxed()
