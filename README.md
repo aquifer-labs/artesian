@@ -2,14 +2,19 @@
 
 # Artesian
 
-**Memory control plane for agent loops.**
+**The Context Governor for agent loops.**
 
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![CI](https://img.shields.io/badge/build-passing-brightgreen.svg)](https://github.com/aquifer-labs/artesian/actions)
 [![Rust](https://img.shields.io/badge/rust-stable-orange.svg)](https://www.rust-lang.org)
 [![Docs](https://img.shields.io/badge/docs-aquifer--labs.github.io-1f6feb.svg)](https://aquifer-labs.github.io/artesian/)
 
-Artesian keeps agent memory small, high-signal, and survivable across compaction — so the agent **acts on what it knows**, not re-reads everything it has ever stored.
+Artesian governs what one agent loop holds in force: what enters the context (a qualify-gate),
+what it costs (a token budget), what survives compaction and disconnects (anchors + committed
+state), and **why** — every admit/reject decision in an append-only audit log. The mechanism is a
+memory control plane; the role it plays in your loop is the governor. Memory stays small,
+high-signal, and survivable — the agent **acts on what it knows**, not re-reads everything it has
+ever stored.
 
 ## What it does
 

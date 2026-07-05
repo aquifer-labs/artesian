@@ -24,9 +24,14 @@ self-repair: detect the compaction / reconnect boundary → re-anchor + targeted
 next action. Artesian's `headgate` self-repair hook does this deterministically — see
 [docs/self-repair.md](self-repair.md).
 
-**The one-line positioning:** Artesian is the **memory control plane for agent loops** — the
+**The one-line positioning:** Artesian is the **Context Governor for agent loops** — the
 qualify-gate, bounded committed state, and drift/footprint measurement that turn a retrieval store
-into durable, action-guiding, owner-controlled memory.
+into durable, action-guiding, owner-controlled memory. "Memory control plane" names the mechanism;
+"Context Governor" names the role: it decides what the agent holds in force, what that costs, what
+survives a reset, and leaves the audit trail that explains every decision. One loop's context is
+governed here; governing a *fleet* of loops (lifecycle receipts, budget composition, result
+distillation across subagent trees) is the domain of
+[OpenHavn](https://github.com/aquifer-labs/openhavn), which embeds Artesian as its context layer.
 
 ---
 
