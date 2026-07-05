@@ -46,7 +46,9 @@ pub use backfill::{
     collect_memory_paths, parse_memory_path, BackfillFailure, BackfillOptions, BackfillStats,
 };
 pub use chunking::{chunk_text, Chunk, ChunkConfig};
-pub use compat::{CollectionCompat, COMPAT_POINT_ID, OKF_VERSION};
+#[allow(deprecated)]
+pub use compat::OKF_VERSION;
+pub use compat::{CollectionCompat, COMPAT_POINT_ID, HEADWATER_VERSION};
 pub use decay::{retrieval_strength, DecayConfig};
 pub use entity::{extract_entities, EntityIndex};
 pub use episode::EpisodeIndex;
@@ -92,7 +94,11 @@ pub use sqlite_vec::{SqliteVecBackend, SqliteVecVectorStore, SqliteVecVectorStor
 pub use temporal::{
     apply_knowledge_supersession, apply_recency_decay, entity_timeline, sort_hits_by_event_time,
 };
-pub use txn::{sync_okf_directory, CommitLog, SyncReport, TransactionalMemory, TxnError, TxnSeq};
+#[allow(deprecated)]
+pub use txn::sync_okf_directory;
+pub use txn::{
+    sync_headwater_directory, CommitLog, SyncReport, TransactionalMemory, TxnError, TxnSeq,
+};
 pub use types::{
     annotate_session_distances, insert_skill_procedure_metadata, normalize_project,
     skill_procedure_from_metadata, MemoryError, MemoryId, MemoryQuery, MemoryRecord, MemoryResult,
@@ -101,9 +107,14 @@ pub use types::{
     UNTAGGED_PROJECT_LABEL,
 };
 pub use upgrade::{
-    default_migration_collection, export_okf_bundle, migrate_okf_bundle, migration_manifest_path,
-    rechunk_oversized_sqlite, verify_okf_bundle, MigrationPlan, MigrationReport, OkfExportReport,
-    OkfVerifyReport, RechunkReport, SnapshotReport, VectorCollectionAdmin,
+    default_migration_collection, export_headwater_bundle, migrate_headwater_bundle,
+    migration_manifest_path, rechunk_oversized_sqlite, verify_headwater_bundle,
+    HeadwaterExportReport, HeadwaterVerifyReport, MigrationPlan, MigrationReport, RechunkReport,
+    SnapshotReport, VectorCollectionAdmin,
+};
+#[allow(deprecated)]
+pub use upgrade::{
+    export_okf_bundle, migrate_okf_bundle, verify_okf_bundle, OkfExportReport, OkfVerifyReport,
 };
 #[cfg(feature = "vector")]
 pub use vector::{

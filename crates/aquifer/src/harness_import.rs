@@ -484,7 +484,7 @@ fn candidate_from_fact(
     let group_id = section_group_id(source, relative_path, &fact.section);
     let node_id = harness_node_id(source, relative_path, &fact.section, content);
     let mut metadata = BTreeMap::from([
-        ("okf_type".to_string(), "memory".to_string()),
+        ("headwater_type".to_string(), "memory".to_string()),
         ("ocf_schema".to_string(), OCF_HARNESS_SCHEMA.to_string()),
         (
             "ocf_schema_version".to_string(),

@@ -19,7 +19,7 @@ This page is the map; each concern has its own doc.
 | Crate | Responsibility |
 |---|---|
 | `artesian-core` | roles (master/worker/judge), task-queue types (Job/Queue/CompletedJob), config, modes, the `Agent` adapter trait, the event envelope |
-| `aquifer` | memory: `MemoryBackend`, the `VectorStore` seam, `VectorMemoryBackend<V>`, RRF, tiers, OKF files |
+| `aquifer` | memory: `MemoryBackend`, the `VectorStore` seam, `VectorMemoryBackend<V>`, RRF, tiers, headwater files (formerly called OKF inside this project; not to be confused with Google's Open Knowledge Format, an adjacent organizational-knowledge layer our OCF spec composes with) |
 | `headgate` | ACC control plane: `RecallStore` data-plane seam, `QualifyGate`, bounded `CommittedContextState`, commit-loop controller, `GaugeMetrics`; feature `llm` adds the LLM judge-eval gate, `CouncilJudge` (panel + arbiter), LLM compressors, and local provider aliases (Ollama/LM Studio/mlx); feature `headroom` adds `HeadroomCompressor` adapter |
 | `headrace` | task tracking: `TaskStore` (Files/Vector/External), the task DAG |
 | `artesian-mcp` | exposes tools over MCP (`memory.*`, `tools.find`, task tools); the agent integration point |
@@ -32,7 +32,7 @@ retrieval store, gate, or compressor is a small adapter, never a core change.
 
 ## Cross-cutting concerns (read the focused docs)
 
-- **Memory** — short/long-term, retrieval math (cosine, RRF k=60), tiers L0–L3, OKF on-disk
+- **Memory** — short/long-term, retrieval math (cosine, RRF k=60), tiers L0–L3, headwater on-disk
   format, optional rerank/HyDE/consolidation. → [memory.md](memory.md)
 - **Concurrency & multi-tenancy** — many agents/users in parallel; append-mostly idempotent
   writes, project-per-collection + payload tenancy, backend-by-concurrency. → [concurrency.md](concurrency.md)

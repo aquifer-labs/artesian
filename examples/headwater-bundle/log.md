@@ -1,7 +1,7 @@
 ---
 type: Log
 title: Update History
-description: Chronological change log for this OKF bundle (also where Artesian's self-repair anchor is written).
+description: Chronological change log for this headwater bundle (also where Artesian's self-repair anchor is written).
 timestamp: 2026-06-14T00:00:00Z
 ---
 

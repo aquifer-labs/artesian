@@ -16,7 +16,7 @@ the context for that query:
 - **Full-context replay** *(the baseline)* — paste the **entire** memory into the prompt every
   query. Cost = the whole memory's size (this is what an agent does when it just loads all its notes
   / history).
-- **md / OKF, index-first** — load the full index (one line per file, like a `MEMORY.md`) plus the
+- **md / headwater, index-first** — load the full index (one line per file, like a `MEMORY.md`) plus the
   relevant whole file(s). Cheaper than replay because you skip loading every file's *content*, but
   the index itself still grows with the memory — so this line rises with size too, just lower.
 - **Artesian** — a compact index slice plus a semantic top-k retrieval slice (`memory.context`),
@@ -37,7 +37,7 @@ messages.
 
 ![Per-query tokens stay flat as memory grows](results/scaling.png)
 
-| Memory / history | Full-context replay | md/OKF index-first | Artesian (`memory.context`) | Artesian saving | Answer doc retrieved |
+| Memory / history | Full-context replay | md/headwater index-first | Artesian (`memory.context`) | Artesian saving | Answer doc retrieved |
 |---|---:|---:|---:|---:|---:|
 | ~13k tokens (180 docs) | 12,902 | 2,983 | 876 | 93.2% | 100% |
 | ~119k tokens (1,600 docs) | 118,566 | 28,757 | 974 | 99.2% | 100% |
@@ -46,7 +46,7 @@ messages.
 
 Artesian sends a compact index slice plus a top-k retrieval slice regardless of how large the memory
 is, so its per-query cost barely moves (876 → 1,046 tokens) while replay grows ~81× to over a million.
-A plain markdown/OKF index helps a lot (~75% off replay) but **still grows with the memory** (2,983 →
+A plain markdown/headwater index helps a lot (~75% off replay) but **still grows with the memory** (2,983 →
 257,131) because the index lists every file — only Artesian stays flat. This is the same property memory
 systems like Mem0 report (near-constant tokens per query as history scales); here it is measured
 end-to-end against the real retrieval path. Answer-document retrieval stays at **100% across every

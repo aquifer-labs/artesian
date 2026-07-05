@@ -33,7 +33,7 @@ artesian.working-context/
 ├── manifest.json       # format version, collection, timestamps, schema refs
 ├── snapshot.json       # current CCS records (validated against schema)
 ├── lifecycle.jsonl     # ordered qualify-trail events
-└── snapshot.md         # human-readable summary (OKF markdown)
+└── snapshot.md         # human-readable summary (headwater markdown)
 ```
 
 ### `manifest.json`
@@ -62,7 +62,7 @@ Events: `commit`, `evict`, `reject`, `dream`, `decay`, `import`.
 
 ### `snapshot.md`
 
-Human-readable OKF markdown: one section per record tier, with content summaries.
+Human-readable headwater markdown: one section per record tier, with content summaries.
 Readable without any Artesian tooling.
 
 ---
@@ -77,10 +77,10 @@ artesian kit export --out my-project.wc.tar.gz
 artesian kit import my-project.wc.tar.gz
 
 # Verify bundle integrity and schema conformance
-artesian okf verify
+artesian headwater verify .artesian/memory
 
 # Inspect the qualify trail
-artesian okf qualify
+cat artesian.working-context/lifecycle.jsonl
 ```
 
 MCP tools: `memory.kit.export`, `memory.kit.import`, `memory.kit.status`.
@@ -107,11 +107,12 @@ cat artesian.working-context/snapshot.md
 
 ---
 
-## Relationship to OKF
+## Relationship to Google's OKF
 
-Artesian's `files` backend aligns with **OKF (Open Knowledge Format)** — Google Cloud
-`knowledge-catalog` (Apache-2.0). OKF defines the human-readable markdown+YAML format
-for individual memory records. OCF extends OKF with:
+Artesian's headwater file layer aligns where useful with Google's **[Open Knowledge Format
+(OKF)](https://github.com/GoogleCloudPlatform/knowledge-catalog)** (`knowledge-catalog`,
+Apache-2.0). Google's OKF defines a human-readable markdown+YAML format for organizational
+knowledge records. OCF composes with that adjacent layer by adding:
 
 - Versioned bundle manifests
 - A structured qualify trail (governance log)

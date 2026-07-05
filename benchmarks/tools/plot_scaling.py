@@ -42,7 +42,7 @@ RC = {
 }
 
 FULL = "#999999"     # full replay: muted gray (the cost we beat)
-MDOKF = "#e1812c"    # md/OKF index-first: middle ground
+MDHEADWATER = "#e1812c"    # md/headwater index-first: middle ground
 ARTESIAN = "#4e79a7"   # Artesian: accent
 
 
@@ -54,8 +54,9 @@ def load():
     pts = []
     for tier in TIERS:
         rows = {r["arm"]: r for r in csv.DictReader(open(BENCH / "results" / tier / "summary.csv"))}
+        headwater_row = rows.get("E-md-headwater-index-first", rows["E-md-okf-index-first"])
         pts.append((float(rows["A-full-replay"]["mean_total_tokens"]),
-                    float(rows["E-md-okf-index-first"]["mean_total_tokens"]),
+                    float(headwater_row["mean_total_tokens"]),
                     float(rows["B-default-artesian"]["mean_total_tokens"])))
     return sorted(pts)
 
@@ -65,7 +66,7 @@ def main():
     pts = load()
     x = [f for f, _, _ in pts]
     full = [f for f, _, _ in pts]
-    mdokf = [m for _, m, _ in pts]
+    mdheadwater = [m for _, m, _ in pts]
     artesian = [b for _, _, b in pts]
 
     fig, ax = plt.subplots(figsize=(9, 5.4))
@@ -73,7 +74,7 @@ def main():
     ax.set_yscale("log")
 
     ax.plot(x, full, color=FULL, lw=1.6, marker="o", ms=4)
-    ax.plot(x, mdokf, color=MDOKF, lw=1.8, marker="o", ms=4)
+    ax.plot(x, mdheadwater, color=MDHEADWATER, lw=1.8, marker="o", ms=4)
     ax.plot(x, artesian, color=ARTESIAN, lw=2.0, marker="o", ms=4)
 
     ax.set_xlim(x[0] * 0.7, x[-1] * 2.2)
@@ -92,8 +93,8 @@ def main():
     # direct labels (no legend)
     ax.annotate("Full-context replay", xy=(x[-1], full[-1]), xytext=(10, -2),
                 textcoords="offset points", color=FULL, va="center", fontsize=12)
-    ax.annotate("md / OKF index-first", xy=(x[-1], mdokf[-1]), xytext=(10, 0),
-                textcoords="offset points", color=MDOKF, va="center", fontsize=12)
+    ax.annotate("md / headwater index-first", xy=(x[-1], mdheadwater[-1]), xytext=(10, 0),
+                textcoords="offset points", color=MDHEADWATER, va="center", fontsize=12)
     ax.annotate("Artesian (memory.context)", xy=(x[-1], artesian[-1]), xytext=(10, 0),
                 textcoords="offset points", color=ARTESIAN, va="center", fontsize=12)
 
@@ -106,7 +107,7 @@ def main():
     fig.text(0.09, 0.97, "One query stays ~1,000 tokens, however large the memory",
              fontsize=17, fontfamily="serif", color="#111111")
     fig.text(0.09, 0.925,
-             "Full replay and a markdown/OKF index both grow with the history; only Artesian stays flat (log–log)",
+             "Full replay and a markdown/headwater index both grow with the history; only Artesian stays flat (log–log)",
              fontsize=12, fontfamily="serif", color="#666666")
 
     plt.subplots_adjust(top=0.86, left=0.09, right=0.78, bottom=0.13)

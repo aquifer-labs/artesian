@@ -16,20 +16,27 @@ use crate::{
 };
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct OkfVerifyReport {
+pub struct HeadwaterVerifyReport {
     pub files: usize,
     pub records: usize,
 }
 
+#[deprecated(note = "renamed to HeadwaterVerifyReport")]
+pub type OkfVerifyReport = HeadwaterVerifyReport;
+
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct OkfExportReport {
+pub struct HeadwaterExportReport {
     pub copied_files: usize,
     pub verified_records: usize,
 }
 
+#[deprecated(note = "renamed to HeadwaterExportReport")]
+pub type OkfExportReport = HeadwaterExportReport;
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MigrationPlan {
-    pub okf_root: PathBuf,
+    #[serde(alias = "okf_root")]
+    pub headwater_root: PathBuf,
     pub alias: String,
     pub new_collection: String,
     pub retention_days: u32,
@@ -104,7 +111,7 @@ impl<T: VectorCollectionAdmin + ?Sized> VectorCollectionAdmin for &T {
     }
 }
 
-pub async fn migrate_okf_bundle<A: VectorCollectionAdmin>(
+pub async fn migrate_headwater_bundle<A: VectorCollectionAdmin>(
     admin: &A,
     plan: MigrationPlan,
     embedder: Arc<dyn TextEmbedder>,
@@ -112,7 +119,7 @@ pub async fn migrate_okf_bundle<A: VectorCollectionAdmin>(
     let mut rebuild_config = plan.config.clone();
     rebuild_config.collection = plan.new_collection.clone();
     let backend = VectorMemoryBackend::with_embedder(admin, rebuild_config, embedder)?;
-    let stats = backfill_directory(&backend, &plan.okf_root).await?;
+    let stats = backfill_directory(&backend, &plan.headwater_root).await?;
     let old_collection = admin.active_collection(&plan.alias).await?;
     admin
         .swap_alias(&plan.alias, old_collection.as_deref(), &plan.new_collection)
@@ -126,6 +133,15 @@ pub async fn migrate_okf_bundle<A: VectorCollectionAdmin>(
         skipped_duplicates: stats.skipped_duplicates,
         retained_old_collection: old_collection.is_some(),
     })
+}
+
+#[deprecated(note = "renamed to migrate_headwater_bundle")]
+pub async fn migrate_okf_bundle<A: VectorCollectionAdmin>(
+    admin: &A,
+    plan: MigrationPlan,
+    embedder: Arc<dyn TextEmbedder>,
+) -> MemoryResult<MigrationReport> {
+    migrate_headwater_bundle(admin, plan, embedder).await
 }
 
 pub fn default_migration_collection(alias: &str, compat: &CollectionCompat) -> String {
@@ -145,10 +161,10 @@ pub fn default_migration_collection(alias: &str, compat: &CollectionCompat) -> S
     format!("{alias}__{model}__{}", compat.dimensions)
 }
 
-pub fn verify_okf_bundle(root: impl AsRef<Path>) -> MemoryResult<OkfVerifyReport> {
+pub fn verify_headwater_bundle(root: impl AsRef<Path>) -> MemoryResult<HeadwaterVerifyReport> {
     let mut paths = Vec::new();
-    collect_okf_paths(root.as_ref(), &mut paths)?;
-    let mut report = OkfVerifyReport::default();
+    collect_headwater_paths(root.as_ref(), &mut paths)?;
+    let mut report = HeadwaterVerifyReport::default();
     for path in paths {
         report.files += 1;
         let text = std::fs::read_to_string(path)?;
@@ -158,13 +174,18 @@ pub fn verify_okf_bundle(root: impl AsRef<Path>) -> MemoryResult<OkfVerifyReport
     Ok(report)
 }
 
-pub fn export_okf_bundle(
+#[deprecated(note = "renamed to verify_headwater_bundle")]
+pub fn verify_okf_bundle(root: impl AsRef<Path>) -> MemoryResult<HeadwaterVerifyReport> {
+    verify_headwater_bundle(root)
+}
+
+pub fn export_headwater_bundle(
     source: impl AsRef<Path>,
     target: impl AsRef<Path>,
-) -> MemoryResult<OkfExportReport> {
+) -> MemoryResult<HeadwaterExportReport> {
     let source = source.as_ref();
     let target = target.as_ref();
-    let verify = verify_okf_bundle(source)?;
+    let verify = verify_headwater_bundle(source)?;
     let mut paths = Vec::new();
     collect_export_paths(source, &mut paths)?;
     for path in &paths {
@@ -177,10 +198,18 @@ pub fn export_okf_bundle(
         }
         std::fs::copy(path, target_path)?;
     }
-    Ok(OkfExportReport {
+    Ok(HeadwaterExportReport {
         copied_files: paths.len(),
         verified_records: verify.records,
     })
+}
+
+#[deprecated(note = "renamed to export_headwater_bundle")]
+pub fn export_okf_bundle(
+    source: impl AsRef<Path>,
+    target: impl AsRef<Path>,
+) -> MemoryResult<HeadwaterExportReport> {
+    export_headwater_bundle(source, target)
 }
 
 pub fn migration_manifest_path(root: impl AsRef<Path>) -> PathBuf {
@@ -190,16 +219,16 @@ pub fn migration_manifest_path(root: impl AsRef<Path>) -> PathBuf {
     ))
 }
 
-fn collect_okf_paths(dir: &Path, paths: &mut Vec<PathBuf>) -> MemoryResult<()> {
+fn collect_headwater_paths(dir: &Path, paths: &mut Vec<PathBuf>) -> MemoryResult<()> {
     if !dir.exists() {
         return Ok(());
     }
     for entry in std::fs::read_dir(dir)? {
         let path = entry?.path();
         if path.is_dir() {
-            collect_okf_paths(&path, paths)?;
+            collect_headwater_paths(&path, paths)?;
         } else if path.extension().is_some_and(|extension| extension == "md")
-            && !is_reserved_okf_file(&path)
+            && !is_reserved_headwater_file(&path)
         {
             paths.push(path);
         }
@@ -226,7 +255,7 @@ fn collect_export_paths(dir: &Path, paths: &mut Vec<PathBuf>) -> MemoryResult<()
     Ok(())
 }
 
-fn is_reserved_okf_file(path: &Path) -> bool {
+fn is_reserved_headwater_file(path: &Path) -> bool {
     path.file_name()
         .and_then(|name| name.to_str())
         .is_some_and(|name| matches!(name, "index.md" | "log.md"))
@@ -251,7 +280,7 @@ pub struct RechunkReport {
 /// `backend.store()` (which now splits into bounded chunks) then deletes the
 /// original oversized record.
 ///
-/// This is the sqlite-vec migration path. For Qdrant, rebuild via `migrate_okf_bundle`.
+/// This is the sqlite-vec migration path. For Qdrant, rebuild via `migrate_headwater_bundle`.
 pub async fn rechunk_oversized_sqlite(
     store: &SqliteVecVectorStore,
     backend: &(impl MemoryBackend + ?Sized),

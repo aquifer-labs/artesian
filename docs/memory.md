@@ -256,47 +256,47 @@ The normalized `Filter` (`eq`/`in`/`range`/`exists` with `must`/`should`/`must_n
 `types`/`vector.rs`) is the only query DSL consumers touch; each adapter translates it to native
 filters. Engine specifics (metric names, id types, index knobs) never leak above `VectorStore`.
 
-### 4.1 On-disk format: Open Knowledge Format (OKF)
+### 4.1 On-disk format: headwater files
 
 The `FilesBackend` stores memory as a directory of markdown files — Karpathy's
 ["LLM wiki" pattern](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f)
 (`index.md` catalog read first, `log.md` history, interlinked entity/concept pages, maintained by
-ingest/query/lint). Artesian
-aligns this on-disk format with the **Open Knowledge Format (OKF)** (Google Cloud, Apache-2.0): a
-vendor-neutral spec that is *just markdown, just files, just YAML frontmatter*, git-friendly and
-readable with `cat`, with **no vector-DB dependency**. Adopting OKF makes Artesian's file memory
-interoperable with the wider OKF ecosystem (e.g. the OKF static HTML graph visualizer — a free
-*visual control surface* over memory) and standardizes the md ↔ vector import/export.
+ingest/query/lint). Artesian calls this human-readable source layer **headwater files**. The file
+shape intentionally stays close to Google's **[Open Knowledge Format (OKF)](https://github.com/GoogleCloudPlatform/knowledge-catalog)**
+(Google Cloud, Apache-2.0): a vendor-neutral spec that is *just markdown, just files, just YAML
+frontmatter*, git-friendly and readable with `cat`, with **no vector-DB dependency**. That alignment
+keeps the md ↔ vector import/export simple while preserving a distinct Artesian name for the source
+files that feed the retrieval substrate.
 
-OKF requires exactly one frontmatter field, `type`; Artesian keeps its own fields as allowed
+Google's OKF requires exactly one frontmatter field, `type`; Artesian keeps its own fields as allowed
 extensions (consumers tolerate unknown keys):
 
 ```yaml
 ---
-type: decision            # OKF: concept kind (memory|decision|runbook|reference|…)
-title: RRF k constant     # OKF recommended
-description: Why k=60      # OKF recommended
-tags: [retrieval, rrf]    # OKF recommended
-timestamp: 2026-06-14T00:00:00Z   # OKF recommended (== created_at)
+type: decision            # Google OKF: concept kind (memory|decision|runbook|reference|...)
+title: RRF k constant     # Google OKF recommended
+description: Why k=60      # Google OKF recommended
+tags: [retrieval, rrf]    # Google OKF recommended
+timestamp: 2026-06-14T00:00:00Z   # Google OKF recommended (== created_at)
 node_id: node:abc         # Artesian extension (drill-down handle)
 tier: l2-scenario         # Artesian extension (L0–L3)
 ---
 Body markdown; relationships are plain links to other concepts ([k=60](/retrieval/rrf.md)).
 ```
 
-Reserved files follow OKF: `index.md` (directory listing) and `log.md` (chronological update
+Reserved headwater files include `index.md` (directory listing) and `log.md` (chronological update
 history — also where the self-repair anchor log lives, see §6). `FilesBackend` now writes
-YAML `---` OKF files and keeps a backward-compatible reader for legacy TOML `+++` records.
-Ref: OKF v0.1 spec (Apache-2.0).
+YAML `---` headwater files and keeps a backward-compatible reader for legacy TOML `+++` records.
+Reference: Google's Open Knowledge Format (OKF) v0.1 spec (Apache-2.0).
 
-#### The OKF files are the source of truth; the index is a rebuildable projection
+#### The headwater files are the source of truth; the index is a rebuildable projection
 
-The durable, human-readable OKF markdown is the **append-only source of truth**; the vector/search
+The durable, human-readable headwater markdown is the **append-only source of truth**; the vector/search
 index is a **derived projection** you can throw away and rebuild from those files at any time — the
 same event-sourcing discipline as a CQRS read model. So memory stays auditable (`cat` the files,
 `git diff` the history) and is never trapped in a database. Two operations make this concrete:
 
-- **`artesian memory rebuild [--from <okf-dir>]`** re-indexes every OKF file into the configured
+- **`artesian memory rebuild [--from <headwater-dir>]`** re-indexes every headwater file into the configured
   backend transactionally (idempotent, content-hash dedup) — the Artesian equivalent of dropping
   and rebuilding a read model. Run it after bulk-editing files, after switching/upgrading a vector
   engine, or to recover an index from the files alone.
@@ -369,7 +369,7 @@ Implemented surfaces:
 
 - MCP: `memory.anchor.get` / `memory.anchor.set`
 - CLI: `artesian memory anchor get|set|recover`
-- File: the current session anchor is appended to OKF `log.md`
+- File: the current session anchor is appended to headwater `log.md`
 
 ---
 
@@ -453,7 +453,7 @@ store; turning it on adds curation without changing how the agent is driven.
 - TencentDB Agent Memory — L0–L3 tiering, hybrid recall, node_id drill-down.
   https://github.com/TencentCloud/TencentDB-Agent-Memory
 - Open Knowledge Format (OKF) v0.1, Google Cloud (Apache-2.0) — portable markdown+YAML knowledge
-  bundles; the `FilesBackend` on-disk format. https://github.com/GoogleCloudPlatform/knowledge-catalog
+  bundles adjacent to the headwater file layer. https://github.com/GoogleCloudPlatform/knowledge-catalog
 - Hogan et al., *Knowledge Graphs* (2021) — structured/graph memory.
   https://arxiv.org/abs/2003.02320
 - Gao et al., *Retrieval-Augmented Generation for LLMs: A Survey* (2023) — retrieval optimization.

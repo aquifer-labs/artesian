@@ -21,7 +21,7 @@ flowchart LR
   subgraph stores["Memory stores — pluggable"]
     direction TB
     VS[("VectorStore<br/>Qdrant / sqlite-vec")]:::store
-    FB[("Files — OKF bundle")]:::store
+    FB[("Files — headwater bundle")]:::store
   end
 
   subgraph opt["Optional components — opt in as needed"]

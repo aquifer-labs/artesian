@@ -86,7 +86,7 @@ enum ArmKind {
     FullReplay,
     FullReplayCold,
     BuiltInAgentMemory,
-    MdOkfIndexFirst,
+    MdHeadwaterIndexFirst,
     DefaultArtesian,
     DefaultArtesianCold,
     Hyde,
@@ -111,7 +111,7 @@ impl ArmKind {
             Self::FullReplay,
             Self::FullReplayCold,
             Self::BuiltInAgentMemory,
-            Self::MdOkfIndexFirst,
+            Self::MdHeadwaterIndexFirst,
             Self::DefaultArtesian,
             Self::DefaultArtesianCold,
             Self::Hyde,
@@ -129,7 +129,7 @@ impl ArmKind {
             Self::FullReplay,
             Self::FullReplayCold,
             Self::BuiltInAgentMemory,
-            Self::MdOkfIndexFirst,
+            Self::MdHeadwaterIndexFirst,
             Self::DefaultArtesian,
             Self::DefaultArtesianCold,
             Self::Hyde,
@@ -149,7 +149,7 @@ impl ArmKind {
             Self::FullReplay => "A-full-replay",
             Self::FullReplayCold => "A-full-replay-cold-session",
             Self::BuiltInAgentMemory => "C-built-in-agent-memory",
-            Self::MdOkfIndexFirst => "E-md-okf-index-first",
+            Self::MdHeadwaterIndexFirst => "E-md-headwater-index-first",
             Self::DefaultArtesian => "B-default-artesian",
             Self::DefaultArtesianCold => "B-default-artesian-cold-session",
             Self::Hyde => "B-plus-hyde",
@@ -175,7 +175,7 @@ impl ArmKind {
         match self {
             Self::FullReplay | Self::FullReplayCold => "full-corpus-replay",
             Self::BuiltInAgentMemory => "real-memory-find-top1-no-index",
-            Self::MdOkfIndexFirst => "md-okf-full-index-plus-whole-file-retrieval",
+            Self::MdHeadwaterIndexFirst => "md-headwater-full-index-plus-whole-file-retrieval",
             Self::DefaultArtesian | Self::DefaultArtesianCold => {
                 "real-memory-context-index-slice-plus-find-rrf-rerank"
             }
@@ -766,8 +766,8 @@ async fn retrieve(arm: ArmKind, task: &TaskSpec, state: &BenchState) -> Result<R
             )
             .await
         }
-        ArmKind::MdOkfIndexFirst => {
-            // md/OKF index-first: load the FULL index (one line per doc, grows with the
+        ArmKind::MdHeadwaterIndexFirst => {
+            // md/headwater index-first: load the FULL index (one line per doc, grows with the
             // corpus) plus the retrieved whole file(s) — the cost of a markdown memory that
             // lists everything in a MEMORY.md before reading the relevant file.
             let mut output = retrieve_find(
@@ -1640,7 +1640,7 @@ fn reflection_docs(raw_docs: &[CorpusDoc]) -> Vec<CorpusDoc> {
             CorpusDoc {
                 id: doc.id.clone(),
                 title: format!("Reflection summary: {}", doc.title),
-                full_text: render_okf_doc("reference", &doc.title, &summary),
+                full_text: render_headwater_doc("reference", &doc.title, &summary),
                 body: summary,
             }
         })
@@ -1675,7 +1675,7 @@ fn structural_summary(doc: &CorpusDoc) -> String {
     format!("# {}\n\n{}.", doc.title, first_sentences)
 }
 
-fn render_okf_doc(kind: &str, title: &str, body: &str) -> String {
+fn render_headwater_doc(kind: &str, title: &str, body: &str) -> String {
     format!(
         "---\ntype: {kind}\ntags: [benchmark, structural-summary]\ntitle: \"{}\"\nlicense: Apache-2.0\n---\n\n{body}\n",
         title.replace('"', "\\\"")

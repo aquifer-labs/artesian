@@ -350,7 +350,7 @@ fn parse_task(text: &str) -> TaskResult<Task> {
     let header: TaskHeader = serde_yaml::from_str(header)?;
     if !header.kind_name.eq_ignore_ascii_case("task") {
         return Err(TaskError::InvalidFile(format!(
-            "unsupported OKF type: {}",
+            "unsupported headwater type: {}",
             header.kind_name
         )));
     }

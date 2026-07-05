@@ -111,7 +111,7 @@ Artesian is built like LEGO — take only the pieces you need, bring your own fo
 | **sqlite-vec** | Local vector store — zero infrastructure | `backend = "sqlite-vec"` (default `init`) |
 | **Qdrant** | Shared vector store — multi-agent / multi-operator | `backend = "qdrant"` + `QDRANT_URL` |
 | **pgvector** | PostgreSQL-native vectors | `features = ["pgvector"]` |
-| **plain files** | Human-readable OKF markdown — no DB needed | `backend = "files"` |
+| **plain files** | Human-readable headwater files (formerly called OKF inside this project; not to be confused with Google's Open Knowledge Format, an adjacent organizational-knowledge layer our OCF spec composes with) — no DB needed | `backend = "files"` |
 | **mem0** | Existing mem0 store | Implement `headgate::RecallStore` |
 | **headroom** | Data-plane compression — shrinks artifact bytes | `headroom` feature + `HeadroomCompressor` |
 | **Ollama / LM Studio / mlx** | Local LLM for judge or compressor | `provider: "ollama"` / `"lm-studio"` / `"mlx"` |
@@ -173,10 +173,10 @@ Apache-2.0. See [LICENSE](LICENSE).
 
 Artesian stands on the shoulders of prior work. Artesian reuses ideas and APIs where appropriate, not third-party source code.
 
-- **Andrej Karpathy — the "LLM wiki" pattern** — the LLM-maintained markdown knowledge base (`index.md` + `log.md` + entity pages; ingest/query/lint) that directly informs Artesian's Files/OKF backend and consolidation roadmap.
+- **Andrej Karpathy — the "LLM wiki" pattern** — the LLM-maintained markdown knowledge base (`index.md` + `log.md` + entity pages; ingest/query/lint) that directly informs Artesian's Files/headwater backend and consolidation roadmap.
 - **TencentDB Agent Memory** — L0–L3 tiering, hybrid BM25+vector RRF, node_id drill-down, sqlite-vec local-first; informs `SqliteVecBackend`.
 - **Qdrant** — vector store; `QdrantBackend` via `QdrantVectorStore`.
-- **Open Knowledge Format (OKF)** — Google Cloud `knowledge-catalog` (Apache-2.0) — the portable markdown+YAML knowledge-bundle format Artesian's `files` backend aligns with.
+- **Google Open Knowledge Format (OKF)** — Google Cloud [`knowledge-catalog`](https://github.com/GoogleCloudPlatform/knowledge-catalog) (Apache-2.0) — the adjacent organizational-knowledge markdown+YAML format Artesian's headwater files intentionally align with where useful.
 - **ACC model** — Bousetouane, *AI Agents Need Memory Control Over More Context*, arXiv:2601.11653 — the model `headgate` implements.
 - **MemoryArena** — arXiv:2602.16313 — the "recall ≠ use" framing and agentic eval methodology.
 - **OpenAI / Anthropic** — Codex Memories, Claude Code Agent Memory, and agent loop documentation — memory model and loop framing.

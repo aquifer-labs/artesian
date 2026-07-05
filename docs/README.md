@@ -23,8 +23,8 @@ New here? Start with **[onboarding](onboarding.md)**, then **[positioning](posit
 | Doc | What it covers |
 |---|---|
 | [memory.md](memory.md) | Short/long-term memory, retrieval math, L0–L3 tiers |
-| [backends.md](backends.md) | Backends (Files/OKF, sqlite-vec, Qdrant) and RRF per backend |
-| [upgrades.md](upgrades.md) | Rebuild-from-OKF migration, Qdrant snapshots, compatibility guards |
+| [backends.md](backends.md) | Backends (Files/headwater, sqlite-vec, Qdrant) and RRF per backend |
+| [upgrades.md](upgrades.md) | Rebuild-from-headwater migration, Qdrant snapshots, compatibility guards |
 | [self-repair.md](self-repair.md) | Surviving context auto-compaction (session anchor) |
 
 ### Orchestration — Basin

@@ -102,7 +102,7 @@ const ORCHESTRATION_TOOLS: &[&str] = &[
 pub struct MemoryServer {
     backend: Arc<dyn MemoryBackend>,
     anchor_store: Option<AnchorAnchorStore>,
-    okf_root: Option<PathBuf>,
+    headwater_root: Option<PathBuf>,
     router_enabled: bool,
     mode: Mode,
     bindings: Arc<Mutex<Vec<AgentBinding>>>,
@@ -187,7 +187,7 @@ impl MemoryServer {
             Arc::new(FilesBackend::new(&root)),
             Some(AnchorAnchorStore::new(&root)),
         )
-        .with_okf_root(Some(root))
+        .with_headwater_root(Some(root))
     }
 
     pub fn with_backend(backend: Arc<dyn MemoryBackend>) -> Self {
@@ -201,7 +201,7 @@ impl MemoryServer {
         Self {
             backend,
             anchor_store,
-            okf_root: None,
+            headwater_root: None,
             router_enabled: false,
             mode: Mode::Memory,
             bindings: Arc::new(Mutex::new(Vec::new())),
@@ -223,8 +223,8 @@ impl MemoryServer {
         }
     }
 
-    pub fn with_okf_root(mut self, root: Option<PathBuf>) -> Self {
-        self.okf_root = root;
+    pub fn with_headwater_root(mut self, root: Option<PathBuf>) -> Self {
+        self.headwater_root = root;
         self
     }
 
@@ -346,7 +346,7 @@ impl MemoryServer {
             open_memory_backend(config)?,
             Some(AnchorAnchorStore::new(&config.root)),
         )
-        .with_okf_root(Some(PathBuf::from(&config.root)));
+        .with_headwater_root(Some(PathBuf::from(&config.root)));
         server.collection = config.collection.clone();
         server.project = config.project.clone();
         server.track_savings = config.track_savings;
@@ -2599,7 +2599,7 @@ impl MemoryServer {
     ) -> Result<Json<ContextResponse>, ErrorData> {
         // Read the index, computing full-vs-truncated token counts for savings accounting.
         let (index, index_baseline_tokens, index_returned_tokens) =
-            if let Some(root) = self.okf_root.as_ref() {
+            if let Some(root) = self.headwater_root.as_ref() {
                 match std::fs::read_to_string(root.join("memory").join("index.md")) {
                     Ok(full_index) => {
                         let index_limit = request.index_chars.unwrap_or(4_000);
@@ -2769,7 +2769,7 @@ context to read plus per-cycle control metrics (admitted, rejected, footprint)."
 
     #[tool(
         name = "memory.anchor.get",
-        description = "Read the current Anchor session anchor from OKF log.md before resuming work."
+        description = "Read the current Anchor session anchor from headwater log.md before resuming work."
     )]
     pub async fn memory_anchor_get(&self) -> Result<Json<AnchorGetResponse>, ErrorData> {
         let store = self.anchor_store.as_ref().ok_or_else(|| {
@@ -2785,7 +2785,7 @@ context to read plus per-cycle control metrics (admitted, rejected, footprint)."
 
     #[tool(
         name = "memory.anchor.set",
-        description = "Write the current task, plan pointer, decisions, and next step to OKF log.md."
+        description = "Write the current task, plan pointer, decisions, and next step to headwater log.md."
     )]
     pub async fn memory_anchor_set(
         &self,
@@ -2996,7 +2996,7 @@ Load at session start so the agent has immediate context without re-reading all 
     )]
     pub async fn memory_kit_get(&self) -> Result<Json<KitGetResponse>, ErrorData> {
         let kit_root = self
-            .okf_root
+            .headwater_root
             .as_deref()
             .map(|r| r.join("kit"))
             .or_else(|| Some(std::path::PathBuf::from(".artesian").join("kit")));
@@ -3038,7 +3038,7 @@ Call when the project vision or current phase changes."
         Parameters(request): Parameters<KitSetRequest>,
     ) -> Result<Json<KitGetResponse>, ErrorData> {
         let kit_root = self
-            .okf_root
+            .headwater_root
             .as_deref()
             .map(|r| r.join("kit"))
             .or_else(|| Some(std::path::PathBuf::from(".artesian").join("kit")));
@@ -5288,12 +5288,12 @@ fn tool_registry() -> &'static [RegisteredTool] {
         },
         RegisteredTool {
             name: "memory.anchor.get",
-            description: "Read Anchor session anchor from OKF log.md before resuming work.",
+            description: "Read Anchor session anchor from headwater log.md before resuming work.",
         },
         RegisteredTool {
             name: "memory.anchor.set",
             description:
-                "Write current task, plan pointer, decisions, and next step to OKF log.md.",
+                "Write current task, plan pointer, decisions, and next step to headwater log.md.",
         },
         RegisteredTool {
             name: "memory.session.checkpoint",

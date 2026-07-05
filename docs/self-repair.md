@@ -29,7 +29,7 @@ flowchart LR
 
 | Component | Location | State |
 |---|---|---|
-| `AnchorAnchorStore` | `aquifer/src/anchor.rs` | Reads/writes anchor to OKF `log.md` |
+| `AnchorAnchorStore` | `aquifer/src/anchor.rs` | Reads/writes anchor to headwater `log.md` |
 | `recover_after_compaction` | `aquifer/src/anchor.rs` | Re-reads anchor + targeted `memory.find` |
 | Anchor tests | `aquifer/tests/anchor.rs` | 2 passing integration tests |
 | MCP tools | `artesian-mcp/src/lib.rs` | `memory.anchor.get`, `memory.anchor.set` |

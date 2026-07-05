@@ -65,7 +65,7 @@ on write and to a filter on read.
 |---|---|---|---|---|
 | `qdrant` | native | native | yes (server + API keys) | **many agents / many users / parallel** |
 | `sqlite-vec` | yes (WAL) | **serialized** | single-host | one machine, low write concurrency |
-| `files` (OKF) | yes | one writer (atomic write) | single-host | zero-infra, personal |
+| `files` (headwater) | yes | one writer (atomic write) | single-host | zero-infra, personal |
 
 **Rule:** the multi-agent / multi-user / parallel workload the operator described is a **Qdrant**
 (server-backed) deployment. `sqlite-vec` and `files` are single-host, low-concurrency backends.
@@ -132,8 +132,8 @@ changed." It does NOT replace the underlying backend's own serialization (SQLite
 native concurrency) — it adds an explicit, logic-level CAS so agents can reason about "what
 sequence was the world in when I started this write?"
 
-**OKF file edits as transactions.** `aquifer::sync_okf_directory(dir, backend)` re-indexes
-every OKF markdown file in a directory. Run it after a human edits a file and the new content is
+**Headwater file edits as transactions.** `aquifer::sync_headwater_directory(dir, backend)` re-indexes
+every headwater markdown file in a directory. Run it after a human edits a file and the new content is
 immediately retrievable. A file-watcher daemon calls this at configurable cadence — the edit is
 a first-class transaction, not a side-channel.
 
@@ -154,7 +154,7 @@ Oracle/Cursor failure mode does not occur.
 - Session-lane locks serialize writes per collection/session with bounded timeouts; reads remain
   concurrent.
 - `TransactionalMemory<B>` adds optimistic CAS (read free, write fails on conflict) over any
-  backend. `sync_okf_directory` makes file edits first-class transactions.
+  backend. `sync_headwater_directory` makes file edits first-class transactions.
 - Qdrant for parallel/multi-user; sqlite-vec/files for single-host.
 - Funnel access through `artesian-mcp`/`artesiand` for pooling, `wait=true` read-after-write, tenant
   filtering, and per-user keys.

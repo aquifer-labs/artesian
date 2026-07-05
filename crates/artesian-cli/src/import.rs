@@ -33,7 +33,7 @@ pub struct ImportReport {
 #[derive(Debug, Clone)]
 pub struct ImportOptions {
     pub directory: PathBuf,
-    pub okf_root: PathBuf,
+    pub headwater_root: PathBuf,
     pub user_id: Option<String>,
     pub project: Option<String>,
     /// Emit per-file progress to stderr (stdout stays reserved for the machine-readable summary).
@@ -88,13 +88,14 @@ impl CatalogKind {
 pub async fn import_directory(
     options: ImportOptions,
     primary_memory: Arc<dyn MemoryBackend>,
-    write_okf_copy: bool,
+    write_headwater_copy: bool,
     task_store: &VectorTaskStore,
 ) -> Result<ImportReport> {
     let mut paths = collect_memory_paths(&options.directory)?;
     paths.sort();
 
-    let okf_memory = write_okf_copy.then(|| Arc::new(FilesBackend::new(&options.okf_root)));
+    let headwater_memory =
+        write_headwater_copy.then(|| Arc::new(FilesBackend::new(&options.headwater_root)));
     let mut report = ImportReport::default();
     let mut catalog = Vec::new();
 
@@ -126,7 +127,7 @@ pub async fn import_directory(
                 &options,
                 path,
                 primary_memory.as_ref(),
-                okf_memory
+                headwater_memory
                     .as_deref()
                     .map(|backend| backend as &dyn MemoryBackend),
                 &mut report,
@@ -171,7 +172,7 @@ pub async fn import_directory(
     }
 
     if !catalog.is_empty() {
-        report.index_path = Some(write_index(&options.okf_root, &catalog)?);
+        report.index_path = Some(write_index(&options.headwater_root, &catalog)?);
     }
 
     Ok(report)
@@ -372,7 +373,7 @@ async fn import_memory_path(
     options: &ImportOptions,
     path: &Path,
     primary_memory: &dyn MemoryBackend,
-    okf_memory: Option<&dyn MemoryBackend>,
+    headwater_memory: Option<&dyn MemoryBackend>,
     report: &mut ImportReport,
     catalog: &mut Vec<CatalogEntry>,
 ) {
@@ -401,15 +402,15 @@ async fn import_memory_path(
         })
         .collect();
 
-    // Mirror to OKF backend first (FilesBackend uses default sequential bulk_store).
-    if let Some(okf_memory) = okf_memory {
-        let okf_result = okf_memory
+    // Mirror to headwater backend first (FilesBackend uses default sequential bulk_store).
+    if let Some(headwater_memory) = headwater_memory {
+        let headwater_result = headwater_memory
             .bulk_store(memories.clone(), IMPORT_BATCH_SIZE)
             .await;
-        for (id, reason) in okf_result.failures {
+        for (id, reason) in headwater_result.failures {
             report.failed.push(BackfillFailure {
                 file: path.to_path_buf(),
-                reason: format!("okf mirror [{id}]: {reason}"),
+                reason: format!("headwater mirror [{id}]: {reason}"),
             });
         }
     }
@@ -457,7 +458,7 @@ fn write_index(root: &Path, catalog: &[CatalogEntry]) -> Result<PathBuf> {
     fs::create_dir_all(&memory_dir)?;
     let path = memory_dir.join("index.md");
     let mut output = String::from(
-        "---\ntype: index\ntitle: Artesian Memory Index\n---\n\n# Artesian Memory Index\n\nRead this catalog first, then drill into the listed OKF records or task files as needed.\n",
+        "---\ntype: index\ntitle: Artesian Memory Index\n---\n\n# Artesian Memory Index\n\nRead this catalog first, then drill into the listed headwater records or task files as needed.\n",
     );
 
     for kind in [CatalogKind::Memory, CatalogKind::Task] {
@@ -648,7 +649,7 @@ mod tests {
         let report = import_directory(
             ImportOptions {
                 directory: source,
-                okf_root: root.join("okf"),
+                headwater_root: root.join("headwater"),
                 user_id: None,
                 project: Some("foo".to_string()),
                 progress: false,

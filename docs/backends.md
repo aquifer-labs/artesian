@@ -55,7 +55,7 @@ separately and fuses them with the same RRF implementation.
 
 ## FilesBackend
 
-`FilesBackend` stores OKF markdown records under `.artesian/memory/YYYY-MM-DD/<id>.md`. It writes
+`FilesBackend` stores headwater markdown records under `.artesian/memory/YYYY-MM-DD/<id>.md`. It writes
 YAML `---` frontmatter with required `type: memory`, recommended `tags`/`timestamp`, and Artesian
 extensions such as `node_id`, `tier`, and optional tenancy fields. It still reads legacy TOML
 `+++` records.

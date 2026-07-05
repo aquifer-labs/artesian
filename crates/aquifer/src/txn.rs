@@ -22,9 +22,9 @@
 //!   [`commit`] CAS semantics on top of the existing `store` / `find` API. The underlying backend
 //!   handles durability and retrieval; the commit log governs sequential consistency.
 //!
-//! - **[`sync_okf_directory`]** — re-indexes every OKF markdown file in a directory as a
-//!   transactional write. This makes a human edit to an OKF file a first-class memory transaction:
-//!   edit the file → call `sync_okf_directory` (or run the file-watcher daemon) → the new
+//! - **[`sync_headwater_directory`]** — re-indexes every headwater markdown file in a directory as a
+//!   transactional write. This makes a human edit to an headwater file a first-class memory transaction:
+//!   edit the file → call `sync_headwater_directory` (or run the file-watcher daemon) → the new
 //!   content is immediately retrievable.
 //!
 //! ## Architecture note
@@ -261,12 +261,12 @@ pub struct SyncReport {
     pub parse_failures: usize,
 }
 
-/// Re-index every OKF markdown file in `dir` as a transactional write to `backend`.
+/// Re-index every headwater markdown file in `dir` as a transactional write to `backend`.
 ///
-/// This is the "human file edit = transaction" primitive: run this after editing an OKF file
+/// This is the "human file edit = transaction" primitive: run this after editing an headwater file
 /// and the new content is immediately retrievable through `memory.find`. A periodic cron or a
 /// file-watcher daemon calls this at whatever cadence fits the deployment.
-pub async fn sync_okf_directory(
+pub async fn sync_headwater_directory(
     dir: &std::path::Path,
     backend: &dyn MemoryBackend,
 ) -> MemoryResult<SyncReport> {
@@ -287,6 +287,14 @@ pub async fn sync_okf_directory(
         }
     }
     Ok(report)
+}
+
+#[deprecated(note = "renamed to sync_headwater_directory")]
+pub async fn sync_okf_directory(
+    dir: &std::path::Path,
+    backend: &dyn MemoryBackend,
+) -> MemoryResult<SyncReport> {
+    sync_headwater_directory(dir, backend).await
 }
 
 #[cfg(test)]
@@ -393,8 +401,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn sync_okf_directory_re_indexes_edited_files() {
-        let tempdir = TempDir::new("okf-sync");
+    async fn sync_headwater_directory_re_indexes_edited_files() {
+        let tempdir = TempDir::new("headwater-sync");
         std::fs::write(
             tempdir.join("plan.md"),
             r#"---
@@ -411,7 +419,7 @@ Use approach B after approach A failed in session 1.
         .expect("write fixture");
 
         let backend = FilesBackend::new(tempdir.path());
-        let report = sync_okf_directory(tempdir.path(), &backend)
+        let report = sync_headwater_directory(tempdir.path(), &backend)
             .await
             .expect("sync should succeed");
 

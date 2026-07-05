@@ -2,16 +2,16 @@
 
 # Upgrades — Evolving Artesian Without Losing Memory
 
-Artesian treats the OKF markdown bundle as the durable record of truth. Vector databases are derived
+Artesian treats the headwater markdown bundle as the durable record of truth. Vector databases are derived
 indexes. If an embedding model, dimension, distance metric, or payload schema changes, rebuild the
-index from OKF instead of mixing vectors in place.
+index from headwater files instead of mixing vectors in place.
 
 ## Compatibility Guard
 
 Each vector collection stores Artesian compatibility metadata:
 
 - Artesian crate version
-- OKF version
+- headwater version
 - embedding model id
 - embedding dimensions
 - distance metric
@@ -21,16 +21,16 @@ configured model or dimension. This prevents silent vector mixing. A mismatch me
 
 ## Safe Migration Procedure
 
-1. Verify the OKF bundle:
+1. Verify the headwater bundle:
 
    ```sh
-   artesian okf verify .artesian/memory
+   artesian headwater verify .artesian/memory
    ```
 
 2. Rebuild into a new collection under the current model/dimension/schema:
 
    ```sh
-   artesian migrate .artesian/memory --config artesian.toml --retention-days 30
+   artesian migrate headwater-bundle .artesian/memory --config artesian.toml --retention-days 30
    ```
 
 3. Artesian backfills by content hash, so re-running the command resumes and skips duplicates.
@@ -45,16 +45,16 @@ Before deleting any Qdrant collection by hand, inspect `GET /collections/aliases
 logical collection name still points at that physical collection. Normal runtime open/init uses the
 configured collection name literally; alias swaps are only part of the Qdrant migration flow.
 
-For deployments that use `artesian migrate okf-bundle`, configure `memory.collection` as a Qdrant
+For deployments that use `artesian migrate headwater-bundle`, configure `memory.collection` as a Qdrant
 alias. Atomic alias swap requires an alias; it cannot safely shadow a concrete collection with the
 same name.
 
-## Snapshots and OKF Exports
+## Snapshots and Headwater Exports
 
 Use both backups:
 
 - Qdrant snapshot for fast restore of the derived index.
-- OKF export for the durable source of truth.
+- headwater export for the durable source of truth.
 
 Example schedule:
 
@@ -63,8 +63,8 @@ Example schedule:
 artesian snapshot --config artesian.toml --output-dir /path/to/qdrant-snapshots
 
 # daily source-of-truth export
-artesian okf export .artesian/memory /path/to/okf-backups/$(date +%Y-%m-%d)
-artesian okf verify /path/to/okf-backups/$(date +%Y-%m-%d)
+artesian headwater export .artesian/memory /path/to/headwater-backups/$(date +%Y-%m-%d)
+artesian headwater verify /path/to/headwater-backups/$(date +%Y-%m-%d)
 ```
 
 Keep backup paths environment-specific and out of the repository.
@@ -74,8 +74,8 @@ On default ports, one Qdrant URL is enough: `:6333` derives gRPC `:6334`, and `:
 
 ## Recovery Pattern
 
-1. Restore or copy the OKF bundle.
-2. Run `artesian okf verify`.
-3. Run `artesian migrate` to rebuild the current vector index.
+1. Restore or copy the headwater bundle.
+2. Run `artesian headwater verify <restored-headwater-dir>`.
+3. Run `artesian migrate headwater-bundle <restored-headwater-dir>` to rebuild the current vector index.
 4. Point the alias at the rebuilt collection.
 5. Keep the old collection until the new run has been verified in normal use.

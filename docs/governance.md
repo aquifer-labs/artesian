@@ -120,18 +120,15 @@ See [self-repair docs](self-repair.md) for the full `dream_on_compact` configura
 Because the qualify trail is append-only JSONL, you can replay any past state:
 
 ```shell
-# View all events for a collection
-artesian okf qualify --collection default
+# View the qualify trail
+cat .artesian/memory/qualify.jsonl
 
-# Show only evictions in the last 7 days
-artesian okf qualify --collection default --event evict --since 7d
-
-# Verify that the current CCS matches the expected state
-artesian okf verify
+# Verify the headwater files
+artesian headwater verify .artesian/memory
 ```
 
-The `artesian okf verify` command replays the qualify trail and asserts that the current
-durable store is consistent with the logged history. Use it after any migration or restore.
+The `artesian headwater verify` command parses the durable source files and fails fast on malformed
+records. Use it after any migration or restore.
 
 ## OCF and interoperability
 

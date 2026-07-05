@@ -40,7 +40,8 @@ breadth of what an agent may do unattended is exactly the breadth your verifiers
 ### Visual artifacts as control surfaces
 
 Long-running agents are steered through **visual artifacts**, not transcripts: the task board
-(headrace), the TUI (Gauge), an optional macOS tray (Tray), and the **OKF HTML visualizer** over
+(headrace), the TUI (Gauge), an optional macOS tray (Tray), and Google's
+**[OKF HTML visualizer](https://github.com/GoogleCloudPlatform/knowledge-catalog)** over
 the memory bundle (see [memory.md](memory.md) §4.1). External mirrors (Jira/Linear) give the same
 board in a familiar UI. These surfaces let a human glance, redirect, and approve without reading
 raw logs.

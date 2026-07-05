@@ -325,11 +325,11 @@ async fn transactional_memory_cas_conflict_is_detectable() {
     );
 }
 
-/// Verify that a human-edited OKF file becomes immediately retrievable after
-/// sync_okf_directory — the "file edit = transaction" primitive.
+/// Verify that a human-edited headwater file becomes immediately retrievable after
+/// sync_headwater_directory — the "file edit = transaction" primitive.
 #[tokio::test]
-async fn sync_okf_directory_makes_file_edits_retrievable() {
-    let tempdir = TempDir::new("okf-edit-txn");
+async fn sync_headwater_directory_makes_file_edits_retrievable() {
+    let tempdir = TempDir::new("headwater-edit-txn");
     let memory_dir = tempdir.path().join("memory");
     std::fs::create_dir_all(&memory_dir).unwrap();
 
@@ -339,7 +339,7 @@ async fn sync_okf_directory_makes_file_edits_retrievable() {
     ).expect("write fixture");
 
     let backend = FilesBackend::new(&memory_dir);
-    let report = aquifer::sync_okf_directory(&memory_dir, &backend)
+    let report = aquifer::sync_headwater_directory(&memory_dir, &backend)
         .await
         .expect("sync should succeed");
 

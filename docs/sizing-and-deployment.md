@@ -16,7 +16,7 @@ Per chunk:
   **384-d → ~1.5 KB**. `multilingual-e5-large` is 1024-d → ~4 KB (≈2.7×).
 - **ANN graph** (Qdrant/HNSW, `m=16`) — roughly `2 × m × 4 bytes` of links → **~0.1–0.5 KB**.
 - **Payload** — the chunk text + metadata (tags, scope, ids, timestamps) → **~0.5–2 KB** typical.
-- **OKF Markdown copy** (Files backend, or the OKF mirror) — the human-readable source on disk.
+- **headwater markdown copy** (Files backend, or the headwater mirror) — the human-readable source on disk.
 
 So budget **~2–4 KB per chunk on disk** for a vector backend, and a few hundred bytes for the
 Files backend (text only, no vectors).

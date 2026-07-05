@@ -16,8 +16,8 @@ use std::{
 use anyhow::{bail, Context, Result};
 use aquifer::{
     append_eviction_log, consolidation_pass, default_migration_collection, entity_timeline, evict,
-    export_okf_bundle, insert_skill_procedure_metadata, normalize_project,
-    recover_after_compaction, verify_okf_bundle, AnchorAnchorStore, CollectionCompat,
+    export_headwater_bundle, insert_skill_procedure_metadata, normalize_project,
+    recover_after_compaction, verify_headwater_bundle, AnchorAnchorStore, CollectionCompat,
     ConsolidationOptions, DecayConfig, EvictionPolicy, MemoryBackend, MemoryQuery, MemoryRecord,
     MemoryScope, MemoryState, MemoryTier, MigrationPlan, ProcedureStep, SearchHit, SessionAnchor,
     SessionKey, SessionListFilter, SessionStore, StoreMemory, VectorMemoryConfig, SHARED_PROJECT,
@@ -378,9 +378,14 @@ enum Command {
         #[arg(long)]
         collection: Option<String>,
     },
-    Okf {
+    /// Verify and export headwater files.
+    #[command(
+        alias = "okf",
+        after_help = "Deprecated alias: `artesian okf` was renamed to `artesian headwater`."
+    )]
+    Headwater {
         #[command(subcommand)]
-        command: OkfCommand,
+        command: HeadwaterCommand,
     },
     /// Loop memory kit: initialize and export the anchor-set bundle (vision / prompt / memory /
     /// skills), portable across Codex and Claude Code.
@@ -520,9 +525,13 @@ enum Command {
 
 #[derive(Debug, Subcommand)]
 enum MigrateCommand {
-    /// Rebuild a Qdrant collection from an OKF markdown bundle (atomic alias swap).
-    OkfBundle {
-        okf_root: PathBuf,
+    /// Rebuild a Qdrant collection from a headwater markdown bundle (atomic alias swap).
+    #[command(
+        alias = "okf-bundle",
+        after_help = "Deprecated alias: `artesian migrate okf-bundle` was renamed to `artesian migrate headwater-bundle`."
+    )]
+    HeadwaterBundle {
+        headwater_root: PathBuf,
         #[arg(long, default_value = DEFAULT_CONFIG)]
         config: PathBuf,
         #[arg(long)]
@@ -542,7 +551,8 @@ enum MigrateCommand {
 }
 
 #[derive(Debug, Subcommand)]
-enum OkfCommand {
+#[command(after_help = "Deprecated alias: `artesian okf` was renamed to `artesian headwater`.")]
+enum HeadwaterCommand {
     Verify { root: PathBuf },
     Export { source: PathBuf, target: PathBuf },
 }
@@ -1010,11 +1020,11 @@ enum MemoryCommand {
         #[arg(long, value_enum)]
         backend: Option<BackendArg>,
     },
-    /// Rebuild the searchable projection from the OKF source of truth: re-index every OKF markdown
+    /// Rebuild the searchable projection from the headwater source of truth: re-index every headwater markdown
     /// file under `--from` into the backend (transactional, idempotent). The durable md files are
     /// the append-only source; the vector store is a derived projection you can rebuild any time.
     Rebuild {
-        /// OKF source directory to re-index (defaults to the configured memory root).
+        /// headwater source directory to re-index (defaults to the configured memory root).
         #[arg(long)]
         from: Option<PathBuf>,
         #[arg(long, default_value = DEFAULT_CONFIG)]
@@ -1333,6 +1343,21 @@ fn invoked_as() -> Option<String> {
     })
 }
 
+fn warn_deprecated_cli_aliases(args: &[OsString]) {
+    let arg = |index: usize| args.get(index).and_then(|value| value.to_str());
+    match (arg(1), arg(2)) {
+        (Some("okf"), _) => {
+            eprintln!("warning: `artesian okf` is deprecated; use `artesian headwater`");
+        }
+        (Some("migrate"), Some("okf-bundle")) => {
+            eprintln!(
+                "warning: `artesian migrate okf-bundle` is deprecated; use `artesian migrate headwater-bundle`"
+            );
+        }
+        _ => {}
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     // Multi-call binary: a single executable installed once and symlinked, so the MCP server and
@@ -1343,6 +1368,7 @@ async fn main() -> Result<()> {
         _ => {}
     }
     let raw_args: Vec<OsString> = std::env::args_os().collect();
+    warn_deprecated_cli_aliases(&raw_args);
     let cli = Cli::parse_from(raw_args.clone());
     match cli.command {
         Command::Init {
@@ -1539,12 +1565,12 @@ async fn main() -> Result<()> {
             .await
         }
         Command::Migrate { command } => match command {
-            MigrateCommand::OkfBundle {
-                okf_root,
+            MigrateCommand::HeadwaterBundle {
+                headwater_root,
                 config,
                 new_collection,
                 retention_days,
-            } => migrate_okf(okf_root, config, new_collection, retention_days).await,
+            } => migrate_headwater(headwater_root, config, new_collection, retention_days).await,
             MigrateCommand::Rechunk { config } => migrate_rechunk(config).await,
         },
         Command::Snapshot {
@@ -1552,7 +1578,7 @@ async fn main() -> Result<()> {
             output_dir,
             collection,
         } => snapshot(config, output_dir, collection).await,
-        Command::Okf { command } => okf(command),
+        Command::Headwater { command } => headwater(command),
         Command::Kit { command } => kit(command).await,
         Command::Perf {
             config,
@@ -3386,7 +3412,7 @@ async fn memory(command: MemoryCommand, raw_args: &[OsString]) -> Result<()> {
             let memory_config = memory_config_for_command(&config, root, backend)?;
             let source = from.unwrap_or_else(|| PathBuf::from(&memory_config.root));
             let backend = open_memory_backend(&memory_config)?;
-            let report = aquifer::sync_okf_directory(&source, backend.as_ref()).await?;
+            let report = aquifer::sync_headwater_directory(&source, backend.as_ref()).await?;
             println!(
                 "rebuilt projection from {}: files_scanned={} records_indexed={} parse_failures={}",
                 source.display(),
@@ -3960,7 +3986,7 @@ fn apply_eviction_to_dir(
             .file_stem()
             .and_then(|s| s.to_str())
             .unwrap_or_default();
-        // Skip reserved OKF files (index.md, log.md).
+        // Skip reserved headwater files (index.md, log.md).
         if matches!(
             path.file_name().and_then(|n| n.to_str()).unwrap_or(""),
             "index.md" | "log.md"
@@ -4797,7 +4823,7 @@ async fn backfill(
     let report = import_directory(
         ImportOptions {
             directory,
-            okf_root: PathBuf::from(&memory.root),
+            headwater_root: PathBuf::from(&memory.root),
             user_id: options.user_id,
             project: Some(project),
             progress: true,
@@ -4910,7 +4936,7 @@ async fn onboard(
     let report = import_directory(
         ImportOptions {
             directory,
-            okf_root: PathBuf::from(&memory.root),
+            headwater_root: PathBuf::from(&memory.root),
             user_id,
             project: memory.project.clone().or_else(|| Some(project.clone())),
             progress: true,
@@ -4948,8 +4974,8 @@ async fn onboard(
     Ok(())
 }
 
-async fn migrate_okf(
-    okf_root: PathBuf,
+async fn migrate_headwater(
+    headwater_root: PathBuf,
     config_path: PathBuf,
     new_collection: Option<String>,
     retention_days: u32,
@@ -4957,13 +4983,13 @@ async fn migrate_okf(
     let config = load_config(&config_path)?;
     if config.memory.backend != MemoryBackendKind::Qdrant {
         bail!(
-            "artesian migrate okf-bundle currently requires backend = qdrant for atomic alias swap"
+            "artesian migrate headwater-bundle currently requires backend = qdrant for atomic alias swap"
         );
     }
     let vector_config = VectorMemoryConfig::new(&config.memory.collection);
     let compat = CollectionCompat::from_config(&vector_config);
     let plan = MigrationPlan {
-        okf_root,
+        headwater_root,
         alias: config.memory.collection.clone(),
         new_collection: new_collection
             .unwrap_or_else(|| default_migration_collection(&config.memory.collection, &compat)),
@@ -4978,7 +5004,7 @@ async fn migrate_okf(
 async fn migrate_rechunk(config_path: PathBuf) -> Result<()> {
     let config = load_config(&config_path)?;
     if config.memory.backend != MemoryBackendKind::SqliteVec {
-        bail!("artesian migrate rechunk currently requires backend = sqlite-vec; for Qdrant use artesian migrate okf-bundle");
+        bail!("artesian migrate rechunk currently requires backend = sqlite-vec; for Qdrant use artesian migrate headwater-bundle");
     }
     use aquifer::{rechunk_oversized_sqlite, SqliteVecVectorStore, SqliteVecVectorStoreConfig};
     use std::path::PathBuf as SPath;
@@ -5009,7 +5035,7 @@ async fn snapshot(
     let config = load_config(&config_path)?;
     if config.memory.backend != MemoryBackendKind::Qdrant {
         bail!(
-            "artesian snapshot currently requires backend = qdrant; use artesian okf export for files"
+            "artesian snapshot currently requires backend = qdrant; use artesian headwater export for files"
         );
     }
     let collection = collection.unwrap_or_else(|| config.memory.collection.clone());
@@ -5018,14 +5044,14 @@ async fn snapshot(
     Ok(())
 }
 
-fn okf(command: OkfCommand) -> Result<()> {
+fn headwater(command: HeadwaterCommand) -> Result<()> {
     match command {
-        OkfCommand::Verify { root } => {
-            let report = verify_okf_bundle(root)?;
+        HeadwaterCommand::Verify { root } => {
+            let report = verify_headwater_bundle(root)?;
             println!("{}", serde_json::to_string_pretty(&report)?);
         }
-        OkfCommand::Export { source, target } => {
-            let report = export_okf_bundle(source, target)?;
+        HeadwaterCommand::Export { source, target } => {
+            let report = export_headwater_bundle(source, target)?;
             println!("{}", serde_json::to_string_pretty(&report)?);
         }
     }
@@ -5237,10 +5263,10 @@ async fn migrate_qdrant(
     memory: &MemoryConfig,
     plan: MigrationPlan,
 ) -> Result<aquifer::MigrationReport> {
-    use aquifer::{migrate_okf_bundle, FastembedTextEmbedder, QdrantVectorStore};
+    use aquifer::{migrate_headwater_bundle, FastembedTextEmbedder, QdrantVectorStore};
 
     let store = QdrantVectorStore::connect(qdrant_config(memory)?)?;
-    Ok(migrate_okf_bundle(&store, plan, Arc::new(FastembedTextEmbedder::new()?)).await?)
+    Ok(migrate_headwater_bundle(&store, plan, Arc::new(FastembedTextEmbedder::new()?)).await?)
 }
 
 #[cfg(not(feature = "qdrant"))]

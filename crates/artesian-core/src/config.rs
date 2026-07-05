@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{env, fs, path::PathBuf};
+use std::{env, fs, path::PathBuf, sync::Once};
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -27,7 +27,7 @@ pub enum MemoryBackendKind {
     TencentDb,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
 pub struct MemoryConfig {
     pub backend: MemoryBackendKind,
     pub root: String,
@@ -76,6 +76,96 @@ pub struct MemoryConfig {
     /// disable stats collection entirely; failures are always silent and non-blocking.
     #[serde(default = "default_track_savings")]
     pub track_savings: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct MemoryConfigWire {
+    pub backend: MemoryBackendKind,
+    #[serde(default)]
+    pub root: Option<String>,
+    #[serde(default)]
+    pub headwater_root: Option<String>,
+    #[serde(default)]
+    pub okf_root: Option<String>,
+    #[serde(default = "default_memory_collection")]
+    pub collection: String,
+    #[serde(default)]
+    pub project: Option<String>,
+    #[serde(default)]
+    pub qdrant_url: Option<String>,
+    #[serde(default)]
+    pub qdrant_rest_url: Option<String>,
+    #[serde(default)]
+    pub qdrant_api_key_env: Option<String>,
+    #[serde(default)]
+    pub qdrant_api_key_file: Option<String>,
+    #[serde(default = "default_local_rerank_enabled")]
+    pub local_rerank_enabled: bool,
+    #[serde(default)]
+    pub hyde_enabled: bool,
+    #[serde(default)]
+    pub multi_query_enabled: bool,
+    #[serde(default)]
+    pub debate_enabled: bool,
+    #[serde(default)]
+    pub llm_consolidation_enabled: bool,
+    #[serde(default)]
+    pub rerank: bool,
+    #[serde(default)]
+    pub rerank_candidates: usize,
+    #[serde(default)]
+    pub semantic_cache: SemanticCacheConfig,
+    #[serde(default = "default_track_access")]
+    pub track_access: bool,
+    #[serde(default = "default_track_savings")]
+    pub track_savings: bool,
+}
+
+impl<'de> Deserialize<'de> for MemoryConfig {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let wire = MemoryConfigWire::deserialize(deserializer)?;
+        if wire.okf_root.is_some() {
+            warn_legacy_okf_root_once();
+        }
+        let root = wire
+            .root
+            .or(wire.headwater_root)
+            .or(wire.okf_root)
+            .ok_or_else(|| serde::de::Error::missing_field("root"))?;
+        Ok(Self {
+            backend: wire.backend,
+            root,
+            collection: wire.collection,
+            project: wire.project,
+            qdrant_url: wire.qdrant_url,
+            qdrant_rest_url: wire.qdrant_rest_url,
+            qdrant_api_key_env: wire.qdrant_api_key_env,
+            qdrant_api_key_file: wire.qdrant_api_key_file,
+            local_rerank_enabled: wire.local_rerank_enabled,
+            hyde_enabled: wire.hyde_enabled,
+            multi_query_enabled: wire.multi_query_enabled,
+            debate_enabled: wire.debate_enabled,
+            llm_consolidation_enabled: wire.llm_consolidation_enabled,
+            rerank: wire.rerank,
+            rerank_candidates: wire.rerank_candidates,
+            semantic_cache: wire.semantic_cache,
+            track_access: wire.track_access,
+            track_savings: wire.track_savings,
+        })
+    }
+}
+
+static LEGACY_OKF_ROOT_WARNING: Once = Once::new();
+
+fn warn_legacy_okf_root_once() {
+    LEGACY_OKF_ROOT_WARNING.call_once(|| {
+        eprintln!(
+            "warning: [memory].okf_root is deprecated; use [memory].headwater_root or [memory].root"
+        );
+    });
 }
 
 impl MemoryConfig {

@@ -431,7 +431,7 @@ struct FileHeader {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct OkfHeader {
+struct HeadwaterHeader {
     #[serde(rename = "type")]
     kind: String,
     #[serde(default)]
@@ -514,7 +514,7 @@ fn collect_records(dir: &Path, records: &mut Vec<MemoryRecord>) -> MemoryResult<
         if path.is_dir() {
             collect_records(&path, records)?;
         } else if path.extension().is_some_and(|extension| extension == "md")
-            && !is_reserved_okf_file(&path)
+            && !is_reserved_headwater_file(&path)
         {
             let text = std::fs::read_to_string(&path)?;
             records.push(parse_record(&text)?);
@@ -548,13 +548,13 @@ pub fn render_record(record: &MemoryRecord) -> MemoryResult<String> {
     };
     Ok(format!(
         "---\n{}---\n\n{}\n",
-        render_okf_header(header),
+        render_headwater_header(header),
         record.content
     ))
 }
 
-fn render_okf_header(header: FileHeader) -> String {
-    let okf = OkfHeader {
+fn render_headwater_header(header: FileHeader) -> String {
+    let headwater = HeadwaterHeader {
         kind: "memory".to_string(),
         id: Some(header.id),
         title: None,
@@ -580,12 +580,12 @@ fn render_okf_header(header: FileHeader) -> String {
         state: header.state,
         unknown: BTreeMap::new(),
     };
-    serde_yaml::to_string(&okf).expect("OKF header serialization should be infallible")
+    serde_yaml::to_string(&headwater).expect("headwater header serialization should be infallible")
 }
 
 pub fn parse_record(text: &str) -> MemoryResult<MemoryRecord> {
     if text.starts_with("---\n") {
-        return parse_okf_record(text);
+        return parse_headwater_record(text);
     }
 
     let rest = text
@@ -629,21 +629,21 @@ pub fn parse_record(text: &str) -> MemoryResult<MemoryRecord> {
     })
 }
 
-fn parse_okf_record(text: &str) -> MemoryResult<MemoryRecord> {
+fn parse_headwater_record(text: &str) -> MemoryResult<MemoryRecord> {
     let rest = text
         .strip_prefix("---\n")
-        .ok_or_else(|| MemoryError::InvalidFile("missing OKF front matter".to_string()))?;
-    let (header, body) = rest
-        .split_once("\n---\n")
-        .ok_or_else(|| MemoryError::InvalidFile("unterminated OKF front matter".to_string()))?;
-    let header: OkfHeader = serde_yaml::from_str(header)?;
+        .ok_or_else(|| MemoryError::InvalidFile("missing headwater front matter".to_string()))?;
+    let (header, body) = rest.split_once("\n---\n").ok_or_else(|| {
+        MemoryError::InvalidFile("unterminated headwater front matter".to_string())
+    })?;
+    let header: HeadwaterHeader = serde_yaml::from_str(header)?;
     let kind = header.kind.to_ascii_lowercase();
     if !matches!(
         kind.as_str(),
         "memory" | "decision" | "runbook" | "reference" | "incident" | "feedback" | "user"
     ) {
         return Err(MemoryError::InvalidFile(format!(
-            "unsupported OKF record type: {}",
+            "unsupported headwater record type: {}",
             header.kind
         )));
     }
@@ -652,7 +652,7 @@ fn parse_okf_record(text: &str) -> MemoryResult<MemoryRecord> {
     let content = body.trim().to_string();
     let mut metadata = header.metadata;
     if kind != "memory" {
-        metadata.insert("okf_type".to_string(), kind);
+        metadata.insert("headwater_type".to_string(), kind);
     }
     if let Some(title) = header.title {
         metadata.insert("title".to_string(), title);
@@ -730,7 +730,7 @@ fn collect_paths(dir: &Path, paths: &mut Vec<PathBuf>) -> MemoryResult<()> {
         if path.is_dir() {
             collect_paths(&path, paths)?;
         } else if path.extension().is_some_and(|extension| extension == "md")
-            && !is_reserved_okf_file(&path)
+            && !is_reserved_headwater_file(&path)
         {
             paths.push(path);
         }
@@ -827,7 +827,7 @@ fn score_record(record: MemoryRecord, terms: &[String], keep_zero: bool) -> Opti
     })
 }
 
-fn is_reserved_okf_file(path: &Path) -> bool {
+fn is_reserved_headwater_file(path: &Path) -> bool {
     path.file_name()
         .and_then(|name| name.to_str())
         .is_some_and(|name| matches!(name, "index.md" | "log.md"))

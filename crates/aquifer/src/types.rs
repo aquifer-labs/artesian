@@ -44,7 +44,7 @@ pub enum MemoryError {
     Encode(#[from] toml::ser::Error),
     #[error("failed to decode metadata: {0}")]
     Decode(#[from] toml::de::Error),
-    #[error("failed to decode OKF front matter: {0}")]
+    #[error("failed to decode headwater front matter: {0}")]
     YamlDecode(#[from] serde_yaml::Error),
     #[error("failed to convert memory payload: {0}")]
     Payload(#[from] serde_json::Error),

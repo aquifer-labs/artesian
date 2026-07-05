@@ -38,7 +38,7 @@ Three gaps the field has named but no open-source system closes together:
 Do **not** pick "vector DB" *or* "files." They are different axes (Oracle):
 
 - **Filesystem wins as the *interface*** — LLMs are pretrained on repos/markdown/grep; humans can
-  read, edit, diff, and `git` it. This is our **OKF** layer (human-readable md/json).
+  read, edit, diff, and `git` it. This is our **headwater** layer (human-readable md/json).
 - **Database wins as the *substrate*** — concurrency, ACID, semantic retrieval, auditability. This
   is required the instant memory is *shared* across agents/operators.
 - **Avoid polyglot persistence** — separate vector + doc + graph + SQL services = four failure
@@ -122,7 +122,7 @@ the moat. Optional steps (6–7) are in scope. Step 8 is the final documentation
 
 ### Step 4 — Transactional multi-writer substrate + file interface (the moat) ✓ DONE
 
-- **Goal:** unify the OKF file *interface* and the vector *substrate* under one transactional
+- **Goal:** unify the headwater file *interface* and the vector *substrate* under one transactional
   commit-log (no polyglot, no flat file-locks). Per-scope isolation (operator / agent / run)
   enforced *transactionally*, not by convention. Optimistic concurrency (read free, write fails if
   state changed) per Cursor's lesson. Human edits to files are transactions (watch → reindex).
@@ -131,7 +131,7 @@ the moat. Optional steps (6–7) are in scope. Step 8 is the final documentation
   and correct isolation; a human-edited markdown file is reflected in retrieval; integrity proven by
   a concurrency stress test (the failure mode Oracle/Cursor document does not occur).
 - **Status:** `aquifer::txn` — `CommitLog` (CAS atomic u64), `TransactionalMemory<B>` wrapper with
-  `begin_write`/`commit`/`commit_with_retry`, `TxnError::Conflict`; `sync_okf_directory` for
+  `begin_write`/`commit`/`commit_with_retry`, `TxnError::Conflict`; `sync_headwater_directory` for
   file-edit transactions. Acceptance test: 6 agents × 4 operators (24 concurrent writes, 0
   corruption, exact tenant isolation) — all 7 concurrency tests green. `docs/concurrency.md`
   extended with the transactional model and acceptance evidence.

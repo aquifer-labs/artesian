@@ -6,7 +6,7 @@ Two ways to bring Artesian up: **a human follows the Quickstart**, or **an AI ag
 agent recipe** below. Both are non-destructive and idempotent — running them twice changes
 nothing the second time, and they never delete existing memory or overwrite unrelated config.
 
-Artesian runs with **zero configuration** in `memory` mode on the Files (OKF) backend. Add a vector
+Artesian runs with **zero configuration** in `memory` mode on the Files (headwater) backend. Add a vector
 backend or orchestration only when you want them. Sensible defaults everywhere.
 
 ---
@@ -17,7 +17,7 @@ Install the `artesian` CLI (see the [README](../README.md#install)), or run from
 any command with `cargo run -p artesian-cli -- ` instead of `artesian`.
 
 ```shell
-# memory mode, zero-infra Files (OKF) backend — the default
+# memory mode, zero-infra Files (headwater) backend — the default
 artesian init
 artesian memory store "Artesian keeps durable context" --tag bootstrap
 artesian memory find durable
@@ -49,12 +49,12 @@ descriptions. Then drive your agent exactly as before — it now has `memory.fin
 Backfill existing notes (idempotent), and explore modes:
 
 ```shell
-artesian backfill ./memory-export   # md/json + task md -> OKF/Headrace
+artesian backfill ./memory-export   # md/json + task md -> headwater/Headrace
 artesian memory context "what matters now"
 ```
 
 `backfill` is robust: a bad file is skipped and reported, not fatal. Markdown is section-chunked
-by heading, an OKF `index.md` catalog is generated, task/status markdown is routed into Headrace, and
+by heading, a headwater `index.md` catalog is generated, task/status markdown is routed into Headrace, and
 the command prints a JSON summary with `{scanned, imported, skipped_duplicates, failed}` counts.
 
 **Linked memory by default.** `backfill` and `onboard` now run deterministic entity-relation
@@ -179,7 +179,7 @@ without breaking anything**.
 3. If `backend = qdrant`: verify the server is reachable (`/healthz`) and that the collection's
    compat metadata (model + dim) matches the pinned model; if it mismatches, STOP and ask — run
    `artesian migrate` rather than mixing vector spaces.
-4. Backfill the project's existing memory/tasks into the OKF bundle and selected backend:
+4. Backfill the project's existing memory/tasks into the headwater bundle and selected backend:
    `artesian backfill <path> --project <project>` (idempotent, content-hash dedup; never deletes
    the originals). Recall returns project ∪ `shared`; verify the applied filter with the
    `scope_applied` block.
@@ -195,7 +195,7 @@ without breaking anything**.
   additive/idempotent.
 - Keep secrets (API keys) out of git; store them where the operator specifies.
 - Do not change the pinned embedding model for an existing collection — that needs `migrate`
-  (rebuild from OKF), not an in-place switch.
+  (rebuild from headwater files), not an in-place switch.
 - `orchestrate`/`full` only when the operator asked for it; `memory` mode must not change how the
   operator already drives the agent.
 - Do not `git push` or perform outward-facing actions without explicit operator approval.

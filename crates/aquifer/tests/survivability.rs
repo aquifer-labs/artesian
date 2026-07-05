@@ -7,17 +7,17 @@ use std::{
 };
 
 use aquifer::{
-    migrate_okf_bundle, verify_okf_bundle, Distance, MemoryBackend, MemoryError, MemoryResult,
-    MigrationPlan, SnapshotReport, SqliteVecVectorStore, TextEmbedder, VectorCollection,
-    VectorCollectionAdmin, VectorMemoryBackend, VectorMemoryConfig, VectorPoint, VectorSearch,
-    VectorSearchHit, VectorStore, VectorStoreCapabilities,
+    migrate_headwater_bundle, verify_headwater_bundle, Distance, MemoryBackend, MemoryError,
+    MemoryResult, MigrationPlan, SnapshotReport, SqliteVecVectorStore, TextEmbedder,
+    VectorCollection, VectorCollectionAdmin, VectorMemoryBackend, VectorMemoryConfig, VectorPoint,
+    VectorSearch, VectorSearchHit, VectorStore, VectorStoreCapabilities,
 };
 use artesian_test_support::TempDir;
 use futures_util::{future::BoxFuture, FutureExt};
 
 #[tokio::test]
 async fn old_schema_bundle_still_verifies() {
-    let tempdir = TempDir::new("okf-old-schema");
+    let tempdir = TempDir::new("headwater-old-schema");
     let legacy = tempdir.join("legacy.md");
     std::fs::write(
         &legacy,
@@ -35,22 +35,22 @@ created_at = "2026-01-01T00:00:00Z"
     )
     .expect("legacy fixture should be written");
     std::fs::write(
-        tempdir.join("okf.md"),
+        tempdir.join("headwater.md"),
         r#"---
 type: decision
 title: Unknown keys are tolerated
 timestamp: 2026-01-02T00:00:00Z
-node_id: node:okf
+node_id: node:headwater
 tier: l1-atom
 future_key: retained-as-metadata
 ---
 
-OKF readers tolerate unknown scalar keys.
+headwater readers tolerate unknown scalar keys.
 "#,
     )
-    .expect("OKF fixture should be written");
+    .expect("headwater fixture should be written");
 
-    let report = verify_okf_bundle(tempdir.path()).expect("bundle should verify");
+    let report = verify_headwater_bundle(tempdir.path()).expect("bundle should verify");
 
     assert_eq!(report.files, 2);
     assert_eq!(report.records, 2);
@@ -106,14 +106,14 @@ node_id: node:migrate
 tier: l1-atom
 ---
 
-Re-embedded memory is rebuilt from OKF.
+Re-embedded memory is rebuilt from headwater.
 "#,
     )
     .expect("migration fixture should be written");
     let store = MockAdminStore::default();
     store.insert_alias("memory", "memory_old");
     let plan = MigrationPlan {
-        okf_root: tempdir.path().to_path_buf(),
+        headwater_root: tempdir.path().to_path_buf(),
         alias: "memory".to_string(),
         new_collection: "memory_new".to_string(),
         retention_days: 30,
@@ -125,10 +125,10 @@ Re-embedded memory is rebuilt from OKF.
         },
     };
 
-    let first = migrate_okf_bundle(&store, plan.clone(), Arc::new(TestEmbedder))
+    let first = migrate_headwater_bundle(&store, plan.clone(), Arc::new(TestEmbedder))
         .await
         .expect("migration should rebuild collection");
-    let second = migrate_okf_bundle(&store, plan, Arc::new(TestEmbedder))
+    let second = migrate_headwater_bundle(&store, plan, Arc::new(TestEmbedder))
         .await
         .expect("migration should be idempotent");
 

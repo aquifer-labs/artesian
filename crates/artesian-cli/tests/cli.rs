@@ -297,6 +297,39 @@ fn cli_memory_mode_round_trip_and_spawn_alias_work() {
 }
 
 #[test]
+fn headwater_help_and_legacy_okf_alias_work() {
+    let binary = env!("CARGO_BIN_EXE_artesian");
+
+    let headwater = Command::new(binary)
+        .args(["headwater", "--help"])
+        .output()
+        .expect("headwater help should run");
+    assert!(headwater.status.success(), "{}", stderr(&headwater));
+    let headwater_out = stdout(&headwater);
+    assert!(headwater_out.contains("Verify"), "{headwater_out}");
+    assert!(
+        headwater_out.contains("`artesian okf` was renamed to `artesian headwater`"),
+        "{headwater_out}"
+    );
+
+    let legacy = Command::new(binary)
+        .args(["okf", "--help"])
+        .output()
+        .expect("legacy okf help should run");
+    assert!(legacy.status.success(), "{}", stderr(&legacy));
+    let legacy_out = stdout(&legacy);
+    assert!(
+        legacy_out.contains("`artesian okf` was renamed to `artesian headwater`"),
+        "{legacy_out}"
+    );
+    assert!(
+        stderr(&legacy).contains("warning: `artesian okf` is deprecated"),
+        "{}",
+        stderr(&legacy)
+    );
+}
+
+#[test]
 fn cli_init_project_writes_config_and_routing_snippets_idempotently() {
     let tempdir = TempDir::new("cli-init-project-routing");
     let isolated = IsolatedRegistrationEnv::new(&tempdir, "init-project");

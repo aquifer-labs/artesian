@@ -63,6 +63,58 @@ agent = "claude-code"
 }
 
 #[test]
+fn memory_root_accepts_headwater_and_legacy_okf_keys() {
+    let headwater_toml = r#"
+mode = "memory"
+
+[memory]
+backend = "files"
+headwater_root = ".artesian/headwater"
+collection = "artesian-memory"
+
+[[agents]]
+role = "master"
+agent = "claude-code"
+"#;
+    let config =
+        ArtesianConfig::from_toml(headwater_toml).expect("headwater_root config should decode");
+    assert_eq!(config.memory.root, ".artesian/headwater");
+
+    let legacy_toml = r#"
+mode = "memory"
+
+[memory]
+backend = "files"
+okf_root = ".artesian/legacy"
+collection = "artesian-memory"
+
+[[agents]]
+role = "master"
+agent = "claude-code"
+"#;
+    let config =
+        ArtesianConfig::from_toml(legacy_toml).expect("legacy okf_root config should decode");
+    assert_eq!(config.memory.root, ".artesian/legacy");
+
+    let both_toml = r#"
+mode = "memory"
+
+[memory]
+backend = "files"
+root = ".artesian/current"
+okf_root = ".artesian/legacy"
+collection = "artesian-memory"
+
+[[agents]]
+role = "master"
+agent = "claude-code"
+"#;
+    let config =
+        ArtesianConfig::from_toml(both_toml).expect("root and legacy config should decode");
+    assert_eq!(config.memory.root, ".artesian/current");
+}
+
+#[test]
 fn semantic_cache_config_round_trips() {
     let mut config = ArtesianConfig::memory_files(".artesian", Vec::new());
     config.memory.semantic_cache.enabled = true;

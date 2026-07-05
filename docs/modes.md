@@ -27,7 +27,7 @@ don't want it. See [task-tracking.md](task-tracking.md).
 ## `advanced` (bring-your-own)
 
 For power users who already have a memory layout. Point Artesian at an **existing** markdown tree
-(including any **OKF** bundle) or vector collection and it adapts and overlays without owning or
+(including any **headwater** bundle) or vector collection and it adapts and overlays without owning or
 rewriting your schema: it reads your structure, serves retrieval over it, and adds Artesian
 capabilities on top. You keep full control of your data model; Artesian meets it where it is.
 

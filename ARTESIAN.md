@@ -63,7 +63,7 @@ with Notes by the Translator", Note G.*
   agent workflow is unchanged.
 - **Pluggable at every seam.** Agent adapters, memory backends, vector stores, verifiers — all
   are traits, not hard-coded choices.
-- **Files-first bootstrap, vector-ready architecture.** OKF markdown is the source of truth;
+- **Files-first bootstrap, vector-ready architecture.** headwater markdown is the source of truth;
   vector indexes are rebuildable from it.
 - **Deterministic drill-down via `node_id`.** Any record reachable by a stable, portable id.
 - **No private infrastructure assumptions.** Runs fully local; no cloud dependency.

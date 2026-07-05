@@ -8,13 +8,13 @@ flowchart LR
   subgraph LTM["Long-term memory — Aquifer"]
     direction TB
     V[(Vector store: tiered records)]:::ltm
-    F[(Files: OKF md)]:::ltm
+    F[(Files: headwater md)]:::ltm
   end
 
   Agent -->|recent turns| W
   Agent -->|current task + next step| A
   Agent -->|store durable learnings| V
-  Agent -->|write OKF records| F
+  Agent -->|write headwater records| F
   W -->|optional summary| V
   V -->|find: top-k relevant slice| Agent
   F -->|keyword recall| Agent

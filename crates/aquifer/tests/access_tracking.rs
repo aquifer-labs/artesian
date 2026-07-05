@@ -81,7 +81,7 @@ async fn find_on_empty_backend_returns_empty_not_error() {
 async fn backward_compat_record_loads_with_zero_access() {
     let dir = TempDir::new("access-tracking-compat");
 
-    // Write an OKF (YAML `---`) memory file without access_count / last_access fields
+    // Write an headwater (YAML `---`) memory file without access_count / last_access fields
     // to simulate a record written by an older version of artesian.
     let old_format = "---\ntype: memory\nid: compat-old-1\nnode_id: node:compat-old-1\ntier: l1-atom\ntimestamp: \"2026-01-01T00:00:00Z\"\ntags: []\n---\n\nOld format memory content for backward-compat test.\n";
     std::fs::create_dir_all(dir.path().join("memory")).expect("create memory dir");

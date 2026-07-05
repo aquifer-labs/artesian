@@ -109,7 +109,7 @@ async fn files_backend_find_orders_by_decay() {
         .await
         .expect("store fresh");
 
-    // Manually rewrite their OKF files to inject last_access / access_count signals.
+    // Manually rewrite their headwater files to inject last_access / access_count signals.
     let mem_dir = dir.path().join("memory");
     let mut found_stale = false;
     let mut found_fresh = false;
@@ -458,7 +458,7 @@ fn backward_compat_record_loads_as_active() {
     assert_eq!(record.useful_count, 0);
 }
 
-/// Round-trip: render an Archived record to OKF and parse it back; state is preserved.
+/// Round-trip: render an Archived record to headwater and parse it back; state is preserved.
 #[test]
 fn archived_state_survives_render_parse_roundtrip() {
     let mut record = MemoryRecord::new(

@@ -54,7 +54,7 @@ bounded, schema-governed **Committed Context State / CCS**). A **qualify-gate** 
 only information that passes the gate — verified, relevant, non-redundant — enters the CCS.
 
 Artesian is a ground-up implementation of this model, layered as a **control plane over any
-retrieval store** (Aquifer/OKF, sqlite-vec, Qdrant, mem0, Anthropic, or any `MemoryBackend`
+retrieval store** (Aquifer/headwater, sqlite-vec, Qdrant, mem0, Anthropic, or any `MemoryBackend`
 adapter):
 
 ```
@@ -92,13 +92,13 @@ need it and are better served by the bounded CCS approach.
 | State model | stateless query → ranked list | **bounded CCS** — authoritative committed state |
 | Write path | append-only, all equal | qualify-gate: only verified, non-redundant, non-drifted entries enter CCS |
 | Drift control | none | judge-eval of drift / hallucination / footprint per cycle |
-| Recall cost | ~6–10 k tokens/query (mem0 benchmark) | **~1 k tokens/query** (chunked OKF + small-to-big + adaptive budget) |
+| Recall cost | ~6–10 k tokens/query (mem0 benchmark) | **~1 k tokens/query** (chunked headwater files + small-to-big + adaptive budget) |
 | Composes with | your retrieval store | **any retrieval store** (including mem0, Anthropic memory, existing Qdrant) |
 
 ## What Artesian is — and is not
 
 Artesian is, first, **durable, semantic memory your agents own**: the decisions, facts, and context
-they accumulate across sessions, kept in portable Open Knowledge Format markdown you can read,
+they accumulate across sessions, kept in portable headwater markdown you can read,
 commit, and carry anywhere. That is the flagship — use *only* memory and nothing else about how
 you run your agent changes. Optionally, the same store is also an orchestration and agent-team
 layer (composable components you opt into, never required).
@@ -122,11 +122,11 @@ Against TencentDB Agent Memory specifically, the key differences:
 | Scope | Memory only (capture → extract → recall) | Memory **+ ACC control plane + task tracking + master/worker/judge orchestration + sandbox** |
 | Integration | OpenClaw plugin / Hermes provider (framework-coupled) | **MCP-first, agent-agnostic** (Claude Code, Codex, Zed, opencode, …) + pluggable `Agent` adapters |
 | Runtime | Node ≥22.16 + TypeScript | **Rust** — single static binary, no runtime |
-| Vector store | SQLite + sqlite-vec (local-first; remote on roadmap) | **Pluggable `VectorStore`**: Files(OKF) / sqlite-vec / Qdrant (+ TencentDB-style adapter possible) |
-| On-disk format | bespoke markdown/JSONL layout | **Open Knowledge Format (OKF)** — vendor-neutral, portable, interop with the OKF ecosystem |
+| Vector store | SQLite + sqlite-vec (local-first; remote on roadmap) | **Pluggable `VectorStore`**: Files/headwater / sqlite-vec / Qdrant (+ TencentDB-style adapter possible) |
+| On-disk format | bespoke markdown/JSONL layout | **headwater files** — vendor-neutral, portable markdown, aligned where useful with Google's [Open Knowledge Format (OKF)](https://github.com/GoogleCloudPlatform/knowledge-catalog) |
 | Concurrency | single-user, local-first | **multi-project + multi-user + parallel** (collection-per-project + payload tenancy) — see [concurrency.md](concurrency.md) |
 | Cross-tool memory | within its host framework | **neutral shared store both Claude Code and Codex read** (their native memories are siloed) |
-| Upgrades | — | **upgrade-survivable**: OKF = source of truth, Qdrant = rebuildable index, `migrate` + version metadata ([upgrades.md](upgrades.md)) |
+| Upgrades | — | **upgrade-survivable**: headwater files = source of truth, Qdrant = rebuildable index, `migrate` + version metadata ([upgrades.md](upgrades.md)) |
 | Orchestration safety | n/a (not an orchestrator) | **verifiers-as-trust-boundary, judge-sole-committer, task DAG, worker workspace isolation** |
 
 What Artesian reuses from TencentDB (with credit): the L0–L3 tiering, hybrid+RRF retrieval, the
@@ -149,7 +149,7 @@ These solve the same core problem — durable memory for agents — and are the 
   strong published LoCoMo / LongMemEval results and a large token saving vs. full-context
   (see arXiv:2504.19413 for the exact figures), broad vector-DB and LLM support, and a hosted
   cloud. **Artesian's wedge:** writes are **free and local** (no per-write LLM call), memory
-  is **white-box OKF markdown you own** (not an opaque or rented store), it runs **zero-infra**,
+  is **white-box headwater markdown you own** (not an opaque or rented store), it runs **zero-infra**,
   and it is **MCP-first / integrate-anything**. Additionally: Artesian composes *with* mem0 as a
   retrieval backend under the ACC control plane — they are not mutually exclusive. We aim to match
   mem0's retrieval quality (opt-in LLM consolidation, entity/temporal signals are on the roadmap)

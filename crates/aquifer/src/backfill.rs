@@ -140,7 +140,7 @@ fn collect_memory_paths_into(directory: &Path, paths: &mut Vec<PathBuf>) -> Memo
             }
         } else if path.extension().is_some_and(|extension| {
             extension.eq_ignore_ascii_case("md") || extension.eq_ignore_ascii_case("json")
-        }) && !is_reserved_okf_file(&path)
+        }) && !is_reserved_headwater_file(&path)
         {
             paths.push(path);
         }
@@ -205,7 +205,7 @@ fn parse_markdown_memory(text: &str, path: &Path) -> MemoryResult<Vec<StoreMemor
     if let Ok(record) = parse_record(text) {
         let mut metadata = record.metadata;
         metadata
-            .entry("okf_type".to_string())
+            .entry("headwater_type".to_string())
             .or_insert_with(|| "memory".to_string());
         let memory = StoreMemory {
             content: record.content,
@@ -232,7 +232,7 @@ fn parse_markdown_memory(text: &str, path: &Path) -> MemoryResult<Vec<StoreMemor
     let (created_at, content) = parse_date_tagged_body(trimmed);
     let mut metadata = BTreeMap::new();
     metadata.insert("source_path".to_string(), path.display().to_string());
-    metadata.insert("okf_type".to_string(), "memory".to_string());
+    metadata.insert("headwater_type".to_string(), "memory".to_string());
     let memory = StoreMemory {
         content,
         tags: Vec::new(),
@@ -374,7 +374,7 @@ fn parse_date_tagged_body(text: &str) -> (Option<DateTime<Utc>>, String) {
     (created_at, content.to_string())
 }
 
-fn is_reserved_okf_file(path: &Path) -> bool {
+fn is_reserved_headwater_file(path: &Path) -> bool {
     path.file_name()
         .and_then(|name| name.to_str())
         .is_some_and(|name| matches!(name, "index.md" | "log.md"))

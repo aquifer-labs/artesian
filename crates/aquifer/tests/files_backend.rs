@@ -8,7 +8,7 @@ use artesian_test_support::TempDir;
 use tokio::fs;
 
 #[tokio::test]
-async fn files_backend_stores_okf_markdown_and_finds_it() {
+async fn files_backend_stores_headwater_markdown_and_finds_it() {
     let tempdir = TempDir::new("files-store");
     let backend = FilesBackend::new(tempdir.path());
 
@@ -94,29 +94,29 @@ async fn files_backend_drills_down_by_node_id() {
 }
 
 #[tokio::test]
-async fn files_backend_reads_okf_bundle_fixture() {
+async fn files_backend_reads_headwater_bundle_fixture() {
     let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
         .join("..")
         .join("examples")
-        .join("okf-bundle");
+        .join("headwater-bundle");
     let backend = FilesBackend::new(fixture);
 
     let hits = backend
         .find(MemoryQuery::new("reciprocal rank fusion").with_limit(5))
         .await
-        .expect("OKF bundle should be searchable");
+        .expect("headwater bundle should be searchable");
     let record = backend
         .get_node("node:rrf")
         .await
-        .expect("OKF node drill-down should succeed");
+        .expect("headwater node drill-down should succeed");
 
     assert!(
         hits.iter().any(|hit| hit.record.node_id == "node:rrf"),
-        "RRF OKF record should be found, got {hits:?}"
+        "RRF headwater record should be found, got {hits:?}"
     );
     assert_eq!(
-        record.expect("node:rrf should exist").metadata["okf_type"],
+        record.expect("node:rrf should exist").metadata["headwater_type"],
         "reference"
     );
 }
