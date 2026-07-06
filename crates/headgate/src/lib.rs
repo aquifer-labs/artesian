@@ -59,7 +59,9 @@ pub use bundle::{
 pub use ccs::{CcsSchema, CommittedContextState, CommittedEntry};
 pub use compressor::{Compressor, ExtractiveCompressor, NoopCompressor};
 pub use controller::{Headgate, HeadgateConfig};
-pub use gate::{DefaultQualifyGate, QualifyAudit, QualifyDecision, QualifyGate, QualifySignal};
+pub use gate::{
+    DefaultQualifyGate, QualifyAudit, QualifyDecision, QualifyGate, QualifySignal, ReasonCode,
+};
 pub use metrics::{count_tokens, GaugeMetrics};
 pub use position::{
     position_swap_debias, PairwiseChoice, PairwiseDecision, PairwiseJudge, PositionSwapAudit,

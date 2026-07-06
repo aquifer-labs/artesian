@@ -1,9 +1,90 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use futures_util::{future::BoxFuture, FutureExt};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{CommittedContextState, JudgeTokenCost, RecallItem};
+
+/// Stable, machine-readable classification of a qualify-gate decision's `reason`. The free-text
+/// `reason` string stays (for humans / logs); `reason_code` is the additive, program-checkable
+/// counterpart (for dashboards, alerting, and cross-runtime tooling that must not regex free
+/// text). `Other` is the escape hatch for anything that does not fit one of the named codes —
+/// producers may extend, consumers must tolerate (see `ocf/SPEC.md` "Permissive consumption").
+///
+/// Serializes as a bare JSON string: the named variants as their snake_case spelling (e.g.
+/// `"below_relevance_threshold"`), `Other(text)` as `text` itself so unknown/legacy values
+/// round-trip losslessly through the same string field.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ReasonCode {
+    /// The candidate was admitted.
+    Qualified,
+    /// Rejected: relevance score below the gate's minimum threshold.
+    BelowRelevanceThreshold,
+    /// Rejected: duplicate/near-duplicate of already-committed content.
+    Redundant,
+    /// Rejected or superseded: a newer version of this entry has replaced it.
+    StaleVersion,
+    /// Rejected: the committed-state budget is saturated (e.g. an eviction).
+    BudgetSaturated,
+    /// Rejected: judge-detected drift/contradiction/hallucination risk.
+    Drift,
+    /// Rejected: the gate itself could not render a decision (unavailable judge, no quorum,
+    /// unparseable verdict, etc.) rather than a property of the candidate.
+    GateRejected,
+    /// Escape hatch: any reason that does not fit a named code above. Carries the original text.
+    Other(String),
+}
+
+impl ReasonCode {
+    /// The wire representation: the snake_case spelling for named variants, or the carried text
+    /// for [`ReasonCode::Other`].
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Qualified => "qualified",
+            Self::BelowRelevanceThreshold => "below_relevance_threshold",
+            Self::Redundant => "redundant",
+            Self::StaleVersion => "stale_version",
+            Self::BudgetSaturated => "budget_saturated",
+            Self::Drift => "drift",
+            Self::GateRejected => "gate_rejected",
+            Self::Other(text) => text.as_str(),
+        }
+    }
+
+    fn from_wire(value: &str) -> Self {
+        match value {
+            "qualified" => Self::Qualified,
+            "below_relevance_threshold" => Self::BelowRelevanceThreshold,
+            "redundant" => Self::Redundant,
+            "stale_version" => Self::StaleVersion,
+            "budget_saturated" => Self::BudgetSaturated,
+            "drift" => Self::Drift,
+            "gate_rejected" => Self::GateRejected,
+            other => Self::Other(other.to_string()),
+        }
+    }
+}
+
+/// Legacy/missing `reason_code` on deserialize (old qualify logs predate this field) resolves to
+/// `Other("")` rather than guessing a named code from free text it was never attached to.
+impl Default for ReasonCode {
+    fn default() -> Self {
+        Self::Other(String::new())
+    }
+}
+
+impl Serialize for ReasonCode {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.as_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for ReasonCode {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = String::deserialize(deserializer)?;
+        Ok(Self::from_wire(&value))
+    }
+}
 
 /// The qualify-gate's verdict on a single recall candidate.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -14,6 +95,10 @@ pub struct QualifyDecision {
     pub score: f32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub audit: Option<QualifyAudit>,
+    /// Machine-readable counterpart to `reason` (see [`ReasonCode`]). `#[serde(default)]` so
+    /// qualify logs written before this field existed keep deserializing.
+    #[serde(default)]
+    pub reason_code: ReasonCode,
 }
 
 /// One deterministic signal that contributed to a qualify-gate decision.
@@ -128,21 +213,33 @@ impl QualifyDecision {
             slot: Some(slot.into()),
             score,
             audit: None,
+            reason_code: ReasonCode::Qualified,
         }
     }
 
+    /// Reject with a free-text `reason`. `reason_code` defaults to `Other(reason)` — callers that
+    /// know the precise classification should chain [`with_reason_code`](Self::with_reason_code).
     pub fn reject(reason: impl Into<String>, score: f32) -> Self {
+        let reason = reason.into();
+        let reason_code = ReasonCode::Other(reason.clone());
         Self {
             admitted: false,
-            reason: reason.into(),
+            reason,
             slot: None,
             score,
             audit: None,
+            reason_code,
         }
     }
 
     pub fn with_audit(mut self, audit: QualifyAudit) -> Self {
         self.audit = Some(audit);
+        self
+    }
+
+    /// Attach a precise, machine-readable classification of `reason`.
+    pub fn with_reason_code(mut self, reason_code: ReasonCode) -> Self {
+        self.reason_code = reason_code;
         self
     }
 }
@@ -220,10 +317,12 @@ impl DefaultQualifyGate {
                 ),
                 item.score,
             )
+            .with_reason_code(ReasonCode::BelowRelevanceThreshold)
             .with_audit(QualifyAudit::from_signals(false, signals));
         }
         if already_committed {
             return QualifyDecision::reject("already committed", item.score)
+                .with_reason_code(ReasonCode::Redundant)
                 .with_audit(QualifyAudit::from_signals(false, signals));
         }
         if overlap >= self.redundancy_threshold {
@@ -234,6 +333,7 @@ impl DefaultQualifyGate {
                 ),
                 item.score,
             )
+            .with_reason_code(ReasonCode::Redundant)
             .with_audit(QualifyAudit::from_signals(false, signals));
         }
         QualifyDecision::admit(self.route_slot(item, ccs), item.score)
@@ -414,6 +514,71 @@ mod tests {
         let decision = gate.decide(&item, &empty_ccs());
         assert!(!decision.admitted);
         assert!(decision.reason.contains("below relevance"));
+        assert_eq!(decision.reason_code, ReasonCode::BelowRelevanceThreshold);
+    }
+
+    // ── ReasonCode ─────────────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn reason_code_serializes_to_expected_snake_case_strings() {
+        let cases = [
+            (ReasonCode::Qualified, "\"qualified\""),
+            (
+                ReasonCode::BelowRelevanceThreshold,
+                "\"below_relevance_threshold\"",
+            ),
+            (ReasonCode::Redundant, "\"redundant\""),
+            (ReasonCode::StaleVersion, "\"stale_version\""),
+            (ReasonCode::BudgetSaturated, "\"budget_saturated\""),
+            (ReasonCode::Drift, "\"drift\""),
+            (ReasonCode::GateRejected, "\"gate_rejected\""),
+        ];
+        for (code, expected) in cases {
+            assert_eq!(
+                serde_json::to_string(&code).expect("reason code should serialize"),
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn reason_code_other_round_trips_arbitrary_text() {
+        let code = ReasonCode::Other("some future runtime's own reason".to_string());
+        let json = serde_json::to_string(&code).expect("serializes");
+        assert_eq!(json, "\"some future runtime's own reason\"");
+        let back: ReasonCode = serde_json::from_str(&json).expect("deserializes");
+        assert_eq!(back, code);
+    }
+
+    #[test]
+    fn reason_code_deserializes_known_strings_to_named_variants() {
+        let code: ReasonCode = serde_json::from_str("\"drift\"").expect("deserializes");
+        assert_eq!(code, ReasonCode::Drift);
+        let code: ReasonCode = serde_json::from_str("\"gate_rejected\"").expect("deserializes");
+        assert_eq!(code, ReasonCode::GateRejected);
+    }
+
+    #[test]
+    fn reason_code_defaults_on_missing_field() {
+        // A qualify decision serialized before `reason_code` existed has no such key; the field
+        // must still deserialize via `#[serde(default)]` rather than failing the whole record.
+        let legacy = serde_json::json!({
+            "admitted": false,
+            "reason": "below relevance threshold (0.100 < 0.500)",
+            "slot": null,
+            "score": 0.1,
+        });
+        let decision: QualifyDecision =
+            serde_json::from_value(legacy).expect("legacy record without reason_code parses");
+        assert_eq!(decision.reason_code, ReasonCode::default());
+        assert_eq!(decision.reason_code, ReasonCode::Other(String::new()));
+    }
+
+    #[test]
+    fn with_reason_code_overrides_the_default_other_classification() {
+        let decision = QualifyDecision::reject("judge: drift 0.90 exceeds 0.40", 0.9)
+            .with_reason_code(ReasonCode::Drift);
+        assert_eq!(decision.reason_code, ReasonCode::Drift);
     }
 
     #[test]

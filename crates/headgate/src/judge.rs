@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     count_tokens, CommittedContextState, JudgeTokenCost, LlmClient, LlmRequest, QualifyAudit,
-    QualifyDecision, QualifyGate, QualifySignal, RecallItem,
+    QualifyDecision, QualifyGate, QualifySignal, ReasonCode, RecallItem,
 };
 
 const JUDGE_SYSTEM: &str = "You are a memory-control judge for an AI agent. You score whether a \
@@ -89,6 +89,7 @@ impl JudgeQualifyGate {
                 format!("judge: low relevance {:.2} ({reason})", verdict.relevance),
                 verdict.relevance,
             )
+            .with_reason_code(ReasonCode::BelowRelevanceThreshold)
             .with_audit(QualifyAudit::from_signals(false, signals));
         }
         if verdict.novelty < self.min_novelty {
@@ -99,6 +100,7 @@ impl JudgeQualifyGate {
                 ),
                 verdict.relevance,
             )
+            .with_reason_code(ReasonCode::Redundant)
             .with_audit(QualifyAudit::from_signals(false, signals));
         }
         if verdict.drift > self.max_drift {
@@ -109,6 +111,7 @@ impl JudgeQualifyGate {
                 ),
                 verdict.relevance,
             )
+            .with_reason_code(ReasonCode::Drift)
             .with_audit(QualifyAudit::from_signals(false, signals));
         }
         let slot = verdict
@@ -166,6 +169,7 @@ impl QualifyGate for JudgeQualifyGate {
                         format!("judge unavailable: {error}"),
                         item.score,
                     )
+                    .with_reason_code(ReasonCode::GateRejected)
                     .with_audit(
                         QualifyAudit::from_signals(false, Vec::new())
                             .with_judge_cost(JudgeTokenCost::new(judge_label, prompt_tokens, 0)),
@@ -186,6 +190,7 @@ impl QualifyGate for JudgeQualifyGate {
                     "judge returned unparseable verdict".to_string(),
                     item.score,
                 )
+                .with_reason_code(ReasonCode::GateRejected)
                 .with_audit(QualifyAudit::from_signals(false, Vec::new()).with_judge_cost(cost)),
             }
         }

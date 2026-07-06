@@ -24,7 +24,7 @@ use crate::{
     count_tokens,
     judge::{parse_verdict_pub, JudgeVerdict},
     CommittedContextState, JudgeTokenCost, LlmClient, LlmRequest, QualifyAudit, QualifyDecision,
-    QualifyGate, QualifySignal, RecallItem,
+    QualifyGate, QualifySignal, ReasonCode, RecallItem,
 };
 
 const PANEL_SYSTEM: &str = "You are a memory-control judge for an AI agent. Score whether a \
@@ -99,6 +99,7 @@ impl CouncilJudge {
                 format!("council: low relevance {:.2} ({reason})", verdict.relevance),
                 verdict.relevance,
             )
+            .with_reason_code(ReasonCode::BelowRelevanceThreshold)
             .with_audit(QualifyAudit::from_signals(false, signals));
         }
         if verdict.novelty < self.min_novelty {
@@ -109,6 +110,7 @@ impl CouncilJudge {
                 ),
                 verdict.relevance,
             )
+            .with_reason_code(ReasonCode::Redundant)
             .with_audit(QualifyAudit::from_signals(false, signals));
         }
         if verdict.drift > self.max_drift {
@@ -119,6 +121,7 @@ impl CouncilJudge {
                 ),
                 verdict.relevance,
             )
+            .with_reason_code(ReasonCode::Drift)
             .with_audit(QualifyAudit::from_signals(false, signals));
         }
         let slot = verdict
@@ -245,6 +248,7 @@ impl QualifyGate for CouncilJudge {
                     ),
                     item.score,
                 )
+                .with_reason_code(ReasonCode::GateRejected)
                 .with_audit(
                     QualifyAudit::from_signals(false, Vec::new()).with_judge_costs(judge_costs),
                 );
@@ -294,6 +298,7 @@ impl QualifyGate for CouncilJudge {
                     "council: no verdict produced".to_string(),
                     item.score,
                 )
+                .with_reason_code(ReasonCode::GateRejected)
                 .with_audit(
                     QualifyAudit::from_signals(false, Vec::new()).with_judge_costs(judge_costs),
                 ),

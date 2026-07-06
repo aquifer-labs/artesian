@@ -24,7 +24,7 @@ use serde::{Deserialize, Serialize};
 use aquifer::{Session, SessionKey};
 
 use crate::ccs::{CcsSchema, CommittedContextState, CommittedEntry};
-use crate::gate::QualifyAudit;
+use crate::gate::{QualifyAudit, ReasonCode};
 use crate::metrics::count_tokens;
 
 /// Stable format identifier written into every manifest.
@@ -573,6 +573,10 @@ pub struct QualifyRecord {
     pub reason: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub audit: Option<QualifyAudit>,
+    /// Machine-readable counterpart to `reason` (see [`ReasonCode`]). `#[serde(default)]` so
+    /// `qualify.jsonl` files written before this field existed keep deserializing.
+    #[serde(default)]
+    pub reason_code: ReasonCode,
 }
 
 impl WorkingContextBundle {
@@ -824,10 +828,20 @@ impl WorkingContextBundle {
                         event.entry_id == entry.id && matches!(event.decision, Decision::Commit)
                     })
                     .and_then(|event| event.audit.clone()),
+                reason_code: ReasonCode::Qualified,
             })
             .collect();
         for event in &self.lifecycle {
             if matches!(event.decision, Decision::Evict | Decision::Deprecate) {
+                // Eviction is budget-driven (see ocf/SPEC.md "Aging, decay & eviction"); a
+                // deprecation marks the entry stale/no-longer-current.
+                let reason_code = match event.decision {
+                    Decision::Evict => ReasonCode::BudgetSaturated,
+                    Decision::Deprecate => ReasonCode::StaleVersion,
+                    Decision::Commit | Decision::Supersede => {
+                        unreachable!("filtered to Evict | Deprecate above")
+                    }
+                };
                 qualify.push(QualifyRecord {
                     ts: event.ts,
                     unit_ref: event.entry_id.clone(),
@@ -836,6 +850,7 @@ impl WorkingContextBundle {
                     score: 0.0,
                     reason: Some(format!("{:?}", event.decision).to_lowercase()),
                     audit: event.audit.clone(),
+                    reason_code,
                 });
             }
         }
@@ -1026,6 +1041,72 @@ mod tests {
         assert_eq!(recorded.signals.len(), 2);
         assert_eq!(recorded.confidence, audit.confidence);
         assert!(recorded.chance_corrected_agreement.is_some());
+    }
+
+    #[test]
+    fn ocf_qualify_reason_codes_cover_commit_evict_and_deprecate() {
+        let bundle = WorkingContextBundle::new(
+            sample_snapshot(),
+            vec![
+                LifecycleEntry::commit("a"),
+                LifecycleEntry {
+                    ts: fixed_ts(),
+                    entry_id: "evicted-entry".to_string(),
+                    decision: Decision::Evict,
+                    status: Status::Deprecated,
+                    supersedes: None,
+                    reason: None,
+                    audit: None,
+                },
+                LifecycleEntry {
+                    ts: fixed_ts(),
+                    entry_id: "deprecated-entry".to_string(),
+                    decision: Decision::Deprecate,
+                    status: Status::Deprecated,
+                    supersedes: None,
+                    reason: None,
+                    audit: None,
+                },
+            ],
+        );
+
+        let qualify = bundle.ocf_qualify();
+        let committed = qualify
+            .iter()
+            .find(|record| record.unit_ref == "a")
+            .expect("committed entry qualify record");
+        assert_eq!(committed.reason_code, ReasonCode::Qualified);
+        assert!(committed.admitted);
+
+        let evicted = qualify
+            .iter()
+            .find(|record| record.unit_ref == "evicted-entry")
+            .expect("evict qualify record");
+        assert_eq!(evicted.reason_code, ReasonCode::BudgetSaturated);
+        assert!(!evicted.admitted);
+
+        let deprecated = qualify
+            .iter()
+            .find(|record| record.unit_ref == "deprecated-entry")
+            .expect("deprecate qualify record");
+        assert_eq!(deprecated.reason_code, ReasonCode::StaleVersion);
+        assert!(!deprecated.admitted);
+    }
+
+    #[test]
+    fn qualify_record_reason_code_defaults_on_missing_field() {
+        // A qualify.jsonl line written before `reason_code` existed has no such key.
+        let legacy = serde_json::json!({
+            "ts": "2026-01-01T00:00:00Z",
+            "unit_ref": "a",
+            "admitted": true,
+            "slot": "decision",
+            "score": 1.0,
+            "reason": "qualified",
+        });
+        let record: QualifyRecord =
+            serde_json::from_value(legacy).expect("legacy qualify record parses");
+        assert_eq!(record.reason_code, ReasonCode::default());
     }
 
     #[test]

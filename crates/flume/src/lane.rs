@@ -20,6 +20,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
+use crate::receipts::BudgetEnvelope;
+
 // ── Budget ─────────────────────────────────────────────────────────────────────────────────────
 
 /// Resource budget for one lane.  Every limit is *opt-in*: `None` means unbounded.
@@ -49,6 +51,21 @@ impl LaneBudget {
 impl Default for LaneBudget {
     fn default() -> Self {
         Self::unlimited()
+    }
+}
+
+/// Map a lane's advisory budget onto an OCF spawn-receipt [`BudgetEnvelope`]: `max_turns` is the
+/// closest existing analogue of a tool/turn budget (one worker invocation per turn), and
+/// `token_cap` maps directly onto `max_tokens`. `max_concurrent_tasks` has no envelope dimension
+/// (it bounds concurrency, not one child's consumption) and is intentionally left out.
+impl From<&LaneBudget> for BudgetEnvelope {
+    fn from(budget: &LaneBudget) -> Self {
+        Self {
+            max_tokens: budget.token_cap,
+            max_tool_calls: budget.max_turns.map(u64::from),
+            max_wall_time_ms: None,
+            max_cost_usd: None,
+        }
     }
 }
 
@@ -468,6 +485,29 @@ mod tests {
             .assign_task("narrow", "t2", "Second task")
             .expect_err("second task should exceed cap");
         assert!(matches!(err, LaneError::BudgetExceeded(_)));
+    }
+
+    // ── (c) budget passthrough from LaneBudget ────────────────────────────────────────────────
+
+    #[test]
+    fn lane_budget_maps_turns_and_token_cap_onto_budget_envelope() {
+        let lane_budget = LaneBudget {
+            max_concurrent_tasks: Some(3),
+            max_turns: Some(12),
+            token_cap: Some(50_000),
+        };
+        let envelope = BudgetEnvelope::from(&lane_budget);
+        assert_eq!(envelope.max_tool_calls, Some(12));
+        assert_eq!(envelope.max_tokens, Some(50_000));
+        assert_eq!(envelope.max_wall_time_ms, None);
+        assert_eq!(envelope.max_cost_usd, None);
+        assert!(!envelope.is_empty());
+    }
+
+    #[test]
+    fn unlimited_lane_budget_maps_to_empty_envelope() {
+        let envelope = BudgetEnvelope::from(&LaneBudget::unlimited());
+        assert!(envelope.is_empty());
     }
 
     #[test]

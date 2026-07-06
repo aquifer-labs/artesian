@@ -6,10 +6,16 @@ pub mod consolidation;
 pub mod lane;
 pub mod loop_core;
 pub mod quota;
+pub mod receipts;
 
 pub use lane::{
     Lane, LaneBudget, LaneContract, LaneCoordinator, LaneError, LaneSummary, PresenceSnapshot,
     TeammatePresence,
+};
+pub use receipts::{
+    check_admission, task_boundary_from_instruction, BudgetEnvelope, Consumed, Distilled,
+    GateDecision, ReceiptWriter, ReceiptsConfig, ReturnReceipt, SpawnReceipt, StopReason,
+    ARTESIAN_RECEIPTS_FAIL_CLOSED_ENV, RECEIPT_TASK_BOUNDARY_CHARS,
 };
 
 use std::{
@@ -19,7 +25,7 @@ use std::{
     path::{Path, PathBuf},
     pin::Pin,
     str::FromStr,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use artesian_core::{
@@ -32,6 +38,8 @@ use artesian_process_agent::{
     ProcessAgentConfig, ProcessSupervisor, ReapReport, WorkerEvent,
 };
 pub use artesian_process_agent::{GcOptions as TeamGcOptions, ReapReport as TeamReapReport};
+use headgate::count_tokens;
+use serde_json::Map;
 
 /// The three canonical Conductor-style knobs for delegating work to a worker.
 ///
@@ -49,7 +57,13 @@ pub use artesian_process_agent::{GcOptions as TeamGcOptions, ReapReport as TeamR
 ///    that carries prior-session state into a fresh process.
 /// 3. **Context visibility** — which tools the worker is permitted to call, and an optional memory
 ///    session slice (user / session / task identifiers) that gates the worker's shared memory view.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+///
+/// A `Delegation` also carries an optional OCF receipt [`BudgetEnvelope`] (`budget`). This is not
+/// one of the three canonical knobs, but the receipts wiring (see `execute_delegation_via_process`)
+/// reads it as the first source of a spawn receipt's declared budget, before falling back to a
+/// `[receipts]` config default. Note: `BudgetEnvelope` carries an `Option<f64>` cost dimension, so
+/// `Delegation` is `PartialEq` but not `Eq` (floats have no total equality).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Delegation {
     /// Knob 1 — agent selection: the resolved agent/model binding.
     pub binding: AgentBinding,
@@ -61,6 +75,11 @@ pub struct Delegation {
     pub allowed_tools: Vec<String>,
     /// Knob 3 (cont.) — optional memory session slice for shared-memory scoping.
     pub session_context: Option<DelegationSessionContext>,
+    /// OCF receipt budget declared for this delegation, when the caller knows one (e.g. derived
+    /// from a [`LaneBudget`] via [`with_lane_budget`](Self::with_lane_budget)). `None` defers to
+    /// the `[receipts]` config default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub budget: Option<BudgetEnvelope>,
 }
 
 /// Memory session scope for a delegation (user / session / task tenancy keys).
@@ -410,6 +429,7 @@ impl Delegation {
             resume_packet: None,
             allowed_tools: Vec::new(),
             session_context: None,
+            budget: None,
         }
     }
 
@@ -428,6 +448,19 @@ impl Delegation {
     /// Override the session context (Knob 3 — memory scoping).
     pub fn with_session_context(mut self, context: DelegationSessionContext) -> Self {
         self.session_context = Some(context);
+        self
+    }
+
+    /// Declare an explicit OCF receipt budget for this delegation.
+    pub fn with_budget(mut self, budget: BudgetEnvelope) -> Self {
+        self.budget = Some(budget);
+        self
+    }
+
+    /// Declare an OCF receipt budget derived from a lane's contract (see
+    /// `impl From<&LaneBudget> for BudgetEnvelope` in `crate::lane`).
+    pub fn with_lane_budget(mut self, lane_budget: &LaneBudget) -> Self {
+        self.budget = Some(BudgetEnvelope::from(lane_budget));
         self
     }
 
@@ -450,6 +483,7 @@ impl Delegation {
             resume_packet: None,
             allowed_tools: definition.allow_tools.clone(),
             session_context: None,
+            budget: None,
         }
     }
 }
@@ -487,6 +521,8 @@ pub enum FlumeError {
     LaneDuplicate(String),
     #[error("lane budget exceeded: {0}")]
     LaneBudget(String),
+    #[error("receipt refused: {0}")]
+    ReceiptRefused(String),
 }
 
 impl From<AgentError> for FlumeError {
@@ -1728,12 +1764,67 @@ async fn execute_delegation_via_process(
         DelegationDispatchStrategy::FreshProcess => None,
         DelegationDispatchStrategy::NativeSubagent(kind) => Some(kind),
     };
+
+    // ── OCF lifecycle receipts (receipts.jsonl) — spawn side ─────────────────────────────────
+    // Mirrors ocf/SPEC.md §5: a spawn record is written *before* the child starts; a child
+    // without one does not run when `receipts.fail_closed` is enabled. Emission itself is
+    // best-effort when fail-closed is off — a receipt-write failure never blocks a legitimate
+    // spawn (see `receipts::check_admission` / `ReceiptsConfig::fail_closed`).
+    let receipts_config = ReceiptsConfig::from_env();
+    let receipt_budget = resolve_receipt_budget(&delegation, binding, &receipts_config);
+    if let Err(reason) = check_admission(&receipt_budget, receipts_config.fail_closed) {
+        return Err(FlumeError::ReceiptRefused(format!(
+            "team '{team_id}' teammate '{teammate_name}': {reason}"
+        )));
+    }
+    let receipt_writer =
+        match ReceiptWriter::open(&config.registry_dir, team_id, receipts_config.fsync) {
+            Ok(writer) => Some(writer),
+            Err(error) if receipts_config.fail_closed => {
+                return Err(FlumeError::ReceiptRefused(format!(
+                    "team '{team_id}' teammate '{teammate_name}': receipts.jsonl unavailable: \
+                     {error}"
+                )));
+            }
+            Err(_) => None,
+        };
+    let mut spawn_receipt = None;
+    if let Some(writer) = &receipt_writer {
+        let receipt = SpawnReceipt {
+            kind: SpawnReceipt::KIND.to_string(),
+            receipt_id: writer.next_receipt_id(),
+            ts: Utc::now(),
+            // Flume today dispatches one level deep (master → worker); there is no nested
+            // spawn-of-a-spawn tracked via receipts yet, so every receipt's parent is `root`.
+            parent: "root".to_string(),
+            role: Some(binding.role.canonical_alias().to_string()),
+            harness: Some(binding.agent.clone()),
+            model: binding.model.clone(),
+            task_boundary: task_boundary_from_instruction(&delegation.instruction),
+            budget: receipt_budget,
+            tool_allowlist: delegation.allowed_tools.clone(),
+            schema_hash: None,
+            extra: Map::new(),
+        };
+        match writer.append_spawn(&receipt) {
+            Ok(()) => spawn_receipt = Some(receipt),
+            Err(error) if receipts_config.fail_closed => {
+                return Err(FlumeError::ReceiptRefused(format!(
+                    "team '{team_id}' teammate '{teammate_name}': failed to write spawn \
+                     receipt: {error}"
+                )));
+            }
+            Err(_) => {}
+        }
+    }
+    let started_at = Instant::now();
+
     let process = ProcessAgent::new(process_agent_config_for_binding(
         &config,
         binding,
         native_kind,
     ));
-    let session = process
+    let session = match process
         .spawn(SpawnRequest {
             role: binding.role,
             agent: binding.agent.clone(),
@@ -1741,7 +1832,22 @@ async fn execute_delegation_via_process(
             working_dir: Some(config.repo_root.display().to_string()),
             resume_packet: delegation.resume_packet.clone(),
         })
-        .await?;
+        .await
+    {
+        Ok(session) => session,
+        Err(error) => {
+            write_return_receipt(
+                receipt_writer.as_ref(),
+                spawn_receipt.as_ref(),
+                classify_stop_reason(&error.to_string()),
+                None,
+                &[],
+                started_at.elapsed(),
+                &config.registry_dir,
+            );
+            return Err(error.into());
+        }
+    };
     let (worker_sender, mut worker_receiver) = mpsc::unbounded_channel();
     let response = process.send_with_event_sender(
         &session,
@@ -1778,11 +1884,137 @@ async fn execute_delegation_via_process(
             event,
         );
     }
+
+    // ── OCF lifecycle receipts (receipts.jsonl) — return side ────────────────────────────────
+    // Exactly one return record per spawn, written whether the dispatch reached done or error;
+    // `distilled` reuses the same bounded response text the master receives, so its token count
+    // and the caller's actual context cost never diverge.
+    let (stop_reason, distilled_source) = match &response {
+        Ok(resp) => (StopReason::Done, Some(resp.content.as_str())),
+        Err(error) => (classify_stop_reason(&error.to_string()), None),
+    };
+    write_return_receipt(
+        receipt_writer.as_ref(),
+        spawn_receipt.as_ref(),
+        stop_reason,
+        distilled_source,
+        &events,
+        started_at.elapsed(),
+        &config.registry_dir,
+    );
+
     let response = response?;
     Ok(TeamExecution {
         response: redact_secrets(&response.content),
         events,
     })
+}
+
+/// Resolve the effective OCF receipt budget: an explicit `Delegation::budget` first (which may
+/// itself have been derived from a [`LaneBudget`] via [`Delegation::with_lane_budget`]), else the
+/// `[receipts]` config default. Either way, the binding's own wall-time timeout enriches
+/// `max_wall_time_ms` when neither source already declares one — that timeout is a real,
+/// already-enforced constraint (see `process_agent_config_for_binding`'s `.with_timeout(...)`),
+/// never a fabricated one.
+fn resolve_receipt_budget(
+    delegation: &Delegation,
+    binding: &AgentBinding,
+    receipts_config: &ReceiptsConfig,
+) -> BudgetEnvelope {
+    let mut budget = delegation
+        .budget
+        .clone()
+        .or_else(|| receipts_config.default_budget.clone())
+        .unwrap_or_default();
+    if budget.max_wall_time_ms.is_none() {
+        budget.max_wall_time_ms = binding
+            .timeout_seconds
+            .map(|seconds| seconds.saturating_mul(1000));
+    }
+    budget
+}
+
+/// Classify a stringified dispatch error into a [`StopReason`]. `"timed out"` is the exact
+/// wording `artesian_process_agent::run_process` uses when the worker exceeds its wall-time
+/// budget, so it maps to `budget_time`; every other dispatch failure maps to the generic `error`.
+/// Flume's current process-dispatch path does not yet surface token/tool-call/cost accounting or
+/// a distinct kill/cancel signal, so `budget_tokens`, `budget_tool_calls`, `budget_cost`,
+/// `gate_rejected`, and `killed` are not produced here (never fabricated) even though the
+/// [`StopReason`] enum models them for the schema's full range.
+fn classify_stop_reason(error_message: &str) -> StopReason {
+    if error_message.contains("timed out") {
+        StopReason::BudgetTime
+    } else {
+        StopReason::Error
+    }
+}
+
+/// Write exactly one return receipt for a dispatch that had a spawn receipt, and (best-effort) a
+/// companion trace file addressed by `trace_ref` from the raw worker-event stream already
+/// collected for this dispatch. A no-op when there is no writer/spawn receipt (emission was
+/// skipped or refused upstream) — never blocks or fails the caller's dispatch.
+#[allow(clippy::too_many_arguments)]
+fn write_return_receipt(
+    receipt_writer: Option<&ReceiptWriter>,
+    spawn_receipt: Option<&SpawnReceipt>,
+    stop_reason: StopReason,
+    distilled_source: Option<&str>,
+    events: &[TeamWorkerEvent],
+    elapsed: Duration,
+    registry_dir: &Path,
+) {
+    let (Some(writer), Some(spawn_receipt)) = (receipt_writer, spawn_receipt) else {
+        return;
+    };
+    let receipt_id = writer.next_receipt_id();
+    let trace_ref = write_trace_file(registry_dir, &receipt_id, events);
+    let distilled = distilled_source.map(|text| Distilled {
+        tokens: Some(count_tokens(text) as u64),
+        // No separate addressable store for just the distilled text exists today (only the full
+        // trace file above) — left unset rather than pointed at something it does not literally
+        // address (never fabricate).
+        reference: None,
+    });
+    let receipt = ReturnReceipt {
+        kind: ReturnReceipt::KIND.to_string(),
+        receipt_id,
+        ts: Utc::now(),
+        spawn_ref: spawn_receipt.receipt_id.clone(),
+        stop_reason,
+        consumed: Consumed {
+            // Flume/process-agent do not surface real token, tool-call, or cost accounting today
+            // (see `WorkerEvent` in artesian-process-agent) — omitted rather than fabricated.
+            tokens: None,
+            tool_calls: None,
+            wall_time_ms: Some(loop_core::duration_millis(elapsed)),
+            cost_usd: None,
+        },
+        distilled,
+        trace_ref,
+        // No distinct distillation-gate step exists in this dispatch path today — omitted
+        // rather than fabricating an always-admitted decision.
+        gate: None,
+        extra: Map::new(),
+    };
+    let _ = writer.append_return(&receipt);
+}
+
+/// Best-effort trace file: the raw (already-redacted) worker-event stream collected for one
+/// dispatch, addressed by the return receipt's `trace_ref`. Never blocks or fails the dispatch —
+/// any I/O or encoding error just means no `trace_ref` is set.
+fn write_trace_file(
+    registry_dir: &Path,
+    receipt_id: &str,
+    events: &[TeamWorkerEvent],
+) -> Option<String> {
+    let path = registry_dir.join(format!("{receipt_id}.trace.jsonl"));
+    let mut contents = String::new();
+    for event in events {
+        contents.push_str(&serde_json::to_string(event).ok()?);
+        contents.push('\n');
+    }
+    fs::write(&path, contents).ok()?;
+    Some(path.display().to_string())
 }
 
 #[derive(Debug, Clone)]
@@ -2472,6 +2704,230 @@ mod tests {
                 })
             })
         }
+    }
+
+    // ── OCF lifecycle receipts (receipts.jsonl) — wiring integration tests ────────────────────
+    //
+    // These exercise the real dispatch path (`execute_delegation_via_process`, reached through
+    // the public `TeamRuntime` API) end to end, complementing the pure/unit tests in
+    // `crate::receipts` (shape, roundtrip, monotonic ids, fail-closed admission) that do not need
+    // a real subprocess.
+
+    // (a) spawn record written before process start, with monotonic ids; (b) exactly one return
+    // per spawn on the success path.
+    #[tokio::test]
+    async fn receipts_are_written_around_successful_dispatch() {
+        let tempdir = TempDir::new("receipts-happy-path");
+        let mut runtime = TeamRuntime::new(runtime_config(
+            tempdir.path(),
+            vec![definition("worker-a", Role::Worker, Some("echo"), None)],
+            vec![binding(
+                Role::Worker,
+                "echo",
+                None,
+                "echo",
+                vec!["worker done".to_string()],
+            )],
+            catalog(vec![entry("echo", true, Vec::new())]),
+        ));
+        runtime.create_team(TeamCreate {
+            id: Some("team".to_string()),
+            name: "Team".to_string(),
+            max_teammates: None,
+            plan_approval_required: false,
+            plan_approval_roles: Vec::new(),
+        });
+        runtime
+            .spawn_teammate(TeamSpawn {
+                team_id: "team".to_string(),
+                definition: "worker-a".to_string(),
+            })
+            .await
+            .expect("worker should spawn");
+
+        runtime
+            .message(TeamMessage {
+                team_id: "team".to_string(),
+                from: "worker-a".to_string(),
+                to: Some("worker-a".to_string()),
+                kind: TeamMessageKind::Ask,
+                content: "do the thing".to_string(),
+                task_id: None,
+                approved: None,
+                execute: true,
+                resume_packet: None,
+            })
+            .await
+            .expect("message should execute");
+
+        let receipts_path = tempdir.join("spawns").join("receipts-team.jsonl");
+        let contents = fs::read_to_string(&receipts_path).expect("receipts file should exist");
+        let lines: Vec<serde_json::Value> = contents
+            .lines()
+            .filter(|line| !line.is_empty())
+            .map(|line| serde_json::from_str(line).expect("receipt line is JSON"))
+            .collect();
+        assert_eq!(lines.len(), 2, "exactly one spawn + one return record");
+        assert_eq!(lines[0]["kind"], "spawn");
+        assert_eq!(lines[0]["receipt_id"], "rc_team_000001");
+        // `definition("worker-a", ...)` (the test helper) gives the role a non-empty
+        // `prompt_addendum`, so `Delegation::from_definition` prepends it before the task
+        // content ("Prompt addendum.\n\ndo the thing") — task_boundary correctly reflects the
+        // *first line of the actual dispatched instruction*, not just the caller's task string.
+        assert_eq!(lines[0]["task_boundary"], "Prompt addendum.");
+        assert_eq!(lines[1]["kind"], "return");
+        assert_eq!(lines[1]["receipt_id"], "rc_team_000002");
+        assert_eq!(lines[1]["spawn_ref"], "rc_team_000001");
+        assert_eq!(lines[1]["stop_reason"], "done");
+        assert!(lines[1]["consumed"]["wall_time_ms"].is_number());
+    }
+
+    // (b) exactly one return per spawn on the error/timeout path too.
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn receipts_write_exactly_one_return_on_timeout_error() {
+        let tempdir = TempDir::new("receipts-timeout");
+        let mut runtime = TeamRuntime::new(runtime_config(
+            tempdir.path(),
+            vec![definition("worker-a", Role::Worker, Some("sh"), None)],
+            vec![binding(
+                Role::Worker,
+                "sh",
+                None,
+                "sh",
+                vec!["-c".to_string(), "sleep 30".to_string()],
+            )],
+            catalog(vec![entry("sh", true, Vec::new())]),
+        ));
+        runtime.create_team(TeamCreate {
+            id: Some("team".to_string()),
+            name: "Team".to_string(),
+            max_teammates: None,
+            plan_approval_required: false,
+            plan_approval_roles: Vec::new(),
+        });
+        runtime
+            .spawn_teammate(TeamSpawn {
+                team_id: "team".to_string(),
+                definition: "worker-a".to_string(),
+            })
+            .await
+            .expect("worker should spawn");
+
+        let error = runtime
+            .message(TeamMessage {
+                team_id: "team".to_string(),
+                from: "worker-a".to_string(),
+                to: Some("worker-a".to_string()),
+                kind: TeamMessageKind::Ask,
+                content: "run slow subprocess".to_string(),
+                task_id: None,
+                approved: None,
+                execute: true,
+                resume_packet: None,
+            })
+            .await
+            .expect_err("message should time out");
+        assert!(error.to_string().contains("timed out"));
+        runtime.cleanup("team").expect("cleanup should run");
+
+        let receipts_path = tempdir.join("spawns").join("receipts-team.jsonl");
+        let contents = fs::read_to_string(&receipts_path).expect("receipts file should exist");
+        let lines: Vec<serde_json::Value> = contents
+            .lines()
+            .filter(|line| !line.is_empty())
+            .map(|line| serde_json::from_str(line).expect("receipt line is JSON"))
+            .collect();
+        assert_eq!(
+            lines.len(),
+            2,
+            "exactly one spawn + one return record on the error path"
+        );
+        assert_eq!(lines[0]["kind"], "spawn");
+        assert_eq!(lines[1]["kind"], "return");
+        assert_eq!(lines[1]["stop_reason"], "budget_time");
+    }
+
+    // (c) budget passthrough from LaneBudget, via `Delegation::with_lane_budget`.
+    #[tokio::test]
+    async fn receipts_carry_budget_passed_through_from_a_lane_budget() {
+        let tempdir = TempDir::new("receipts-lane-budget");
+        let mut runtime = TeamRuntime::new(runtime_config(
+            tempdir.path(),
+            vec![definition("worker-a", Role::Worker, Some("echo"), None)],
+            vec![binding(
+                Role::Worker,
+                "echo",
+                None,
+                "echo",
+                vec!["ok".to_string()],
+            )],
+            catalog(vec![entry("echo", true, Vec::new())]),
+        ));
+        runtime.create_team(TeamCreate {
+            id: Some("team".to_string()),
+            name: "Team".to_string(),
+            max_teammates: None,
+            plan_approval_required: false,
+            plan_approval_roles: Vec::new(),
+        });
+        runtime
+            .spawn_teammate(TeamSpawn {
+                team_id: "team".to_string(),
+                definition: "worker-a".to_string(),
+            })
+            .await
+            .expect("worker should spawn");
+
+        let lane_budget = LaneBudget {
+            max_concurrent_tasks: Some(1),
+            max_turns: Some(7),
+            token_cap: Some(9_000),
+        };
+        let delegation = runtime
+            .delegation_for_teammate("team", "worker-a", "bounded task", None)
+            .expect("delegation should build")
+            .with_lane_budget(&lane_budget);
+
+        runtime
+            .execute_delegation(delegation, "team", "worker-a", None)
+            .await
+            .expect("delegation should execute");
+
+        let receipts_path = tempdir.join("spawns").join("receipts-team.jsonl");
+        let contents = fs::read_to_string(&receipts_path).expect("receipts file should exist");
+        let first_line = contents.lines().next().expect("at least one receipt line");
+        let spawn: serde_json::Value =
+            serde_json::from_str(first_line).expect("spawn line is JSON");
+        assert_eq!(spawn["budget"]["max_tool_calls"], 7);
+        assert_eq!(spawn["budget"]["max_tokens"], 9000);
+    }
+
+    // Dispatches that are not part of a team (empty `team_id`, e.g. an outer orchestrator loop)
+    // fall back to the `adhoc` run label rather than panicking or silently dropping receipts.
+    #[tokio::test]
+    async fn receipts_use_adhoc_run_label_when_team_id_is_empty() {
+        let tempdir = TempDir::new("receipts-adhoc-dispatch");
+        let config = runtime_config(
+            tempdir.path(),
+            Vec::new(),
+            vec![binding(
+                Role::Worker,
+                "echo",
+                None,
+                "echo",
+                vec!["ok".to_string()],
+            )],
+            catalog(vec![entry("echo", true, Vec::new())]),
+        );
+        let delegation = Delegation::new(config.bindings[0].clone(), "adhoc task");
+
+        TeamRuntime::execute_delegation_with_config(config, delegation, "", "", None)
+            .await
+            .expect("adhoc delegation should execute");
+
+        let receipts_path = tempdir.join("spawns").join("receipts-adhoc.jsonl");
+        assert!(receipts_path.exists());
     }
 
     fn runtime_config(
