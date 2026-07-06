@@ -39,6 +39,17 @@ pub struct MemoryConfig {
     pub qdrant_url: Option<String>,
     #[serde(default)]
     pub qdrant_rest_url: Option<String>,
+    /// Optional secondary gRPC endpoint tried once, after one same-endpoint retry, if
+    /// `qdrant_url` fails with a transient connect/DNS error. Point this at the stable LAN IP
+    /// of the same server when `qdrant_url` is an mDNS host (e.g. `http://foo.local:6334`):
+    /// mDNS resolution occasionally flaps, and a fixed IP fallback avoids surfacing that as a
+    /// hard backend error. Leave unset to disable the fallback attempt.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub qdrant_fallback_url: Option<String>,
+    /// REST sibling of `qdrant_fallback_url`, mirroring `qdrant_rest_url`. Derived the same way
+    /// when left unset (`:6333` <-> `:6334`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub qdrant_fallback_rest_url: Option<String>,
     #[serde(default)]
     pub qdrant_api_key_env: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -96,6 +107,10 @@ struct MemoryConfigWire {
     #[serde(default)]
     pub qdrant_rest_url: Option<String>,
     #[serde(default)]
+    pub qdrant_fallback_url: Option<String>,
+    #[serde(default)]
+    pub qdrant_fallback_rest_url: Option<String>,
+    #[serde(default)]
     pub qdrant_api_key_env: Option<String>,
     #[serde(default)]
     pub qdrant_api_key_file: Option<String>,
@@ -142,6 +157,8 @@ impl<'de> Deserialize<'de> for MemoryConfig {
             project: wire.project,
             qdrant_url: wire.qdrant_url,
             qdrant_rest_url: wire.qdrant_rest_url,
+            qdrant_fallback_url: wire.qdrant_fallback_url,
+            qdrant_fallback_rest_url: wire.qdrant_fallback_rest_url,
             qdrant_api_key_env: wire.qdrant_api_key_env,
             qdrant_api_key_file: wire.qdrant_api_key_file,
             local_rerank_enabled: wire.local_rerank_enabled,
@@ -489,6 +506,8 @@ impl ArtesianConfig {
                 project: None,
                 qdrant_url: None,
                 qdrant_rest_url: None,
+                qdrant_fallback_url: None,
+                qdrant_fallback_rest_url: None,
                 qdrant_api_key_env: None,
                 qdrant_api_key_file: None,
                 local_rerank_enabled: default_local_rerank_enabled(),

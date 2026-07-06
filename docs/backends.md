@@ -134,6 +134,15 @@ Do not hardcode Qdrant hosts in code. On default ports, Artesian accepts one `QD
 Use `QDRANT_REST_URL` / `qdrant_rest_url` only when the REST API is not the default sibling of the
 configured gRPC endpoint. CLI setup/import preflights both endpoints before writing memory.
 
+mDNS hosts (e.g. `http://foo.local:6334`) occasionally fail to resolve for a single call — the
+lookup flaps and an immediate retry succeeds. Every gRPC call to Qdrant already retries once after
+a short backoff when the failure looks transient (DNS/connect/timeout/transport errors; a real
+error such as "collection not found" is never retried). If it still fails, set
+`qdrant_fallback_url` (and, if the REST port is not the default sibling, `qdrant_fallback_rest_url`)
+to the same server's stable LAN IP — e.g. `qdrant_fallback_url = "http://192.168.1.50:6334"`. The
+fallback client is built lazily and only tried once, after the same-endpoint retry has already
+failed. Both keys are optional and additive; existing configs without them keep working unchanged.
+
 ## PgVectorBackend
 
 `PgVectorStore` (feature `pgvector`) adapts PostgreSQL + pgvector to the `VectorStore` trait, so a

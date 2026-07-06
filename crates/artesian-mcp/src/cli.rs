@@ -143,6 +143,8 @@ fn load_runtime_config(args: &Args) -> anyhow::Result<(ArtesianConfig, flume::Ro
                     .qdrant_rest_url
                     .clone()
                     .or_else(|| env::var("QDRANT_REST_URL").ok()),
+                qdrant_fallback_url: env::var("QDRANT_FALLBACK_URL").ok(),
+                qdrant_fallback_rest_url: env::var("QDRANT_FALLBACK_REST_URL").ok(),
                 qdrant_api_key_env: Some(args.qdrant_api_key_env.clone()),
                 qdrant_api_key_file: args.qdrant_api_key_file.clone(),
                 local_rerank_enabled: true,

@@ -164,3 +164,42 @@ agent = "claude-code"
     assert!(encoded.contains("rerank_candidates = 64"));
     assert_eq!(decoded.memory.effective_rerank_candidates(), 64);
 }
+
+/// A minimal `artesian.toml` written before `qdrant_fallback_url`/`qdrant_fallback_rest_url`
+/// existed must keep parsing unchanged: both new keys are additive and default to `None`.
+#[test]
+fn qdrant_config_without_fallback_keys_parses_with_defaults() {
+    let toml = r#"
+mode = "memory"
+
+[memory]
+backend = "qdrant"
+root = ".artesian"
+collection = "artesian-memory"
+qdrant_url = "http://alfheim-home.local:6334"
+
+[[agents]]
+role = "master"
+agent = "claude-code"
+"#;
+    let config =
+        ArtesianConfig::from_toml(toml).expect("pre-fallback-keys config should still decode");
+
+    assert_eq!(
+        config.memory.qdrant_url.as_deref(),
+        Some("http://alfheim-home.local:6334")
+    );
+    assert_eq!(config.memory.qdrant_fallback_url, None);
+    assert_eq!(config.memory.qdrant_fallback_rest_url, None);
+
+    // And the fallback keys round-trip once set.
+    let mut with_fallback = config;
+    with_fallback.memory.qdrant_fallback_url = Some("http://192.168.1.50:6334".to_string());
+    let encoded = with_fallback.to_toml().expect("encode");
+    let decoded = ArtesianConfig::from_toml(&encoded).expect("decode");
+    assert_eq!(decoded, with_fallback);
+    assert_eq!(
+        decoded.memory.qdrant_fallback_url.as_deref(),
+        Some("http://192.168.1.50:6334")
+    );
+}

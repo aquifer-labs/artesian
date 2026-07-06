@@ -2549,6 +2549,8 @@ async fn init(options: InitOptions, _non_interactive: bool) -> Result<()> {
             project: Some(options.project.clone()),
             qdrant_url: options.qdrant_url,
             qdrant_rest_url: options.qdrant_rest_url,
+            qdrant_fallback_url: env::var("QDRANT_FALLBACK_URL").ok(),
+            qdrant_fallback_rest_url: env::var("QDRANT_FALLBACK_REST_URL").ok(),
             qdrant_api_key_env: Some(options.qdrant_api_key_env),
             qdrant_api_key_file: options.qdrant_api_key_file,
             local_rerank_enabled: true,
@@ -5327,6 +5329,14 @@ fn qdrant_config(memory: &MemoryConfig) -> Result<aquifer::QdrantVectorStoreConf
         .qdrant_rest_url
         .clone()
         .or_else(|| env::var("QDRANT_REST_URL").ok());
+    config.fallback_url = memory
+        .qdrant_fallback_url
+        .clone()
+        .or_else(|| env::var("QDRANT_FALLBACK_URL").ok());
+    config.fallback_rest_url = memory
+        .qdrant_fallback_rest_url
+        .clone()
+        .or_else(|| env::var("QDRANT_FALLBACK_REST_URL").ok());
     config.api_key = memory.resolve_qdrant_api_key();
     Ok(config)
 }
@@ -5354,6 +5364,8 @@ async fn preflight_qdrant_options(options: &InitOptions) -> Result<()> {
         project: Some(options.project.clone()),
         qdrant_url: options.qdrant_url.clone(),
         qdrant_rest_url: options.qdrant_rest_url.clone(),
+        qdrant_fallback_url: env::var("QDRANT_FALLBACK_URL").ok(),
+        qdrant_fallback_rest_url: env::var("QDRANT_FALLBACK_REST_URL").ok(),
         qdrant_api_key_env: Some(options.qdrant_api_key_env.clone()),
         qdrant_api_key_file: options.qdrant_api_key_file.clone(),
         local_rerank_enabled: true,
@@ -5401,6 +5413,8 @@ fn memory_config_for_command(
             project: None,
             qdrant_url: env::var("QDRANT_URL").ok(),
             qdrant_rest_url: env::var("QDRANT_REST_URL").ok(),
+            qdrant_fallback_url: env::var("QDRANT_FALLBACK_URL").ok(),
+            qdrant_fallback_rest_url: env::var("QDRANT_FALLBACK_REST_URL").ok(),
             qdrant_api_key_env: Some("QDRANT_API_KEY".to_string()),
             qdrant_api_key_file: None,
             local_rerank_enabled: true,
@@ -6042,6 +6056,8 @@ mod tests {
             project: None,
             qdrant_url: Some("http://127.0.0.1:6334".to_string()),
             qdrant_rest_url: None,
+            qdrant_fallback_url: None,
+            qdrant_fallback_rest_url: None,
             qdrant_api_key_env: Some("QDRANT__SERVICE__API_KEY".to_string()),
             qdrant_api_key_file: Some("~/.macray/qdrant.env".to_string()),
             local_rerank_enabled: true,

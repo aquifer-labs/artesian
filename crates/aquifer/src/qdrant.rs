@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
-use std::collections::{BTreeSet, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::path::Path;
-use std::{collections::HashMap, time::Duration};
+use std::sync::{Once, OnceLock};
+use std::time::Duration;
 
 use futures_util::{future::BoxFuture, FutureExt};
 use qdrant_client::{
@@ -43,6 +44,14 @@ pub struct QdrantVectorStoreConfig {
     pub url: String,
     pub rest_url: Option<String>,
     pub api_key: Option<String>,
+    /// Optional secondary gRPC endpoint tried once if `url` fails transiently (connect/DNS
+    /// errors). Intended for mDNS hosts (e.g. `http://foo.local:6334`) that occasionally fail to
+    /// resolve — set this to the same server's stable LAN IP so a flapping mDNS lookup does not
+    /// surface as a hard backend error. `None` disables the fallback attempt entirely.
+    pub fallback_url: Option<String>,
+    /// REST sibling of `fallback_url`, mirroring `rest_url`. Derived from `fallback_url` the same
+    /// way `rest_url` is derived from `url` when left unset.
+    pub fallback_rest_url: Option<String>,
 }
 
 impl QdrantVectorStoreConfig {
@@ -51,20 +60,38 @@ impl QdrantVectorStoreConfig {
             url: url.into(),
             rest_url: None,
             api_key: None,
+            fallback_url: None,
+            fallback_rest_url: None,
         }
     }
 
     pub fn normalized(&self) -> MemoryResult<Self> {
         let endpoints = QdrantEndpoints::from_urls(&self.url, self.rest_url.as_deref())?;
+        let fallback_endpoints = self.fallback_endpoints()?;
         Ok(Self {
             url: endpoints.grpc_url,
             rest_url: Some(endpoints.rest_url),
             api_key: self.api_key.clone(),
+            fallback_url: fallback_endpoints
+                .as_ref()
+                .map(|endpoints| endpoints.grpc_url.clone()),
+            fallback_rest_url: fallback_endpoints.map(|endpoints| endpoints.rest_url),
         })
     }
 
     pub fn endpoints(&self) -> MemoryResult<QdrantEndpoints> {
         QdrantEndpoints::from_urls(&self.url, self.rest_url.as_deref())
+    }
+
+    /// Resolve `fallback_url`/`fallback_rest_url` into a normalized endpoint pair, or `Ok(None)`
+    /// when no fallback is configured.
+    pub fn fallback_endpoints(&self) -> MemoryResult<Option<QdrantEndpoints>> {
+        match &self.fallback_url {
+            Some(url) => {
+                QdrantEndpoints::from_urls(url, self.fallback_rest_url.as_deref()).map(Some)
+            }
+            None => Ok(None),
+        }
     }
 }
 
@@ -108,19 +135,20 @@ impl QdrantEndpoints {
 pub struct QdrantVectorStore {
     config: QdrantVectorStoreConfig,
     client: Qdrant,
+    /// Lazily built the first time a retried call needs it, so a configured-but-never-needed
+    /// fallback never opens a connection, and an unconfigured fallback costs nothing.
+    fallback_client: OnceLock<Option<Qdrant>>,
 }
 
 impl QdrantVectorStore {
     pub fn connect(config: QdrantVectorStoreConfig) -> MemoryResult<Self> {
         let config = config.normalized()?;
-        let mut builder = Qdrant::from_url(&config.url);
-        if let Some(api_key) = &config.api_key {
-            builder = builder.api_key(api_key.clone());
-        }
-        let client = builder
-            .build()
-            .map_err(|error| MemoryError::Backend(error.to_string()))?;
-        Ok(Self { config, client })
+        let client = build_qdrant_client(&config.url, config.api_key.as_deref())?;
+        Ok(Self {
+            config,
+            client,
+            fallback_client: OnceLock::new(),
+        })
     }
 
     pub fn config(&self) -> &QdrantVectorStoreConfig {
@@ -129,6 +157,17 @@ impl QdrantVectorStore {
 
     pub fn client(&self) -> &Qdrant {
         &self.client
+    }
+
+    /// The lazily-initialized fallback client, or `None` when no `fallback_url` is configured (or
+    /// the fallback endpoint itself fails to build — best-effort, never blocks the primary path).
+    fn fallback_client(&self) -> Option<&Qdrant> {
+        self.fallback_client
+            .get_or_init(|| {
+                let url = self.config.fallback_url.as_deref()?;
+                build_qdrant_client(url, self.config.api_key.as_deref()).ok()
+            })
+            .as_ref()
     }
 
     pub fn memory_backend(
@@ -166,10 +205,17 @@ impl QdrantVectorStore {
                 ))
             })
             .collect::<MemoryResult<Vec<_>>>()?;
-        self.client
-            .upsert_points(UpsertPointsBuilder::new(collection, qdrant_points).wait(wait))
-            .await
-            .map_err(qdrant_error)?;
+        let builder = UpsertPointsBuilder::new(collection, qdrant_points).wait(wait);
+        retry_transient(
+            &self.config.url,
+            || self.client.upsert_points(builder.clone()),
+            self.fallback_client().map(|client| {
+                let builder = builder.clone();
+                move || client.upsert_points(builder)
+            }),
+        )
+        .await
+        .map_err(qdrant_error)?;
         Ok(())
     }
 
@@ -297,11 +343,16 @@ pub async fn preflight_qdrant(
 impl VectorStore for QdrantVectorStore {
     fn ensure_collection(&self, collection: VectorCollection) -> BoxFuture<'_, MemoryResult<()>> {
         async move {
-            let exists = self
-                .client
-                .collection_exists(&collection.name)
-                .await
-                .map_err(qdrant_error)?;
+            let exists = retry_transient(
+                &self.config.url,
+                || self.client.collection_exists(&collection.name),
+                self.fallback_client().map(|client| {
+                    let name = collection.name.clone();
+                    move || client.collection_exists(name)
+                }),
+            )
+            .await
+            .map_err(qdrant_error)?;
             if exists {
                 return Ok(());
             }
@@ -329,10 +380,16 @@ impl VectorStore for QdrantVectorStore {
                 );
             }
 
-            self.client
-                .create_collection(builder)
-                .await
-                .map_err(qdrant_error)?;
+            retry_transient(
+                &self.config.url,
+                || self.client.create_collection(builder.clone()),
+                self.fallback_client().map(|client| {
+                    let builder = builder.clone();
+                    move || client.create_collection(builder)
+                }),
+            )
+            .await
+            .map_err(qdrant_error)?;
             Ok(())
         }
         .boxed()
@@ -346,13 +403,18 @@ impl VectorStore for QdrantVectorStore {
         let collection = collection.to_string();
         async move {
             let field_type = payload_index_field_type(&index.field);
-            let result = self
-                .client
-                .create_field_index(
-                    CreateFieldIndexCollectionBuilder::new(collection, index.field, field_type)
-                        .wait(true),
-                )
-                .await;
+            let builder =
+                CreateFieldIndexCollectionBuilder::new(collection, index.field, field_type)
+                    .wait(true);
+            let result = retry_transient(
+                &self.config.url,
+                || self.client.create_field_index(builder.clone()),
+                self.fallback_client().map(|client| {
+                    let builder = builder.clone();
+                    move || client.create_field_index(builder)
+                }),
+            )
+            .await;
             match result {
                 Ok(_) => Ok(()),
                 Err(error) if error.to_string().contains("already exists") => Ok(()),
@@ -388,12 +450,18 @@ impl VectorStore for QdrantVectorStore {
         let collection = collection.to_string();
         async move {
             // Send an empty batch with wait=true so Qdrant indexes all preceding no-wait batches.
-            self.client
-                .upsert_points(
-                    UpsertPointsBuilder::new(&collection, Vec::<PointStruct>::new()).wait(true),
-                )
-                .await
-                .map_err(qdrant_error)?;
+            let builder =
+                UpsertPointsBuilder::new(&collection, Vec::<PointStruct>::new()).wait(true);
+            retry_transient(
+                &self.config.url,
+                || self.client.upsert_points(builder.clone()),
+                self.fallback_client().map(|client| {
+                    let builder = builder.clone();
+                    move || client.upsert_points(builder)
+                }),
+            )
+            .await
+            .map_err(qdrant_error)?;
             Ok(())
         }
         .boxed()
@@ -417,7 +485,16 @@ impl VectorStore for QdrantVectorStore {
                     if let Some(filter) = qdrant_filter(&search.filter) {
                         builder = builder.filter(filter);
                     }
-                    let response = self.client.query(builder).await.map_err(qdrant_error)?;
+                    let response = retry_transient(
+                        &self.config.url,
+                        || self.client.query(builder.clone()),
+                        self.fallback_client().map(|client| {
+                            let builder = builder.clone();
+                            move || client.query(builder)
+                        }),
+                    )
+                    .await
+                    .map_err(qdrant_error)?;
                     response
                         .result
                         .into_iter()
@@ -427,15 +504,19 @@ impl VectorStore for QdrantVectorStore {
                 VectorSearchSource::Vector => Ok(Vec::new()),
                 VectorSearchSource::Keyword | VectorSearchSource::Hybrid => {
                     let text = search.text.unwrap_or_default();
-                    let response = self
-                        .client
-                        .scroll(
-                            scroll_builder(&collection, &search.filter)
-                                .limit((search.limit.max(1) * 10) as u32)
-                                .with_payload(true),
-                        )
-                        .await
-                        .map_err(qdrant_error)?;
+                    let builder = scroll_builder(&collection, &search.filter)
+                        .limit((search.limit.max(1) * 10) as u32)
+                        .with_payload(true);
+                    let response = retry_transient(
+                        &self.config.url,
+                        || self.client.scroll(builder.clone()),
+                        self.fallback_client().map(|client| {
+                            let builder = builder.clone();
+                            move || client.scroll(builder)
+                        }),
+                    )
+                    .await
+                    .map_err(qdrant_error)?;
                     let mut hits = response
                         .result
                         .into_iter()
@@ -465,15 +546,20 @@ impl VectorStore for QdrantVectorStore {
         let collection = collection.to_string();
         let point_id = point_id.to_string();
         async move {
-            let response = self
-                .client
-                .get_points(
-                    GetPointsBuilder::new(collection, vec![qdrant_point_id(&point_id).into()])
-                        .with_payload(true)
-                        .with_vectors(true),
-                )
-                .await
-                .map_err(qdrant_error)?;
+            let builder =
+                GetPointsBuilder::new(collection, vec![qdrant_point_id(&point_id).into()])
+                    .with_payload(true)
+                    .with_vectors(true);
+            let response = retry_transient(
+                &self.config.url,
+                || self.client.get_points(builder.clone()),
+                self.fallback_client().map(|client| {
+                    let builder = builder.clone();
+                    move || client.get_points(builder)
+                }),
+            )
+            .await
+            .map_err(qdrant_error)?;
             response
                 .result
                 .into_iter()
@@ -502,7 +588,16 @@ impl VectorStore for QdrantVectorStore {
                 if let Some(off) = offset.clone() {
                     builder = builder.offset(off);
                 }
-                let response = self.client.scroll(builder).await.map_err(qdrant_error)?;
+                let response = retry_transient(
+                    &self.config.url,
+                    || self.client.scroll(builder.clone()),
+                    self.fallback_client().map(|client| {
+                        let builder = builder.clone();
+                        move || client.scroll(builder)
+                    }),
+                )
+                .await
+                .map_err(qdrant_error)?;
                 let next = response.next_page_offset.clone();
                 for point in response.result {
                     let point = retrieved_point_to_point(point)?;
@@ -1119,6 +1214,109 @@ fn qdrant_error(error: qdrant_client::QdrantError) -> MemoryError {
     MemoryError::Backend(error.to_string())
 }
 
+/// Build a gRPC `Qdrant` client for `url`. Building only constructs the lazy tonic channel; no
+/// connection is attempted until the first call, which is why this is cheap enough to call again
+/// for a fallback endpoint that may never be used.
+fn build_qdrant_client(url: &str, api_key: Option<&str>) -> MemoryResult<Qdrant> {
+    let mut builder = Qdrant::from_url(url);
+    if let Some(api_key) = api_key {
+        builder = builder.api_key(api_key.to_string());
+    }
+    builder
+        .build()
+        .map_err(|error| MemoryError::Backend(error.to_string()))
+}
+
+/// Substrings (matched case-insensitively) that identify a transient connect/DNS failure rather
+/// than a semantic Qdrant error. The recurring real-world case is an mDNS host (e.g.
+/// `foo.local:6334`) whose resolution flaps: a call fails once with a DNS/transport error and an
+/// immediate retry succeeds. Kept deliberately narrow — anything not matching here (bad
+/// collection name, auth failure, ...) is a real error and must not be retried or delayed.
+const TRANSIENT_CONNECT_ERROR_PATTERNS: &[&str] = &[
+    "dns error",
+    "failed to lookup address",
+    "connection refused",
+    "connection reset",
+    "timeout expired",
+    "transport error",
+    "connect error",
+];
+
+/// Returns the first matching pattern class (for the one-time warning message), or `None` if
+/// `display` does not look like a transient connect/DNS failure.
+fn transient_connect_error_class(display: &str) -> Option<&'static str> {
+    let lower = display.to_ascii_lowercase();
+    TRANSIENT_CONNECT_ERROR_PATTERNS
+        .iter()
+        .copied()
+        .find(|pattern| lower.contains(pattern))
+}
+
+/// `true` if `display` (the `Display` rendering of a Qdrant/transport error) matches one of the
+/// known transient connect/DNS patterns and is therefore safe to retry.
+pub(crate) fn is_transient_connect_error(display: &str) -> bool {
+    transient_connect_error_class(display).is_some()
+}
+
+/// Delay before the single same-endpoint retry attempt.
+const QDRANT_RETRY_DELAY: Duration = Duration::from_millis(250);
+
+/// Emits the one-time-per-process stderr warning for a transient Qdrant failure. Guarded by
+/// `Once` so a host that keeps flapping does not spam stderr on every subsequent retry.
+static QDRANT_TRANSIENT_WARNING: Once = Once::new();
+
+fn warn_qdrant_transient_once(endpoint: &str, display: &str) {
+    let class = transient_connect_error_class(display).unwrap_or("connect error");
+    QDRANT_TRANSIENT_WARNING.call_once(|| {
+        eprintln!("warn: qdrant endpoint {endpoint} failed transiently ({class}); retrying");
+    });
+}
+
+/// Runs `op` and, on a transient connect/DNS error, waits `QDRANT_RETRY_DELAY` and retries `op`
+/// once more against the same endpoint; if that retry also fails transiently and `fallback` is
+/// `Some`, makes one further attempt against the fallback. A non-transient error from any attempt
+/// is returned immediately with no further retries or delay. `endpoint` is only used to label the
+/// one-time stderr warning.
+///
+/// Attempt accounting (what the unit tests below assert): a single transient failure followed by
+/// success costs exactly 2 calls to `op`; a persistent transient failure with no fallback costs
+/// exactly 2 calls to `op` before returning `Err`; a non-transient error costs exactly 1 call.
+pub(crate) async fn retry_transient<T, E, F, Fut, F2, Fut2>(
+    endpoint: &str,
+    mut op: F,
+    fallback: Option<F2>,
+) -> Result<T, E>
+where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = Result<T, E>>,
+    F2: FnOnce() -> Fut2,
+    Fut2: std::future::Future<Output = Result<T, E>>,
+    E: std::fmt::Display,
+{
+    let first_error = match op().await {
+        Ok(value) => return Ok(value),
+        Err(error) => error,
+    };
+    if !is_transient_connect_error(&first_error.to_string()) {
+        return Err(first_error);
+    }
+    warn_qdrant_transient_once(endpoint, &first_error.to_string());
+    tokio::time::sleep(QDRANT_RETRY_DELAY).await;
+
+    let second_error = match op().await {
+        Ok(value) => return Ok(value),
+        Err(error) => error,
+    };
+    if !is_transient_connect_error(&second_error.to_string()) {
+        return Err(second_error);
+    }
+
+    match fallback {
+        Some(fallback_op) => fallback_op().await,
+        None => Err(second_error),
+    }
+}
+
 async fn download_snapshot_file(
     config: &QdrantVectorStoreConfig,
     collection: &str,
@@ -1197,7 +1395,10 @@ impl std::fmt::Display for QdrantEndpoints {
 
 #[cfg(test)]
 mod tests {
-    use super::{QdrantEndpoints, QdrantVectorStoreConfig};
+    use super::{
+        is_transient_connect_error, retry_transient, QdrantEndpoints, QdrantVectorStoreConfig,
+    };
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     #[test]
     fn derives_grpc_from_rest_qdrant_url() {
@@ -1230,5 +1431,175 @@ mod tests {
         assert!(error
             .to_string()
             .contains("pass --qdrant-rest-url explicitly"));
+    }
+
+    #[test]
+    fn fallback_endpoints_derive_like_primary_endpoints() {
+        let mut config = QdrantVectorStoreConfig::new("http://primary.local:6334");
+        config.fallback_url = Some("http://192.168.1.50:6333".to_string());
+        let normalized = config.normalized().expect("should normalize");
+        assert_eq!(
+            normalized.fallback_url.as_deref(),
+            Some("http://192.168.1.50:6334")
+        );
+        assert_eq!(
+            normalized.fallback_rest_url.as_deref(),
+            Some("http://192.168.1.50:6333")
+        );
+    }
+
+    #[test]
+    fn fallback_endpoints_absent_by_default() {
+        let config = QdrantVectorStoreConfig::new("http://primary.local:6334");
+        assert_eq!(config.fallback_endpoints().expect("should resolve"), None);
+    }
+
+    #[test]
+    fn transient_classifier_matches_known_patterns_case_insensitively() {
+        let patterns = [
+            "dns error",
+            "failed to lookup address",
+            "connection refused",
+            "connection reset",
+            "timeout expired",
+            "transport error",
+            "connect error",
+        ];
+        for pattern in patterns {
+            let lower = format!("backend error: some {pattern} happened");
+            assert!(
+                is_transient_connect_error(&lower),
+                "expected `{lower}` to be classified as transient"
+            );
+            let upper = format!("BACKEND ERROR: {}", pattern.to_uppercase());
+            assert!(
+                is_transient_connect_error(&upper),
+                "expected `{upper}` to be classified as transient"
+            );
+        }
+    }
+
+    #[test]
+    fn transient_classifier_rejects_semantic_errors() {
+        for message in [
+            "collection not found",
+            "invalid api key",
+            "wrong vector dimensions",
+        ] {
+            assert!(
+                !is_transient_connect_error(message),
+                "expected `{message}` to NOT be classified as transient"
+            );
+        }
+    }
+
+    #[derive(Debug)]
+    struct TestError(String);
+
+    impl std::fmt::Display for TestError {
+        fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(formatter, "{}", self.0)
+        }
+    }
+
+    fn transient_test_error() -> TestError {
+        TestError("dns error: failed to lookup address information".to_string())
+    }
+
+    fn non_transient_test_error() -> TestError {
+        TestError("collection not found".to_string())
+    }
+
+    /// A typed `None` fallback for tests that never expect a fallback attempt: the closure type
+    /// is never constructed (the `Option` is `None`), it only needs to type-check.
+    #[allow(clippy::type_complexity)] // a test helper naming the full fn-pointer type once
+    fn no_fallback<T, E>() -> Option<fn() -> std::future::Ready<Result<T, E>>> {
+        None
+    }
+
+    #[tokio::test]
+    async fn retry_transient_succeeds_after_one_transient_failure() {
+        let attempts = AtomicUsize::new(0);
+        let result: Result<&str, TestError> = retry_transient(
+            "http://primary.local:6334",
+            || {
+                let attempt = attempts.fetch_add(1, Ordering::SeqCst);
+                async move {
+                    if attempt == 0 {
+                        Err(transient_test_error())
+                    } else {
+                        Ok("ok")
+                    }
+                }
+            },
+            no_fallback(),
+        )
+        .await;
+        assert_eq!(result.expect("should recover on retry"), "ok");
+        assert_eq!(
+            attempts.load(Ordering::SeqCst),
+            2,
+            "expected exactly one retry (2 total attempts)"
+        );
+    }
+
+    #[tokio::test]
+    async fn retry_transient_fails_after_exactly_two_attempts_without_fallback() {
+        let attempts = AtomicUsize::new(0);
+        let result: Result<&str, TestError> = retry_transient(
+            "http://primary.local:6334",
+            || {
+                attempts.fetch_add(1, Ordering::SeqCst);
+                async move { Err(transient_test_error()) }
+            },
+            no_fallback(),
+        )
+        .await;
+        assert!(result.is_err());
+        assert_eq!(
+            attempts.load(Ordering::SeqCst),
+            2,
+            "persistent transient failure with no fallback must stop after 2 attempts"
+        );
+    }
+
+    #[tokio::test]
+    async fn retry_transient_makes_single_attempt_on_non_transient_error() {
+        let attempts = AtomicUsize::new(0);
+        let result: Result<&str, TestError> = retry_transient(
+            "http://primary.local:6334",
+            || {
+                attempts.fetch_add(1, Ordering::SeqCst);
+                async move { Err(non_transient_test_error()) }
+            },
+            Some(|| async { Ok("fallback-should-not-run") }),
+        )
+        .await;
+        assert!(result.is_err(), "fallback must not mask a real error");
+        assert_eq!(
+            attempts.load(Ordering::SeqCst),
+            1,
+            "non-transient errors must not be retried"
+        );
+    }
+
+    #[tokio::test]
+    async fn retry_transient_falls_back_when_primary_keeps_failing() {
+        let primary_attempts = AtomicUsize::new(0);
+        let result: Result<&str, TestError> = retry_transient(
+            "http://primary.local:6334",
+            || {
+                primary_attempts.fetch_add(1, Ordering::SeqCst);
+                async move { Err(transient_test_error()) }
+            },
+            Some(|| async { Ok("fallback-ok") }),
+        )
+        .await;
+        assert_eq!(result.expect("fallback should recover"), "fallback-ok");
+        assert_eq!(
+            primary_attempts.load(Ordering::SeqCst),
+            2,
+            "expected 2 primary attempts before falling back"
+        );
     }
 }

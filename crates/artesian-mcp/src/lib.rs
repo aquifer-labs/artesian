@@ -5238,6 +5238,14 @@ fn open_qdrant_backend(config: &MemoryConfig) -> anyhow::Result<Arc<dyn MemoryBa
         .qdrant_rest_url
         .clone()
         .or_else(|| env::var("QDRANT_REST_URL").ok());
+    vector_config.fallback_url = config
+        .qdrant_fallback_url
+        .clone()
+        .or_else(|| env::var("QDRANT_FALLBACK_URL").ok());
+    vector_config.fallback_rest_url = config
+        .qdrant_fallback_rest_url
+        .clone()
+        .or_else(|| env::var("QDRANT_FALLBACK_REST_URL").ok());
     vector_config.api_key = config.resolve_qdrant_api_key();
     let store = QdrantVectorStore::connect(vector_config)?;
     let backend = VectorMemoryBackend::new(store, vector_memory_config_from(config))?;
@@ -6090,6 +6098,8 @@ mod tests {
             project: None,
             qdrant_url: None,
             qdrant_rest_url: None,
+            qdrant_fallback_url: None,
+            qdrant_fallback_rest_url: None,
             qdrant_api_key_env: None,
             qdrant_api_key_file: None,
             local_rerank_enabled: true,
