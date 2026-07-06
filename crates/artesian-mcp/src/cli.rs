@@ -35,6 +35,12 @@ struct Args {
     /// Address to bind when `--transport http`. Bind to a trusted interface only.
     #[arg(long, default_value = "127.0.0.1:8080")]
     bind: String,
+    /// Append plain-text startup/shutdown/error lines here (disconnect evidence — see
+    /// docs/mcp-troubleshooting.md). This flag wins over `ARTESIAN_MCP_LOG`; when neither is set,
+    /// defaults to `~/.artesian/logs/mcp.log` if `~/.artesian` already exists. Best-effort: a
+    /// failure to open the log never stops the server from starting.
+    #[arg(long, env = "ARTESIAN_MCP_LOG")]
+    log_file: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -68,13 +74,29 @@ pub async fn run() -> anyhow::Result<()> {
         .with_writer(std::io::stderr)
         .init();
 
+    let log = crate::mcplog::McpLog::init(args.log_file.clone());
+    if let Some(log) = &log {
+        log.startup(
+            env!("CARGO_PKG_VERSION"),
+            std::process::id(),
+            args.config.as_deref(),
+        );
+    }
+
     let (config, routing) = load_runtime_config(&args)?;
-    match args.transport {
+    let result = match args.transport {
         TransportArg::Stdio => {
             crate::run_stdio_with_artesian_config_and_routing(config, routing).await
         }
         TransportArg::Http => run_http_transport(config, routing, &args.bind).await,
+    };
+    if let Some(log) = &log {
+        match &result {
+            Ok(()) => log.shutdown_clean(),
+            Err(error) => log.transport_error(error),
+        }
     }
+    result
 }
 
 #[cfg(feature = "http")]

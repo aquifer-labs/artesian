@@ -147,6 +147,7 @@ Qualitative only — architectures differ enough that cross-system benchmark num
 | Why Rust | [docs/why-rust.md](docs/why-rust.md) |
 | Positioning / prior art | [docs/positioning.md](docs/positioning.md) |
 | Onboarding | [docs/onboarding.md](docs/onboarding.md) |
+| MCP troubleshooting | [docs/mcp-troubleshooting.md](docs/mcp-troubleshooting.md) |
 | Benchmarks | [benchmarks/README.md](benchmarks/README.md) |
 
 ## Contributing

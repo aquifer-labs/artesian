@@ -116,5 +116,6 @@ nav:
       - Sizing & deployment: sizing-and-deployment.md
       - Token savings: token-savings.md
       - Upgrades: upgrades.md
+      - MCP troubleshooting: mcp-troubleshooting.md
       - Development: development.md
   - OCF: ocf.md

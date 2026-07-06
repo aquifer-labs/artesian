@@ -88,6 +88,7 @@ Use the `artesian-memory` MCP server and its `memory.find`, `memory.store`, `mem
 
 mod artesiand;
 mod import;
+mod mcp_doctor;
 mod runs;
 mod runtime;
 mod update;
@@ -513,6 +514,10 @@ enum Command {
         root: PathBuf,
         #[arg(long, value_enum)]
         backend: Option<BackendArg>,
+        /// Run only the MCP registration/path/version/handshake/stale-resume diagnostics (see
+        /// docs/mcp-troubleshooting.md); skips the backend/config checks above.
+        #[arg(long)]
+        mcp: bool,
     },
     /// Update Artesian via its package manager, then report installed surfaces and stale MCP
     /// servers. A convenience wrapper — config, MCP registrations, and stored memory are untouched.
@@ -1646,7 +1651,8 @@ async fn main() -> Result<()> {
             config,
             root,
             backend,
-        } => doctor(config, root, backend).await,
+            mcp,
+        } => doctor(config, root, backend, mcp).await,
         Command::Update { restart_stale } => update::update(restart_stale),
     }
 }
@@ -2070,7 +2076,15 @@ fn qdrant_api_key_fix(config: &MemoryConfig) -> String {
 
 /// Health check: binary, config, backend reachability, collection compatibility, and MCP
 /// registrations — printing the exact fix for anything that drifted (e.g. after an upgrade).
-async fn doctor(config_path: PathBuf, root: PathBuf, backend: Option<BackendArg>) -> Result<()> {
+async fn doctor(
+    config_path: PathBuf,
+    root: PathBuf,
+    backend: Option<BackendArg>,
+    mcp: bool,
+) -> Result<()> {
+    if mcp {
+        return mcp_doctor::run(&env::current_dir()?).await;
+    }
     let mut problems = 0usize;
     println!("artesian doctor (v{})", env!("CARGO_PKG_VERSION"));
 
@@ -2169,6 +2183,9 @@ async fn doctor(config_path: PathBuf, root: PathBuf, backend: Option<BackendArg>
     } else {
         println!("  mcp:     registered for {}", registered.join(", "));
     }
+    println!(
+        "           hint: run `artesian doctor --mcp` for full MCP registration, path, version, and handshake diagnostics"
+    );
 
     println!();
     if problems == 0 {
@@ -5464,13 +5481,64 @@ fn write_mcp_registrations(config_path: &Path, backend: MemoryBackendKind) -> Re
     } else {
         "artesian-mcp".to_string()
     };
-    write_claude_mcp(config_path.as_path(), &command)?;
-    write_codex_mcp(config_path.as_path(), &command)?;
-    write_zed_mcp(config_path.as_path(), &command)?;
-    // Project-scoped .mcp.json is not auto-loaded by Claude Code; also register at
-    // user scope so the server is available without copying .mcp.json per project.
-    register_claude_user_scope(&command, config_path.as_path());
+    // If this `artesian` binary is itself a version-pinned Homebrew Cellar copy, prefer the
+    // version-stable `opt` symlink so the registration survives the next `brew upgrade`.
+    let command = mcp_doctor::resolve_registration_command(&command);
+    // Project-scoped .mcp.json is not auto-loaded by Claude Code; user scope (among the sources
+    // below) is what makes the server available without copying .mcp.json per project.
+    for source in mcp_doctor::registration_sources() {
+        apply_registration_hygiene(&source, &command, config_path.as_path())?;
+    }
     Ok(())
+}
+
+/// Idempotently (re)write one MCP registration, but never silently clobber an existing,
+/// still-working registration that points at a *different* binary — print a drift warning and
+/// leave it in place instead (see docs/mcp-troubleshooting.md).
+fn apply_registration_hygiene(
+    source: &mcp_doctor::RegistrationSource,
+    command: &str,
+    config_path: &Path,
+) -> Result<()> {
+    let existing = mcp_doctor::existing_command_for(source, MCP_SERVER_NAME);
+    match mcp_doctor::plan_registration(existing.as_deref(), command) {
+        mcp_doctor::RegistrationAction::Write { replaced_stale } => {
+            write_registration(source.kind, command, config_path)?;
+            if replaced_stale {
+                if let Some(previous) = existing {
+                    println!(
+                        "mcp: {}: repointed stale registration ({previous} -> {command})",
+                        source.label
+                    );
+                }
+            }
+        }
+        mcp_doctor::RegistrationAction::Skip { existing_command } => {
+            println!(
+                "mcp: {}: existing registration ({existing_command}, v{}) differs from the resolved command ({command}, v{}); leaving it in place — drift warning",
+                source.label,
+                mcp_doctor::probe_version_label(&existing_command),
+                mcp_doctor::probe_version_label(command),
+            );
+        }
+    }
+    Ok(())
+}
+
+fn write_registration(
+    kind: mcp_doctor::RegistrationKind,
+    command: &str,
+    config_path: &Path,
+) -> Result<()> {
+    match kind {
+        mcp_doctor::RegistrationKind::ClaudeProject => write_claude_mcp(config_path, command),
+        mcp_doctor::RegistrationKind::Codex => write_codex_mcp(config_path, command),
+        mcp_doctor::RegistrationKind::Zed => write_zed_mcp(config_path, command),
+        mcp_doctor::RegistrationKind::ClaudeUser => {
+            register_claude_user_scope(command, config_path);
+            Ok(())
+        }
+    }
 }
 
 /// Generate `~/artesian/run-artesian-mcp.sh`: a shim the MCP clients launch instead

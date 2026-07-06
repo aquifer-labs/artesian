@@ -154,7 +154,7 @@ impl InstalledBinary {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-enum VersionProbe {
+pub(crate) enum VersionProbe {
     NotInstalled,
     Found(String),
     Failed(String),
@@ -280,7 +280,7 @@ fn detect_installed_binary(name: &str) -> InstalledBinary {
     }
 }
 
-fn resolve_on_path(command: &str) -> Option<PathBuf> {
+pub(crate) fn resolve_on_path(command: &str) -> Option<PathBuf> {
     let path = Path::new(command);
     if path.components().count() > 1 {
         return path.is_file().then(|| path.to_path_buf());
@@ -292,7 +292,7 @@ fn resolve_on_path(command: &str) -> Option<PathBuf> {
     })
 }
 
-fn probe_binary_version(path: &Path) -> VersionProbe {
+pub(crate) fn probe_binary_version(path: &Path) -> VersionProbe {
     match Command::new(path)
         .arg("--version")
         .stdout(Stdio::piped())
