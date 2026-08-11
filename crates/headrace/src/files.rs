@@ -165,6 +165,7 @@ impl TaskStore for FilesTaskStore {
                 verifier_names: task.verifier_names,
                 created_at: now,
                 updated_at: now,
+                extra: BTreeMap::new(),
             };
             let path = self.task_path(TaskStatus::Todo, &task.id);
             if path.exists() {
@@ -314,7 +315,7 @@ struct TaskHeader {
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
     #[serde(flatten)]
-    _unknown: BTreeMap<String, serde_yaml::Value>,
+    unknown: BTreeMap<String, serde_yaml::Value>,
 }
 
 fn render_task(task: &Task) -> TaskResult<String> {
@@ -331,7 +332,7 @@ fn render_task(task: &Task) -> TaskResult<String> {
         verifier_names: task.verifier_names.clone(),
         created_at: task.created_at,
         updated_at: task.updated_at,
-        _unknown: BTreeMap::new(),
+        unknown: task.extra.clone(),
     };
     Ok(format!(
         "---\n{}---\n\n{}\n",
@@ -367,6 +368,7 @@ fn parse_task(text: &str) -> TaskResult<Task> {
         verifier_names: header.verifier_names,
         created_at: header.created_at,
         updated_at: header.updated_at,
+        extra: header.unknown,
     })
 }
 
@@ -399,6 +401,7 @@ fn inferred_task_from_markdown(path: &Path, text: &str) -> TaskResult<Task> {
         verifier_names: Vec::new(),
         created_at: now,
         updated_at: now,
+        extra: BTreeMap::new(),
     })
 }
 

@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
+use std::collections::BTreeMap;
+
 use chrono::{DateTime, Utc};
 use futures_util::future::BoxFuture;
 use serde::{Deserialize, Serialize};
@@ -74,6 +76,10 @@ pub struct Task {
     pub verifier_names: Vec<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    /// Front-matter keys headrace does not model, carried through read -> write
+    /// so a downstream schema can extend a task without the store erasing it.
+    #[serde(default, flatten)]
+    pub extra: BTreeMap<String, serde_yaml::Value>,
 }
 
 impl Task {
