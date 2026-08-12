@@ -4,6 +4,7 @@ use std::{
     cmp::Reverse,
     collections::BTreeMap,
     path::{Path, PathBuf},
+    sync::atomic::{AtomicU64, Ordering},
 };
 
 use chrono::{DateTime, Utc};
@@ -199,7 +200,7 @@ impl MemoryBackend for FilesBackend {
                         if let Ok(text) = render_record(&updated) {
                             // Search for the file under the date-sharded directory.
                             if let Ok(Some(path)) = find_existing_record_path(&memory_dir, &id) {
-                                let _ = fs::write(path, text).await;
+                                let _ = write_record_atomically(&path, text).await;
                             }
                         }
                     });
@@ -260,7 +261,7 @@ impl MemoryBackend for FilesBackend {
             if let Some(parent) = path.parent() {
                 fs::create_dir_all(parent).await?;
             }
-            fs::write(path, render_record(&record)?).await?;
+            write_record_atomically(&path, render_record(&record)?).await?;
             self.append_update_log(&record).await?;
             Ok(record)
         }
@@ -285,7 +286,7 @@ impl MemoryBackend for FilesBackend {
                 return Ok(None);
             };
             record.useful_count = record.useful_count.saturating_add(1);
-            fs::write(path, render_record(&record)?).await?;
+            write_record_atomically(&path, render_record(&record)?).await?;
             Ok(Some(record))
         }
         .boxed()
@@ -317,7 +318,7 @@ impl MemoryBackend for FilesBackend {
                     .chain(std::iter::once(supersede_relation.clone())),
                 &record.node_id,
             );
-            fs::write(path, render_record(&record)?).await?;
+            write_record_atomically(&path, render_record(&record)?).await?;
 
             let supersede = self
                 .store(StoreMemory {
@@ -505,6 +506,36 @@ struct HeadwaterHeader {
     state: MemoryState,
     #[serde(flatten)]
     unknown: BTreeMap<String, serde_yaml::Value>,
+}
+
+/// Replace a record file atomically.
+///
+/// `fs::write` truncates before it writes, so a concurrent reader can observe the
+/// file empty and fail to parse it. This backend creates exactly that race on its
+/// own: every `find` spawns best-effort access-tracking writes over the same
+/// records the next query is about to walk. Writing a sibling temp file and
+/// renaming makes the swap atomic — a reader sees either the previous record or
+/// the new one — and an interrupted write leaves the old file intact rather than
+/// a truncated one.
+async fn write_record_atomically(path: &Path, text: String) -> MemoryResult<()> {
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    // The .tmp extension keeps collect_records from reading the file mid-write:
+    // it only accepts .md, so a partial temp file is never a parse candidate.
+    let temp = parent.join(format!(
+        ".{}.{}.{}.tmp",
+        path.file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("record"),
+        std::process::id(),
+        COUNTER.fetch_add(1, Ordering::Relaxed)
+    ));
+    fs::write(&temp, text).await?;
+    if let Err(error) = fs::rename(&temp, path).await {
+        let _ = fs::remove_file(&temp).await;
+        return Err(error.into());
+    }
+    Ok(())
 }
 
 fn collect_records(dir: &Path, records: &mut Vec<MemoryRecord>) -> MemoryResult<()> {
