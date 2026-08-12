@@ -88,19 +88,58 @@ impl FilesTaskStore {
         Ok(())
     }
 
+    const STATUSES: [TaskStatus; 4] = [
+        TaskStatus::Todo,
+        TaskStatus::Doing,
+        TaskStatus::Done,
+        TaskStatus::Blocked,
+    ];
+
+    /// Locate the file holding `id`, whatever it is called.
+    ///
+    /// `list` reads every `.md` in the status directories regardless of file name,
+    /// so a task this store can see must also be one it can act on. Assuming
+    /// `<id>.md` broke that: a hand-authored `0034-some-slug.md` listed fine and
+    /// was judged dispatch-eligible, then could not be claimed or transitioned,
+    /// because the path built from the id pointed at a file that never existed.
     fn find_path(&self, id: &str) -> TaskResult<Option<(TaskStatus, PathBuf)>> {
-        for status in [
-            TaskStatus::Todo,
-            TaskStatus::Doing,
-            TaskStatus::Done,
-            TaskStatus::Blocked,
-        ] {
+        // Fast path: the canonical name this store writes for itself.
+        for status in Self::STATUSES {
             let path = self.task_path(status, id);
             if path.exists() {
                 return Ok(Some((status, path)));
             }
         }
+        // Otherwise ask the files themselves. The front matter is authoritative;
+        // the file name is not.
+        for status in Self::STATUSES {
+            let Ok(entries) = std::fs::read_dir(self.status_dir(status)) else {
+                continue;
+            };
+            for entry in entries {
+                let path = entry?.path();
+                if path.extension().is_none_or(|extension| extension != "md") {
+                    continue;
+                }
+                if Self::read_task_at(&path).is_ok_and(|task| task.id == id) {
+                    return Ok(Some((status, path)));
+                }
+            }
+        }
         Ok(None)
+    }
+
+    /// Where a task file lands when its status changes, keeping its current name.
+    ///
+    /// Task files are commonly named `<id>-<slug>.md`; rewriting that to `<id>.md`
+    /// on the first transition would discard the only part of the name a human
+    /// reads in a directory listing.
+    fn moved_path(&self, status: TaskStatus, current: &Path, id: &str) -> PathBuf {
+        let name = current
+            .file_name()
+            .map(std::ffi::OsString::from)
+            .unwrap_or_else(|| std::ffi::OsString::from(format!("{id}.md")));
+        self.status_dir(status).join(name)
     }
 
     pub fn is_task_like_path(path: &Path) -> bool {
@@ -201,8 +240,10 @@ impl TaskStore for FilesTaskStore {
             let Some(mut task) = candidate else {
                 return Ok(None);
             };
-            let old_path = self.task_path(TaskStatus::Todo, &task.id);
-            let new_path = self.task_path(TaskStatus::Doing, &task.id);
+            let Some((_, old_path)) = self.find_path(&task.id)? else {
+                return Ok(None);
+            };
+            let new_path = self.moved_path(TaskStatus::Doing, &old_path, &task.id);
             task.status = TaskStatus::Doing;
             task.claimed_by = Some(request.claimant);
             task.updated_at = Utc::now();
@@ -231,7 +272,7 @@ impl TaskStore for FilesTaskStore {
             let mut task = Self::read_task_at(&old_path)?;
             task.status = transition.status;
             task.updated_at = Utc::now();
-            let new_path = self.task_path(task.status, &task.id);
+            let new_path = self.moved_path(task.status, &old_path, &task.id);
             if old_status != task.status {
                 std::fs::rename(&old_path, &new_path)?;
             }
