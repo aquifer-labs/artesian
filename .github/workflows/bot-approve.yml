@@ -1,0 +1,119 @@
+# SPDX-License-Identifier: Apache-2.0
+name: Bot Auto-Approve
+
+on:
+    workflow_run:
+        workflows: ["CI"]
+        types: [completed]
+
+jobs:
+    auto-approve:
+        name: Approve PR if CI passed
+        runs-on: ubuntu-latest
+        if: github.event.workflow_run.conclusion == 'success'
+
+        permissions:
+            contents: read
+            pull-requests: write
+
+        steps:
+            - name: Resolve PR context
+              id: pr
+              env:
+                  GH_TOKEN: ${{ github.token }}
+              run: |
+                  PR_NUMBER=$(jq -r '.workflow_run.pull_requests[0].number // empty' "$GITHUB_EVENT_PATH")
+                  if [ -z "$PR_NUMBER" ]; then
+                    echo "No pull request is linked to this workflow_run."
+                    exit 0
+                  fi
+
+                  PR_JSON=$(gh pr view "$PR_NUMBER" \
+                    --repo "${{ github.repository }}" \
+                    --json state,baseRefName,author,reviewDecision,headRefOid \
+                    --jq '.')
+
+                  PR_HEAD_SHA=$(echo "$PR_JSON" | jq -r '.headRefOid')
+                  BASE_SHA=$(gh api repos/${{ github.repository }}/git/ref/heads/main --jq '.object.sha')
+                  COMPARE_JSON=$(gh api repos/${{ github.repository }}/compare/${BASE_SHA}...${PR_HEAD_SHA} --jq '.')
+                  BEHIND_BY=$(echo "$COMPARE_JSON" | jq -r '.behind_by // 0')
+
+                  IS_BEHIND=false
+                  if [ "${BEHIND_BY}" -gt 0 ]; then
+                    IS_BEHIND=true
+                  fi
+
+                  echo "pr_number=${PR_NUMBER}" >> "$GITHUB_OUTPUT"
+                  echo "pr_state=$(echo "$PR_JSON" | jq -r '.state')" >> "$GITHUB_OUTPUT"
+                  echo "pr_base=$(echo "$PR_JSON" | jq -r '.baseRefName')" >> "$GITHUB_OUTPUT"
+                  echo "pr_author=$(echo "$PR_JSON" | jq -r '.author.login')" >> "$GITHUB_OUTPUT"
+                  echo "review_decision=$(echo "$PR_JSON" | jq -r '.reviewDecision // "REVIEW_REQUIRED"')" >> "$GITHUB_OUTPUT"
+                  echo "head_sha=${PR_HEAD_SHA}" >> "$GITHUB_OUTPUT"
+                  echo "base_sha=${BASE_SHA}" >> "$GITHUB_OUTPUT"
+                  echo "behind_by=${BEHIND_BY}" >> "$GITHUB_OUTPUT"
+                  echo "is_behind=${IS_BEHIND}" >> "$GITHUB_OUTPUT"
+
+            - name: Sync PR branch with main when behind
+              if: |
+                  steps.pr.outputs.pr_number != '' &&
+                  steps.pr.outputs.pr_state == 'OPEN' &&
+                  steps.pr.outputs.pr_base == 'main' &&
+                  steps.pr.outputs.pr_author == 'principalwater' &&
+                  steps.pr.outputs.is_behind == 'true'
+              env:
+                  BOT_TOKEN: ${{ secrets.BOT_GITHUB_TOKEN }}
+                  GH_FALLBACK_TOKEN: ${{ github.token }}
+                  PR_NUMBER: ${{ steps.pr.outputs.pr_number }}
+                  PR_HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
+              run: |
+                  sync_with_token() {
+                    GH_TOKEN="$1" gh api repos/${{ github.repository }}/pulls/${PR_NUMBER}/update-branch \
+                      --method PUT \
+                      -f expected_head_sha="${PR_HEAD_SHA}" \
+                      >/dev/null
+                  }
+
+                  echo "PR #${PR_NUMBER} is behind main. Syncing branch before approval."
+                  if [ -n "${BOT_TOKEN}" ]; then
+                    if sync_with_token "${BOT_TOKEN}"; then
+                      echo "Branch sync requested via BOT_GITHUB_TOKEN."
+                      exit 0
+                    fi
+                    echo "BOT_GITHUB_TOKEN branch sync failed, retrying with GITHUB_TOKEN."
+                  fi
+
+                  sync_with_token "${GH_FALLBACK_TOKEN}"
+                  echo "Branch sync requested via GITHUB_TOKEN."
+
+            - name: Approve PR
+              if: |
+                  steps.pr.outputs.pr_number != '' &&
+                  steps.pr.outputs.pr_state == 'OPEN' &&
+                  steps.pr.outputs.pr_base == 'main' &&
+                  steps.pr.outputs.pr_author == 'principalwater' &&
+                  steps.pr.outputs.is_behind != 'true' &&
+                  steps.pr.outputs.review_decision != 'APPROVED'
+              env:
+                  BOT_TOKEN: ${{ secrets.BOT_GITHUB_TOKEN }}
+                  GH_FALLBACK_TOKEN: ${{ github.token }}
+                  PR_NUMBER: ${{ steps.pr.outputs.pr_number }}
+              run: |
+                  approve_with_token() {
+                    GH_TOKEN="$1" gh api repos/${{ github.repository }}/pulls/${PR_NUMBER}/reviews \
+                      --method POST \
+                      --input - <<'EOF'
+                  {"event":"APPROVE","body":"CI passed: auto-approved by bot."}
+                  EOF
+                  }
+
+                  echo "Approving PR #${PR_NUMBER}"
+                  if [ -n "${BOT_TOKEN}" ]; then
+                    if approve_with_token "${BOT_TOKEN}"; then
+                      echo "Approved via BOT_GITHUB_TOKEN."
+                      exit 0
+                    fi
+                    echo "BOT_GITHUB_TOKEN approval failed, retrying with GITHUB_TOKEN."
+                  fi
+
+                  approve_with_token "${GH_FALLBACK_TOKEN}"
+                  echo "Approved via GITHUB_TOKEN."
