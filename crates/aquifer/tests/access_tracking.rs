@@ -115,3 +115,46 @@ async fn backward_compat_record_loads_with_zero_access() {
     }
     // Absence of a panic / error is the primary signal that old records load correctly.
 }
+
+/// The access bump rewrites every record a query returned, in the background, while
+/// other queries are walking the same directory. Before the write was made atomic
+/// this failed with `InvalidFile("missing TOML front matter")` — a reader landing
+/// between the truncate and the write of `fs::write`. It is the same race that
+/// intermittently reddened CI on `files_backend_satisfies_memory_contract`.
+///
+/// The pressure is deliberate: each round issues several concurrent full-table
+/// queries, and every hit in every one of them spawns a writeback over a record the
+/// next round is about to read. A handful of records and a single round is not
+/// enough to land in the window.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn concurrent_finds_never_observe_a_half_written_record() {
+    let dir = TempDir::new("access-tracking-atomic");
+    let backend = Arc::new(FilesBackend::new(dir.path()));
+
+    const RECORDS: usize = 40;
+    for index in 0..RECORDS {
+        backend
+            .store(StoreMemory::atom(format!("atomic record {index}")))
+            .await
+            .expect("store should succeed");
+    }
+
+    for round in 0..20 {
+        let mut readers = Vec::new();
+        for _ in 0..8 {
+            let backend = Arc::clone(&backend);
+            readers.push(tokio::spawn(async move {
+                backend.find(MemoryQuery::new("").with_limit(100)).await
+            }));
+        }
+        for reader in readers {
+            let hits = reader
+                .await
+                .expect("reader task should not panic")
+                .unwrap_or_else(|error| {
+                    panic!("round {round}: find read a partially written record: {error}")
+                });
+            assert_eq!(hits.len(), RECORDS);
+        }
+    }
+}
