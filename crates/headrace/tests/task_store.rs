@@ -327,3 +327,63 @@ async fn transition_preserves_unmodelled_front_matter() {
         "an explicit null is a value, not an absence: {rewritten}"
     );
 }
+
+/// Hand-authored backlogs name files `<id>-<slug>.md`, and `list` has always read
+/// them. Acting on them is what was broken: the path was rebuilt from the id, so
+/// `claim` renamed a `0034.md` that did not exist, got NotFound, and reported "no
+/// dispatch-eligible task" — indistinguishable from an empty queue. The file also
+/// has to keep its name, or the first transition silently strips the slug.
+#[tokio::test]
+async fn claims_and_transitions_a_task_whose_file_name_carries_a_slug() {
+    let tempdir = TempDir::new("task-slug-name");
+    let store = FilesTaskStore::new(tempdir.path());
+    std::fs::create_dir_all(tempdir.join("tasks/todo")).expect("todo dir");
+    std::fs::write(
+        tempdir.join("tasks/todo/0034-unified-vps-management.md"),
+        concat!(
+            "---\n",
+            "type: \"task\"\n",
+            "id: \"0034\"\n",
+            "title: \"unified vps management\"\n",
+            "role: \"worker\"\n",
+            "status: \"todo\"\n",
+            "kind: \"primitive\"\n",
+            "blockers: []\n",
+            "children: []\n",
+            "claimed_by: null\n",
+            "verifier_names: []\n",
+            "created_at: \"2026-08-12T00:00:00Z\"\n",
+            "updated_at: \"2026-08-12T00:00:00Z\"\n",
+            "---\n\nbody\n"
+        ),
+    )
+    .expect("task file should be written");
+
+    let claimed = store
+        .claim(ClaimRequest {
+            task_id: None,
+            claimant: "worker-1".to_string(),
+        })
+        .await
+        .expect("claim should succeed")
+        .expect("a slug-named task is still dispatch-eligible");
+    assert_eq!(claimed.id, "0034");
+    assert!(
+        tempdir
+            .join("tasks/doing/0034-unified-vps-management.md")
+            .exists(),
+        "the file keeps its name when it changes status"
+    );
+
+    store
+        .transition(headrace::TransitionTask {
+            id: "0034".to_string(),
+            status: TaskStatus::Done,
+        })
+        .await
+        .expect("transition should find the file by id, not by name");
+    assert!(tempdir
+        .join("tasks/done/0034-unified-vps-management.md")
+        .exists());
+    assert!(!tempdir.join("tasks/done/0034.md").exists());
+}
