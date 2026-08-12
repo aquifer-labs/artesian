@@ -282,3 +282,48 @@ impl Verifier for StaticVerifier {
         .boxed()
     }
 }
+
+#[tokio::test]
+async fn transition_preserves_unmodelled_front_matter() {
+    let tempdir = TempDir::new("task-extra-keys");
+    let store = FilesTaskStore::new(tempdir.path());
+    let mut new_task = NewTask::primitive("carry a downstream schema");
+    new_task.id = Some("task-extra".to_string());
+    let created = store.create(new_task).await.expect("create should succeed");
+
+    // A downstream schema adds front matter headrace itself does not model.
+    let authored = tempdir.join("tasks/todo/task-extra.md");
+    let text = std::fs::read_to_string(&authored).expect("task file should exist");
+    std::fs::write(
+        &authored,
+        text.replacen("---\n", "---\npriority: \"P0\"\nphase: null\n", 1),
+    )
+    .expect("rewrite should succeed");
+
+    let reloaded = store
+        .get(&created.id)
+        .await
+        .expect("get should succeed")
+        .expect("task should still exist");
+    assert!(reloaded.extra.contains_key("priority"));
+    assert!(reloaded.extra.contains_key("phase"));
+
+    store
+        .transition(headrace::TransitionTask {
+            id: created.id.clone(),
+            status: TaskStatus::Done,
+        })
+        .await
+        .expect("transition should succeed");
+
+    let rewritten = std::fs::read_to_string(tempdir.join("tasks/done/task-extra.md"))
+        .expect("task file should have moved");
+    assert!(
+        rewritten.contains("priority: P0"),
+        "unmodelled keys must survive the rewrite: {rewritten}"
+    );
+    assert!(
+        rewritten.contains("phase: null"),
+        "an explicit null is a value, not an absence: {rewritten}"
+    );
+}
