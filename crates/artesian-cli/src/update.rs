@@ -180,11 +180,11 @@ struct RunningMcpReport {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct RunningMcpProcess {
-    pid: u32,
+pub(crate) struct RunningMcpProcess {
+    pub(crate) pid: u32,
     pgid: Option<i32>,
     exe: Option<PathBuf>,
-    command: String,
+    pub(crate) command: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -534,7 +534,7 @@ fn pid_alive(pid: u32) -> bool {
 }
 
 #[cfg(target_os = "linux")]
-fn discover_running_mcp_processes() -> io::Result<Vec<RunningMcpProcess>> {
+pub(crate) fn discover_running_mcp_processes() -> io::Result<Vec<RunningMcpProcess>> {
     let read_dir = match fs::read_dir("/proc") {
         Ok(read_dir) => read_dir,
         Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
@@ -598,7 +598,7 @@ fn read_linux_pgid(path: &Path) -> io::Result<i32> {
 }
 
 #[cfg(all(unix, not(target_os = "linux")))]
-fn discover_running_mcp_processes() -> io::Result<Vec<RunningMcpProcess>> {
+pub(crate) fn discover_running_mcp_processes() -> io::Result<Vec<RunningMcpProcess>> {
     let output = Command::new("ps")
         .args(["-axo", "pid=,pgid=,comm=,args="])
         .output()?;
@@ -610,7 +610,7 @@ fn discover_running_mcp_processes() -> io::Result<Vec<RunningMcpProcess>> {
 }
 
 #[cfg(not(unix))]
-fn discover_running_mcp_processes() -> io::Result<Vec<RunningMcpProcess>> {
+pub(crate) fn discover_running_mcp_processes() -> io::Result<Vec<RunningMcpProcess>> {
     Ok(Vec::new())
 }
 
