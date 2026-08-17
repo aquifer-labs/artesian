@@ -26,7 +26,9 @@ use anyhow::{Context, Result};
 use serde_json::{json, Value};
 use tokio::process::Command as TokioCommand;
 
-use crate::update::{probe_binary_version, resolve_on_path, VersionProbe};
+use crate::update::{
+    discover_running_mcp_processes, probe_binary_version, resolve_on_path, VersionProbe,
+};
 use crate::{home_dir, zed_settings_path};
 
 const CELLAR_MARKER: &str = "/Cellar/artesian/";
@@ -722,6 +724,124 @@ fn report(level: Level, line: &str, fix: Option<&str>, problems: &mut usize) {
     }
 }
 
+/// Physical footprint of a process, in MB.
+///
+/// Deliberately not RSS: a server that has been swapped out reports a few hundred kilobytes while
+/// still owing hundreds of megabytes, and a machine deep enough in swap to do that is exactly the
+/// one this check exists to explain.
+#[cfg(target_os = "macos")]
+fn process_footprint_mb(pid: u32) -> Option<f64> {
+    let output = std::process::Command::new("vmmap")
+        .args(["-summary", &pid.to_string()])
+        .output()
+        .ok()?;
+    let text = String::from_utf8_lossy(&output.stdout);
+    let raw = text
+        .lines()
+        .find(|line| line.starts_with("Physical footprint:"))?
+        .split(':')
+        .nth(1)?
+        .trim()
+        .to_string();
+    let (value, scale) = match raw.chars().last()? {
+        'G' => (&raw[..raw.len() - 1], 1024.0),
+        'M' => (&raw[..raw.len() - 1], 1.0),
+        'K' => (&raw[..raw.len() - 1], 1.0 / 1024.0),
+        _ => (raw.as_str(), 1.0 / (1024.0 * 1024.0)),
+    };
+    Some(value.trim().parse::<f64>().ok()? * scale)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn process_footprint_mb(_pid: u32) -> Option<f64> {
+    None
+}
+
+/// Combined footprint past which the running servers are worth a second look.
+///
+/// Not a correctness threshold — one server per open client is normal. It is the point where the
+/// total stops being background noise on a laptop.
+const MCP_FOOTPRINT_WARN_MB: f64 = 4096.0;
+
+/// Inventory the live `artesian-mcp` processes and what they cost together.
+///
+/// The useful number is the total, not the count: every server holds its own copy of the embedding
+/// model, so an abandoned client session keeps paying for its servers until something reclaims
+/// them. Seeing the sum is what turns "a lot of processes" into a decision.
+fn check_running_processes(problems: &mut usize) {
+    let processes = match discover_running_mcp_processes() {
+        Ok(processes) => processes,
+        Err(error) => {
+            report(
+                Level::Warn,
+                &format!("processes: could not inventory running artesian-mcp processes: {error}"),
+                None,
+                problems,
+            );
+            return;
+        }
+    };
+
+    if processes.is_empty() {
+        report(
+            Level::Ok,
+            "processes: no artesian-mcp servers are running",
+            None,
+            problems,
+        );
+        return;
+    }
+
+    let measured = processes
+        .iter()
+        .map(|process| (process, process_footprint_mb(process.pid)))
+        .collect::<Vec<_>>();
+    let total_mb = measured
+        .iter()
+        .filter_map(|(_, footprint)| *footprint)
+        .sum::<f64>();
+    let unmeasured = measured
+        .iter()
+        .filter(|(_, footprint)| footprint.is_none())
+        .count();
+
+    let summary = if total_mb > 0.0 {
+        format!(
+            "processes: {} artesian-mcp server(s) running, {:.1} GB combined",
+            processes.len(),
+            total_mb / 1024.0
+        )
+    } else {
+        format!(
+            "processes: {} artesian-mcp server(s) running",
+            processes.len()
+        )
+    };
+
+    let level = if total_mb >= MCP_FOOTPRINT_WARN_MB {
+        Level::Warn
+    } else {
+        Level::Ok
+    };
+    let fix = (total_mb >= MCP_FOOTPRINT_WARN_MB).then_some(
+        "each server holds its own embedding model — close idle MCP clients, or run `artesian update --restart-stale` to drop servers left by clients that already exited",
+    );
+    report(level, &summary, fix, problems);
+
+    for (process, footprint) in &measured {
+        let cost = footprint
+            .map(|mb| format!("{mb:>8.1} MB"))
+            .unwrap_or_else(|| "        ? MB".to_string());
+        println!(
+            "           - pid {:<7} {cost}  {}",
+            process.pid, process.command
+        );
+    }
+    if unmeasured > 0 {
+        println!("           ({unmeasured} process(es) reported no footprint)");
+    }
+}
+
 fn check_path_health(reg: &McpRegistrationEntry, problems: &mut usize) {
     let label = format!("path ({}: {})", reg.source_label, reg.server_name);
     let Some(resolved) = resolve_registered_command(&reg.entry.command) else {
@@ -949,6 +1069,8 @@ pub(crate) async fn run(cwd: &Path) -> Result<()> {
     for reg in &registrations {
         check_path_health(reg, &mut problems);
     }
+
+    check_running_processes(&mut problems);
 
     let current_version = env!("CARGO_PKG_VERSION");
     let mut seen_targets: BTreeSet<String> = BTreeSet::new();
