@@ -1558,6 +1558,7 @@ async fn main() -> Result<()> {
             admit_threshold,
             similarity_threshold,
         } => {
+            arm_dream_watchdog();
             dream_command(
                 config,
                 root,
@@ -4202,6 +4203,16 @@ fn spawn_detached_dream(config: &Path, root: &Path) {
         .stdout(Stdio::null())
         .stderr(Stdio::null());
 
+    // Nothing waits on this child and nothing reaps it, so hand it a deadline it enforces on
+    // itself. Without one, a dream that wedges holds its memory backend — embedding model and all
+    // — for as long as the machine stays up. Inherited when already set, so operators can tune it.
+    if env::var_os(DREAM_MAX_RUNTIME_ENV).is_none() {
+        cmd.env(
+            DREAM_MAX_RUNTIME_ENV,
+            DEFAULT_DREAM_MAX_RUNTIME_SECS.to_string(),
+        );
+    }
+
     // Detach on Unix: new process group so the child outlives the hook process.
     #[cfg(unix)]
     {
@@ -4222,6 +4233,37 @@ fn spawn_detached_dream(config: &Path, root: &Path) {
             eprintln!("artesian: dream-on-compact: failed to spawn background dream: {e}");
         }
     }
+}
+
+/// Environment variable carrying the dream's self-imposed wall-clock ceiling, in seconds.
+const DREAM_MAX_RUNTIME_ENV: &str = "ARTESIAN_DREAM_MAX_RUNTIME_SECS";
+
+/// Ceiling handed to a detached dream. Generous: a large corpus legitimately takes a while, and
+/// this is a runaway guard, not a deadline.
+const DEFAULT_DREAM_MAX_RUNTIME_SECS: u64 = 3600;
+
+/// Exit if this dream outruns the ceiling its spawner set.
+///
+/// Only detached dreams get one; a foreground `artesian dream` is left alone unless the operator
+/// sets the variable, because someone is watching that one and can stop it themselves.
+fn arm_dream_watchdog() {
+    let Some(raw) = env::var_os(DREAM_MAX_RUNTIME_ENV) else {
+        return;
+    };
+    let Some(secs) = raw.to_str().and_then(|v| v.trim().parse::<u64>().ok()) else {
+        return;
+    };
+    if secs == 0 {
+        return;
+    }
+    std::thread::Builder::new()
+        .name("artesian-dream-watchdog".to_string())
+        .spawn(move || {
+            std::thread::sleep(std::time::Duration::from_secs(secs));
+            eprintln!("artesian: dream exceeded {secs}s; exiting so it cannot linger");
+            std::process::exit(1);
+        })
+        .ok();
 }
 
 /// Default directory for dreams written by the pre-compact hook.
