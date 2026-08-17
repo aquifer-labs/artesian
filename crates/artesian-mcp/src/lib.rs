@@ -5185,8 +5185,12 @@ where
     V: aquifer::VectorStore,
 {
     attach_configured_reranker_with(backend, config, || {
-        aquifer::FastembedReranker::new()
-            .map(|reranker| Arc::new(reranker) as Arc<dyn aquifer::Reranker>)
+        // Process-wide: one reranker session per process, not one per MemoryServer. The HTTP
+        // transport builds a MemoryServer per session, so a per-server model would put one copy
+        // of the weights in memory for every connected client.
+        Ok::<_, aquifer::MemoryError>(
+            aquifer::FastembedReranker::shared() as Arc<dyn aquifer::Reranker>
+        )
     })
 }
 

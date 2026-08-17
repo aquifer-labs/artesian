@@ -40,24 +40,50 @@ impl Reranker for LocalLexicalReranker {
     }
 }
 
+/// Reranks hits with the pinned fastembed cross-encoder, opening the ONNX session on first use.
+///
+/// Prefer [`FastembedReranker::shared`] over [`FastembedReranker::new`]: the reranker model is
+/// larger than the embedder, and one session per `MemoryServer` means one copy of the weights per
+/// HTTP session.
 #[cfg(feature = "vector")]
 pub struct FastembedReranker {
-    inner: Mutex<TextRerank>,
+    inner: Mutex<Option<TextRerank>>,
     batch_size: usize,
 }
 
 #[cfg(feature = "vector")]
 impl FastembedReranker {
+    /// Build a reranker with no session loaded yet.
+    ///
+    /// Note that a missing or unreadable model surfaces on the first rerank call rather than here,
+    /// because the session is opened lazily.
     pub fn new() -> MemoryResult<Self> {
-        let inner = TextRerank::try_new(
+        Ok(Self {
+            inner: Mutex::new(None),
+            batch_size: 8,
+        })
+    }
+
+    /// The process-wide reranker, loading the model at most once per process.
+    pub fn shared() -> std::sync::Arc<Self> {
+        static SHARED: std::sync::OnceLock<std::sync::Arc<FastembedReranker>> =
+            std::sync::OnceLock::new();
+        SHARED
+            .get_or_init(|| {
+                std::sync::Arc::new(Self {
+                    inner: Mutex::new(None),
+                    batch_size: 8,
+                })
+            })
+            .clone()
+    }
+
+    fn open_model() -> MemoryResult<TextRerank> {
+        TextRerank::try_new(
             RerankInitOptions::new(RerankerModel::BGERerankerV2M3)
                 .with_show_download_progress(false),
         )
-        .map_err(|error| MemoryError::BackendUnavailable(error.to_string()))?;
-        Ok(Self {
-            inner: Mutex::new(inner),
-            batch_size: 8,
-        })
+        .map_err(|error| MemoryError::BackendUnavailable(error.to_string()))
     }
 }
 
@@ -76,10 +102,13 @@ impl Reranker for FastembedReranker {
             .iter()
             .map(|hit| hit.record.content.as_str())
             .collect::<Vec<_>>();
-        let mut reranker = self
-            .inner
-            .lock()
-            .map_err(|error| MemoryError::BackendUnavailable(error.to_string()))?;
+        let mut slot = crate::vector_memory::lock_recovering(&self.inner);
+        if slot.is_none() {
+            *slot = Some(Self::open_model()?);
+        }
+        let reranker = slot
+            .as_mut()
+            .expect("session is loaded by the branch above");
         let ranked = reranker
             .rerank(query, documents, false, Some(self.batch_size))
             .map_err(|error| MemoryError::BackendUnavailable(error.to_string()))?;
