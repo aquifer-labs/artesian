@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
-use std::sync::{Arc, Mutex};
+use std::{
+    sync::{Arc, Mutex, OnceLock},
+    time::{Duration, Instant},
+};
 
 use chrono::Utc;
 use fastembed::{EmbeddingModel, TextEmbedding, TextInitOptions};
@@ -36,34 +39,158 @@ pub trait TextEmbedder: Send + Sync {
     fn embed_passage(&self, text: &str) -> MemoryResult<Vec<f32>>;
 }
 
+/// Idle unloading is off by default.
+///
+/// Dropping the session returns only about a third of its footprint — the ONNX runtime keeps a
+/// process-wide floor of roughly 520MB either way — while a reload transiently stacks a fresh
+/// session on top of that floor, peaking *higher* than never unloading at all. For a server that
+/// is used in bursts, cycling is a worse trade than holding. Set `ARTESIAN_EMBEDDER_IDLE_SECS` to
+/// opt in where processes idle for long stretches and the peak is affordable.
+const DEFAULT_EMBEDDER_IDLE: Duration = Duration::ZERO;
+
+/// How often the unloader wakes to check the idle window.
+const EMBEDDER_SWEEP_INTERVAL: Duration = Duration::from_secs(60);
+
+/// Idle window before an unused ONNX session is dropped. `ARTESIAN_EMBEDDER_IDLE_SECS` sets it in
+/// seconds; `0` (the default) keeps the session for the lifetime of the process.
+fn embedder_idle_window() -> Duration {
+    static WINDOW: OnceLock<Duration> = OnceLock::new();
+    *WINDOW.get_or_init(|| {
+        std::env::var("ARTESIAN_EMBEDDER_IDLE_SECS")
+            .ok()
+            .and_then(|raw| raw.trim().parse::<u64>().ok())
+            .map_or(DEFAULT_EMBEDDER_IDLE, Duration::from_secs)
+    })
+}
+
+/// Take a lock whose data stays valid across a panic.
+///
+/// Both guarded slots hold "a model, or nothing". A panic mid-`embed` cannot make that
+/// inconsistent, but it *does* poison the mutex — and because the embedder is now process-wide,
+/// honouring the poison would disable embedding and idle unloading for the whole process for the
+/// rest of its life. Recover instead, dropping whatever session was loaded so the next call opens
+/// a fresh one.
+pub(crate) fn lock_recovering<T>(slot: &Mutex<Option<T>>) -> std::sync::MutexGuard<'_, Option<T>> {
+    match slot.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => {
+            let mut guard = poisoned.into_inner();
+            *guard = None;
+            guard
+        }
+    }
+}
+
+/// A loaded ONNX session plus the moment it was last used. Both live behind the same lock so the
+/// unloader can never drop a session out from under an in-flight `embed`.
+struct LoadedModel {
+    model: TextEmbedding,
+    last_used: Instant,
+}
+
+/// Embeds text with the pinned fastembed model, opening the ONNX session on first use.
+///
+/// Prefer [`FastembedTextEmbedder::shared`] over [`FastembedTextEmbedder::new`]: one session per
+/// process is enough, every extra one costs several hundred megabytes that the ONNX runtime never
+/// fully returns, and only the shared instance gets the idle unloader that drops the session again
+/// after [`embedder_idle_window`] of inactivity.
 pub struct FastembedTextEmbedder {
-    inner: Mutex<TextEmbedding>,
+    inner: Mutex<Option<LoadedModel>>,
 }
 
 impl FastembedTextEmbedder {
+    /// Build an embedder with no session loaded yet.
+    ///
+    /// Note that a missing or unreadable model surfaces on the first embed call rather than here,
+    /// because the session is opened lazily.
     pub fn new() -> MemoryResult<Self> {
-        let inner = TextEmbedding::try_new(
+        Ok(Self {
+            inner: Mutex::new(None),
+        })
+    }
+
+    /// The process-wide embedder, loading the model at most once per process.
+    ///
+    /// Every caller shares one ONNX session: several sessions in one process each hold their own
+    /// copy of the weights, which is what turns a handful of MCP sessions into gigabytes.
+    pub fn shared() -> Arc<Self> {
+        static SHARED: OnceLock<Arc<FastembedTextEmbedder>> = OnceLock::new();
+        SHARED
+            .get_or_init(|| {
+                let embedder = Arc::new(Self {
+                    inner: Mutex::new(None),
+                });
+                spawn_idle_unloader(Arc::clone(&embedder));
+                embedder
+            })
+            .clone()
+    }
+
+    fn open_model() -> MemoryResult<TextEmbedding> {
+        TextEmbedding::try_new(
             TextInitOptions::new(EmbeddingModel::MultilingualE5Small)
                 .with_show_download_progress(false),
         )
-        .map_err(|error| MemoryError::BackendUnavailable(error.to_string()))?;
-        Ok(Self {
-            inner: Mutex::new(inner),
-        })
+        .map_err(|error| MemoryError::BackendUnavailable(error.to_string()))
+    }
+
+    /// Drop the session when it has gone unused for longer than the idle window.
+    ///
+    /// Returns true when a session was dropped. A failed load leaves the slot empty rather than
+    /// poisoned, so the next embed call is free to try opening the model again.
+    fn unload_if_idle(&self, idle_window: Duration) -> bool {
+        let mut slot = lock_recovering(&self.inner);
+        let idle = slot
+            .as_ref()
+            .is_some_and(|loaded| loaded.last_used.elapsed() >= idle_window);
+        if idle {
+            *slot = None;
+        }
+        idle
     }
 
     fn embed_prefixed(&self, prefix: &str, text: &str) -> MemoryResult<Vec<f32>> {
         let input = format!("{prefix}: {text}");
-        let mut embedder = self
-            .inner
-            .lock()
-            .map_err(|error| MemoryError::BackendUnavailable(error.to_string()))?;
-        let mut embeddings = embedder
+        let mut slot = lock_recovering(&self.inner);
+        if slot.is_none() {
+            *slot = Some(LoadedModel {
+                model: Self::open_model()?,
+                last_used: Instant::now(),
+            });
+        }
+        let loaded = slot
+            .as_mut()
+            .expect("session is loaded by the branch above");
+        let result = loaded
+            .model
             .embed([input], None)
-            .map_err(|error| MemoryError::BackendUnavailable(error.to_string()))?;
-        embeddings.pop().ok_or_else(|| {
+            .map_err(|error| MemoryError::BackendUnavailable(error.to_string()));
+        // Stamp after the call, so the idle window measures time since the work finished rather
+        // than since it started.
+        loaded.last_used = Instant::now();
+        result?.pop().ok_or_else(|| {
             MemoryError::BackendUnavailable("fastembed returned no embeddings".to_string())
         })
+    }
+}
+
+/// Drop the shared session once it goes idle. Runs for the lifetime of the process; skipped
+/// entirely when unloading is disabled.
+fn spawn_idle_unloader(embedder: Arc<FastembedTextEmbedder>) {
+    let idle_window = embedder_idle_window();
+    if idle_window.is_zero() {
+        return;
+    }
+    let sweep = EMBEDDER_SWEEP_INTERVAL.min(idle_window);
+    if let Err(error) = std::thread::Builder::new()
+        .name("artesian-embedder-unload".to_string())
+        .spawn(move || loop {
+            std::thread::sleep(sweep);
+            embedder.unload_if_idle(idle_window);
+        })
+    {
+        // Say so rather than silently running without the unloader the operator asked for.
+        eprintln!("artesian: could not start the embedder idle unloader: {error}");
     }
 }
 
@@ -327,7 +454,7 @@ pub struct VectorMemoryBackend<V: VectorStore> {
 
 impl<V: VectorStore> VectorMemoryBackend<V> {
     pub fn new(store: V, config: VectorMemoryConfig) -> MemoryResult<Self> {
-        Self::with_embedder(store, config, Arc::new(FastembedTextEmbedder::new()?))
+        Self::with_embedder(store, config, FastembedTextEmbedder::shared())
     }
 
     pub fn with_embedder(
@@ -1904,6 +2031,24 @@ fn point_to_record(point: VectorPoint) -> MemoryResult<MemoryRecord> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn shared_embedder_is_one_session_per_process() {
+        // Several backends in one process must not each open their own ONNX session; that is what
+        // turns a handful of MCP sessions into gigabytes. Cheap to assert because the session is
+        // opened lazily — nothing here loads the model.
+        assert!(Arc::ptr_eq(
+            &FastembedTextEmbedder::shared(),
+            &FastembedTextEmbedder::shared()
+        ));
+    }
+
+    #[test]
+    fn unloading_an_unused_embedder_is_a_no_op() {
+        let embedder = FastembedTextEmbedder::new().expect("construct");
+        assert!(!embedder.unload_if_idle(Duration::ZERO));
+        assert!(embedder.inner.lock().expect("lock").is_none());
+    }
 
     #[test]
     fn parent_size_median_is_empty_until_a_sample_exists() {
