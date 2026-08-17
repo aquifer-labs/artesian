@@ -54,3 +54,61 @@ jobs:
           files: |
             artesian-*.tar.gz
             artesian-*.tar.gz.sha256
+
+  # Point the Homebrew tap at the release that was just published, so `brew upgrade` reaches users
+  # without a second manual step. Runs after every platform artifact is uploaded, because the
+  # formula needs their checksums.
+  tap:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Update the formula
+        env:
+          GH_TOKEN: ${{ secrets.BOT_GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${TAG#v}"
+
+          gh release download "$TAG" --repo "${{ github.repository }}" \
+            --pattern 'artesian-*.tar.gz.sha256' --dir checksums
+
+          # `shasum` writes "<digest>  <file>"; the formula wants the digest alone.
+          arm_sha="$(awk '{print $1}' "checksums/artesian-${version}-aarch64-apple-darwin.tar.gz.sha256")"
+          linux_sha="$(awk '{print $1}' "checksums/artesian-${version}-x86_64-unknown-linux-gnu.tar.gz.sha256")"
+
+          git clone --depth 1 \
+            "https://x-access-token:${GH_TOKEN}@github.com/aquifer-labs/homebrew-tap.git" tap
+          cd tap
+
+          python3 - "$version" "$arm_sha" "$linux_sha" <<'PY'
+          import re, sys
+
+          version, arm_sha, linux_sha = sys.argv[1:4]
+          path = "Formula/artesian.rb"
+          text = open(path, encoding="utf-8").read()
+
+          text = re.sub(r'^(\s*version\s+")[^"]+(")', rf'\g<1>{version}\g<2>', text, count=1, flags=re.M)
+          text = re.sub(r'/download/v[^/]+/artesian-[^/]+?-(aarch64-apple-darwin|x86_64-unknown-linux-gnu)',
+                        rf'/download/v{version}/artesian-{version}-\g<1>', text)
+
+          # The macOS block precedes the Linux one, so the checksums land in that order.
+          shas = iter((arm_sha, linux_sha))
+          text, count = re.subn(r'^(\s*sha256\s+")[0-9a-f]{64}(")',
+                                lambda m: f'{m.group(1)}{next(shas)}{m.group(2)}', text, flags=re.M)
+          if count != 2:
+              raise SystemExit(f"expected 2 sha256 fields in the formula, found {count}")
+
+          open(path, "w", encoding="utf-8").write(text)
+          PY
+
+          if git diff --quiet; then
+            echo "formula already points at ${version}"
+            exit 0
+          fi
+
+          git config user.name "aquifer-labs-bot"
+          git config user.email "bot@aquifer-labs.invalid"
+          git commit -am "artesian ${version}"
+          git push
