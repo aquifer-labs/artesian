@@ -30,13 +30,37 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.tag || github.ref_name }}
+      # A published tarball is what people have already downloaded and checksummed. The build is
+      # not byte-reproducible, so rebuilding one would silently change the bytes behind a version
+      # that is already out. Re-running this workflow is useful for the tap job below; it must not
+      # be a way to rewrite history.
+      - name: Skip targets already published for this tag
+        id: published
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+        shell: bash
+        run: |
+          set -uo pipefail
+          version="${TAG#v}"
+          asset="artesian-${version}-${{ matrix.target }}.tar.gz"
+          if gh release view "$TAG" --repo "${{ github.repository }}" \
+               --json assets --jq '.assets[].name' 2>/dev/null | grep -qx "$asset"; then
+            echo "$asset is already published; leaving it untouched"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
       - uses: dtolnay/rust-toolchain@stable
+        if: steps.published.outputs.skip != 'true'
         with:
           targets: ${{ matrix.target }}
       - name: Build the unified binary
+        if: steps.published.outputs.skip != 'true'
         # One multi-call binary serves the CLI, the MCP server, and the daemon.
         run: cargo build --release --locked --target ${{ matrix.target }} -p artesian-cli --features "qdrant,llm,http"
       - name: Package + checksum
+        if: steps.published.outputs.skip != 'true'
         shell: bash
         run: |
           tag="${{ inputs.tag || github.ref_name }}"
@@ -49,8 +73,11 @@ jobs:
           tar -czf "${name}.tar.gz" -C "$name" artesian
           shasum -a 256 "${name}.tar.gz" | tee "${name}.tar.gz.sha256"
       - uses: softprops/action-gh-release@v2
+        if: steps.published.outputs.skip != 'true'
         with:
           tag_name: ${{ inputs.tag || github.ref_name }}
+          # Belt and braces behind the skip above: never replace an asset that is already there.
+          overwrite_files: false
           files: |
             artesian-*.tar.gz
             artesian-*.tar.gz.sha256
