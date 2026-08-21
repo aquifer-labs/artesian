@@ -10,7 +10,7 @@ use std::{
 #[cfg(feature = "qdrant")]
 use std::env;
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use aquifer::{
     FilesBackend, MemoryBackend, PayloadIndex, SqliteVecVectorStore, SqliteVecVectorStoreConfig,
     VectorCollection, VectorMemoryBackend, VectorMemoryConfig, VectorStore,
@@ -95,7 +95,7 @@ pub fn process_supervisor_from_config(
 pub async fn shutdown_signal() -> Result<&'static str> {
     #[cfg(unix)]
     {
-        use tokio::signal::unix::{signal, SignalKind};
+        use tokio::signal::unix::{SignalKind, signal};
 
         let mut terminate = signal(SignalKind::terminate()).context("listen for sigterm")?;
         tokio::select! {
@@ -447,8 +447,8 @@ fn sqlite_path(root: &str) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use std::sync::{
-        atomic::{AtomicBool, Ordering},
         Arc,
+        atomic::{AtomicBool, Ordering},
     };
 
     use aquifer::{MemoryResult, SearchHit};

@@ -11,9 +11,9 @@
 use std::sync::Arc;
 
 use aquifer::{
-    rechunk_oversized_sqlite, Distance, MemoryBackend, MemoryQuery, MemoryResult,
-    SqliteVecVectorStore, SqliteVecVectorStoreConfig, StoreMemory, TextEmbedder, VectorCollection,
-    VectorMemoryBackend, VectorMemoryConfig, VectorPoint, VectorStore,
+    Distance, MemoryBackend, MemoryQuery, MemoryResult, SqliteVecVectorStore,
+    SqliteVecVectorStoreConfig, StoreMemory, TextEmbedder, VectorCollection, VectorMemoryBackend,
+    VectorMemoryConfig, VectorPoint, VectorStore, rechunk_oversized_sqlite,
 };
 use artesian_test_support::TempDir;
 

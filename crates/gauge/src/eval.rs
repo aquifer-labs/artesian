@@ -22,8 +22,8 @@ mod runner {
     use std::sync::Arc;
 
     use headgate::{
-        count_tokens, Headgate, HeadgateConfig, LlmClient, LlmRequest, RecallItem, RecallStore,
-        StaticRecallStore,
+        Headgate, HeadgateConfig, LlmClient, LlmRequest, RecallItem, RecallStore,
+        StaticRecallStore, count_tokens,
     };
     use serde::{Deserialize, Serialize};
 
@@ -516,7 +516,7 @@ was phrased. One per line, no numbering, preserve meaning.\n\nQuestion: {query}"
     mod tests {
         use super::*;
         use crate::eval::QaCase;
-        use futures_util::{future::BoxFuture, FutureExt};
+        use futures_util::{FutureExt, future::BoxFuture};
         use headgate::HeadgateResult;
 
         /// Answers with a canned string and grades every answer "yes".
@@ -641,8 +641,8 @@ was phrased. One per line, no numbering, preserve meaning.\n\nQuestion: {query}"
 pub use runner::VectorRecall;
 #[cfg(feature = "llm")]
 pub use runner::{
-    run_case, run_qa_eval, CaseOutcome, EvalSummary, ExpandingRecall, ExpandingRecallStore,
-    LexicalRecall, RecallFactory,
+    CaseOutcome, EvalSummary, ExpandingRecall, ExpandingRecallStore, LexicalRecall, RecallFactory,
+    run_case, run_qa_eval,
 };
 
 use serde::{Deserialize, Serialize};

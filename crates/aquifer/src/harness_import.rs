@@ -693,11 +693,7 @@ fn durable_fact_score(content: &str) -> f32 {
     ) {
         return 1.0;
     }
-    if word_count >= 5 {
-        0.8
-    } else {
-        0.0
-    }
+    if word_count >= 5 { 0.8 } else { 0.0 }
 }
 
 fn contains_any(haystack: &str, needles: &[&str]) -> bool {

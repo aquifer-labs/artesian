@@ -1138,10 +1138,12 @@ mod tests {
         let packet = WorkingContextBundle::resume_packet_from_session(&session)
             .expect("resume packet should render");
         assert_eq!(packet["session"]["handed_off_from"], "codex");
-        assert!(packet["restored_working_state"]
-            .as_str()
-            .expect("state should be text")
-            .contains("ship the working-context bundle first"));
+        assert!(
+            packet["restored_working_state"]
+                .as_str()
+                .expect("state should be text")
+                .contains("ship the working-context bundle first")
+        );
     }
 
     #[test]

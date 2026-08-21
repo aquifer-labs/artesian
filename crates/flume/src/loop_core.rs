@@ -31,11 +31,11 @@ use aquifer::{
     StoreMemory,
 };
 use headgate::{count_tokens, record_savings};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::quota::{
+    QUOTA_CONTINUATION_NOTE, QuotaContinuationContext, QuotaLoopConfig, QuotaThresholdEvent,
     quota_threshold_events, read_local_quota_with_options, write_quota_continuation,
-    QuotaContinuationContext, QuotaLoopConfig, QuotaThresholdEvent, QUOTA_CONTINUATION_NOTE,
 };
 
 // ── Brakes / constants ─────────────────────────────────────────────────────────────────────────
@@ -1529,10 +1529,12 @@ mod tests {
             .expect("quota anchor should exist");
         assert_eq!(anchor.current_task, "Loop goal: goal-cmd");
         assert!(anchor.next_step.contains(QUOTA_CONTINUATION_NOTE));
-        assert!(anchor
-            .last_decisions
-            .iter()
-            .any(|decision| decision == QUOTA_CONTINUATION_NOTE));
+        assert!(
+            anchor
+                .last_decisions
+                .iter()
+                .any(|decision| decision == QUOTA_CONTINUATION_NOTE)
+        );
 
         let session = SessionStore::new(Arc::new(backend))
             .load(&key)
@@ -1542,10 +1544,12 @@ mod tests {
         let packet = headgate::WorkingContextBundle::resume_packet_from_session(&session)
             .expect("resume packet should render");
         assert_eq!(packet["goal"], "Loop goal: goal-cmd");
-        assert!(packet["restored_working_state"]
-            .as_str()
-            .unwrap()
-            .contains(QUOTA_CONTINUATION_NOTE));
+        assert!(
+            packet["restored_working_state"]
+                .as_str()
+                .unwrap()
+                .contains(QUOTA_CONTINUATION_NOTE)
+        );
     }
 
     // ── Remediation arc tests ─────────────────────────────────────────────────────────────────

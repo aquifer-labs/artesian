@@ -10,9 +10,9 @@ use futures_util::future::BoxFuture;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    backfill_directory, chunking::ChunkConfig, files::parse_record, CollectionCompat,
-    MemoryBackend, MemoryError, MemoryResult, SqliteVecVectorStore, StoreMemory, TextEmbedder,
-    VectorMemoryBackend, VectorMemoryConfig, VectorStore,
+    CollectionCompat, MemoryBackend, MemoryError, MemoryResult, SqliteVecVectorStore, StoreMemory,
+    TextEmbedder, VectorMemoryBackend, VectorMemoryConfig, VectorStore, backfill_directory,
+    chunking::ChunkConfig, files::parse_record,
 };
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]

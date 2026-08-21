@@ -2,7 +2,7 @@
 
 use std::{
     cmp::Reverse,
-    collections::{btree_map::Entry, BTreeMap},
+    collections::{BTreeMap, btree_map::Entry},
     sync::Arc,
 };
 

@@ -13,7 +13,7 @@ use std::collections::HashMap;
 use std::process::Stdio;
 use std::time::Duration;
 
-use futures_util::{future::BoxFuture, FutureExt};
+use futures_util::{FutureExt, future::BoxFuture};
 use serde::{Deserialize, Serialize};
 use tokio::io::AsyncWriteExt;
 

@@ -17,14 +17,13 @@
 
 use std::sync::Arc;
 
-use futures_util::{future::BoxFuture, FutureExt};
+use futures_util::{FutureExt, future::BoxFuture};
 use serde_json::json;
 
 use crate::{
-    count_tokens,
-    judge::{parse_verdict_pub, JudgeVerdict},
     CommittedContextState, JudgeTokenCost, LlmClient, LlmRequest, QualifyAudit, QualifyDecision,
-    QualifyGate, QualifySignal, ReasonCode, RecallItem,
+    QualifyGate, QualifySignal, ReasonCode, RecallItem, count_tokens,
+    judge::{JudgeVerdict, parse_verdict_pub},
 };
 
 const PANEL_SYSTEM: &str = "You are a memory-control judge for an AI agent. Score whether a \

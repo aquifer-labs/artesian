@@ -265,8 +265,7 @@ mod tests {
         // Existing and incoming share the same core tokens AND incoming is much longer → Supersede.
         // Use low threshold so the shared tokens register above the similarity floor.
         let existing = "The team chose Rust for performance and safety requirements";
-        let incoming =
-            "The team chose Rust for performance and safety requirements and additionally \
+        let incoming = "The team chose Rust for performance and safety requirements and additionally \
                         for memory safety zero-cost abstractions type system and lack of garbage \
                         collector which was critical for audio processing latency requirements";
         let record = make_candidate("a", existing);

@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use aquifer::FilesBackend;
 use artesian_test_support::TempDir;
-use futures_util::{future::BoxFuture, FutureExt};
+use futures_util::{FutureExt, future::BoxFuture};
 use headrace::{
     ClaimRequest, FilesTaskStore, NewTask, Task, TaskKind, TaskStatus, TaskStore, VectorTaskStore,
     Verifier, VerifierGate, VerifierOutcome,
@@ -382,8 +382,10 @@ async fn claims_and_transitions_a_task_whose_file_name_carries_a_slug() {
         })
         .await
         .expect("transition should find the file by id, not by name");
-    assert!(tempdir
-        .join("tasks/done/0034-unified-vps-management.md")
-        .exists());
+    assert!(
+        tempdir
+            .join("tasks/done/0034-unified-vps-management.md")
+            .exists()
+    );
     assert!(!tempdir.join("tasks/done/0034.md").exists());
 }

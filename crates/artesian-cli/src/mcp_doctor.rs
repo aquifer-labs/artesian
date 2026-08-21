@@ -23,11 +23,11 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tokio::process::Command as TokioCommand;
 
 use crate::update::{
-    discover_running_mcp_processes, probe_binary_version, resolve_on_path, VersionProbe,
+    VersionProbe, discover_running_mcp_processes, probe_binary_version, resolve_on_path,
 };
 use crate::{home_dir, zed_settings_path};
 
@@ -851,7 +851,9 @@ fn check_path_health(reg: &McpRegistrationEntry, problems: &mut usize) {
                 "{label}: command '{}' was not found (not on PATH, not a file)",
                 reg.entry.command
             ),
-            Some("re-run `artesian init --register-mcp`, or repoint the registration at an installed artesian-mcp"),
+            Some(
+                "re-run `artesian init --register-mcp`, or repoint the registration at an installed artesian-mcp",
+            ),
             problems,
         );
         return;
@@ -983,14 +985,19 @@ async fn check_handshake(entry: &RawServerEntry, problems: &mut usize) {
     match probe_handshake(&entry.command, &entry.args, &entry.env).await {
         Ok(ok) => report(
             Level::Ok,
-            &format!("{label}: responded in {}ms with {} tool(s)", ok.elapsed_ms, ok.tools_count),
+            &format!(
+                "{label}: responded in {}ms with {} tool(s)",
+                ok.elapsed_ms, ok.tools_count
+            ),
             None,
             problems,
         ),
         Err(error) => report(
             Level::Fail,
             &format!("{label}: {error}"),
-            Some("run the command manually and check stderr, or re-run `artesian init --register-mcp`"),
+            Some(
+                "run the command manually and check stderr, or re-run `artesian init --register-mcp`",
+            ),
             problems,
         ),
     }
@@ -1017,7 +1024,9 @@ fn check_stale_resume(cwd: &Path, problems: &mut usize) {
                         finding.session_file.display(),
                         finding.server_name,
                     ),
-                    Some("start a NEW chat (do not resume this session) — this is an upstream Claude Code resume limitation"),
+                    Some(
+                        "start a NEW chat (do not resume this session) — this is an upstream Claude Code resume limitation",
+                    ),
                     problems,
                 );
             }

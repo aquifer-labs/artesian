@@ -2,11 +2,11 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use futures_util::{future::BoxFuture, FutureExt};
+use futures_util::{FutureExt, future::BoxFuture};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    entity::extract_entities, MemoryBackend, MemoryRecord, MemoryResult, SearchHit, SearchSource,
+    MemoryBackend, MemoryRecord, MemoryResult, SearchHit, SearchSource, entity::extract_entities,
 };
 
 pub const DEFAULT_GRAPH_HOPS: usize = 1;

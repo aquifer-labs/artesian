@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use aquifer::{
-    recover_after_compaction, AnchorAnchorStore, FilesBackend, MemoryBackend, MemoryTier,
-    SessionAnchor, SessionKey, StoreMemory,
+    AnchorAnchorStore, FilesBackend, MemoryBackend, MemoryTier, SessionAnchor, SessionKey,
+    StoreMemory, recover_after_compaction,
 };
 use artesian_test_support::TempDir;
 
@@ -69,11 +69,13 @@ async fn keyed_anchor_does_not_replace_default_anchor() {
         Some("session-a".to_string()),
         Some("other-task".to_string()),
     );
-    assert!(store
-        .get_for_session(&other_key)
-        .await
-        .expect("other key should read")
-        .is_none());
+    assert!(
+        store
+            .get_for_session(&other_key)
+            .await
+            .expect("other key should read")
+            .is_none()
+    );
 }
 
 #[tokio::test]

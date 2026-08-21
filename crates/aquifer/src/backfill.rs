@@ -9,8 +9,8 @@ use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    files::parse_record, identity::stable_memory_id, normalize_project, MemoryBackend,
-    MemoryRecord, MemoryResult, MemoryTier, StoreMemory,
+    MemoryBackend, MemoryRecord, MemoryResult, MemoryTier, StoreMemory, files::parse_record,
+    identity::stable_memory_id, normalize_project,
 };
 
 const MAX_SECTION_CHARS: usize = 8_000;

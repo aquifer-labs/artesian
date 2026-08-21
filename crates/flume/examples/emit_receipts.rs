@@ -12,8 +12,8 @@ use std::env;
 
 use chrono::Utc;
 use flume::{
-    task_boundary_from_instruction, BudgetEnvelope, Consumed, Distilled, GateDecision,
-    ReceiptWriter, ReturnReceipt, SpawnReceipt, StopReason,
+    BudgetEnvelope, Consumed, Distilled, GateDecision, ReceiptWriter, ReturnReceipt, SpawnReceipt,
+    StopReason, task_boundary_from_instruction,
 };
 use serde_json::Map;
 

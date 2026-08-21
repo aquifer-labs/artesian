@@ -5,9 +5,9 @@
 use std::{collections::BTreeMap, env};
 
 use aquifer::{
-    preflight_qdrant, MemoryBackend, MemoryQuery, MemoryTier, QdrantEndpoints, QdrantVectorStore,
-    QdrantVectorStoreConfig, RrfOptions, StoreMemory, VectorCollectionAdmin, VectorMemoryBackend,
-    VectorMemoryConfig, PINNED_FASTEMBED_DIMENSIONS, PINNED_FASTEMBED_MODEL,
+    MemoryBackend, MemoryQuery, MemoryTier, PINNED_FASTEMBED_DIMENSIONS, PINNED_FASTEMBED_MODEL,
+    QdrantEndpoints, QdrantVectorStore, QdrantVectorStoreConfig, RrfOptions, StoreMemory,
+    VectorCollectionAdmin, VectorMemoryBackend, VectorMemoryConfig, preflight_qdrant,
 };
 use chrono::Utc;
 
@@ -40,9 +40,11 @@ fn qdrant_endpoint_normalization_names_custom_port_error() {
     let error = QdrantVectorStoreConfig::new("http://127.0.0.1:7444")
         .endpoints()
         .expect_err("custom single port should be actionable");
-    assert!(error
-        .to_string()
-        .contains("pass --qdrant-rest-url explicitly"));
+    assert!(
+        error
+            .to_string()
+            .contains("pass --qdrant-rest-url explicitly")
+    );
 }
 
 #[tokio::test]
@@ -50,9 +52,11 @@ async fn qdrant_preflight_reports_actionable_custom_port_error_without_network()
     let error = preflight_qdrant(QdrantVectorStoreConfig::new("http://127.0.0.1:7444"))
         .await
         .expect_err("custom single port should fail before probing network");
-    assert!(error
-        .to_string()
-        .contains("pass --qdrant-rest-url explicitly"));
+    assert!(
+        error
+            .to_string()
+            .contains("pass --qdrant-rest-url explicitly")
+    );
 }
 
 #[tokio::test]

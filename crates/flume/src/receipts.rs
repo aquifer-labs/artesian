@@ -18,8 +18,8 @@ use std::{
     fs, io,
     path::{Path, PathBuf},
     sync::{
-        atomic::{AtomicU64, Ordering},
         Arc, Mutex, OnceLock, PoisonError,
+        atomic::{AtomicU64, Ordering},
     },
 };
 

@@ -2,7 +2,7 @@
 
 //! Position-swap debiasing for order-sensitive pairwise judges.
 
-use futures_util::{future::BoxFuture, FutureExt};
+use futures_util::{FutureExt, future::BoxFuture};
 use serde::{Deserialize, Serialize};
 
 use crate::{CommittedContextState, RecallItem};

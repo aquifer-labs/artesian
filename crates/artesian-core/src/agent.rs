@@ -3,7 +3,7 @@
 use std::pin::Pin;
 
 use futures_core::Stream;
-use futures_util::{future::BoxFuture, FutureExt};
+use futures_util::{FutureExt, future::BoxFuture};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;

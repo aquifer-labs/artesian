@@ -24,8 +24,8 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    decay::{retrieval_strength, DecayConfig},
     MemoryRecord, MemoryState,
+    decay::{DecayConfig, retrieval_strength},
 };
 
 /// One line of the eviction audit log (`~/.artesian/eviction.jsonl`).
@@ -340,10 +340,12 @@ mod tests {
         let report = evict(&[archived, active], &policy);
         assert_eq!(report.deleted, 1);
         assert_eq!(report.archived, 0); // hard does not re-archive
-        assert!(report
-            .log_entries
-            .iter()
-            .any(|e| e.record_id == "old-archived" && e.action == EvictionAction::Delete));
+        assert!(
+            report
+                .log_entries
+                .iter()
+                .any(|e| e.record_id == "old-archived" && e.action == EvictionAction::Delete)
+        );
     }
 
     #[test]
@@ -371,14 +373,18 @@ mod tests {
         let report = evict(&[old_useful, fresh_unused], &policy);
 
         assert_eq!(report.archived, 1);
-        assert!(report
-            .log_entries
-            .iter()
-            .any(|entry| entry.record_id == "fresh-unused"));
-        assert!(!report
-            .log_entries
-            .iter()
-            .any(|entry| entry.record_id == "old-useful"));
+        assert!(
+            report
+                .log_entries
+                .iter()
+                .any(|entry| entry.record_id == "fresh-unused")
+        );
+        assert!(
+            !report
+                .log_entries
+                .iter()
+                .any(|entry| entry.record_id == "old-useful")
+        );
     }
 
     #[test]
@@ -393,14 +399,18 @@ mod tests {
         let report = evict(&[old_useful, old_unused], &policy);
 
         assert_eq!(report.archived, 1);
-        assert!(report
-            .log_entries
-            .iter()
-            .any(|entry| entry.record_id == "old-unused"));
-        assert!(!report
-            .log_entries
-            .iter()
-            .any(|entry| entry.record_id == "old-useful"));
+        assert!(
+            report
+                .log_entries
+                .iter()
+                .any(|entry| entry.record_id == "old-unused")
+        );
+        assert!(
+            !report
+                .log_entries
+                .iter()
+                .any(|entry| entry.record_id == "old-useful")
+        );
     }
 
     #[test]

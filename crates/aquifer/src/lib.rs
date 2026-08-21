@@ -39,55 +39,56 @@ mod vector;
 mod vector_memory;
 mod working;
 
-pub use anchor::{recover_after_compaction, AnchorAnchorStore, RecoveryContext, SessionAnchor};
+pub use anchor::{AnchorAnchorStore, RecoveryContext, SessionAnchor, recover_after_compaction};
 pub use backend::{BulkStoreReport, MemoryBackend};
 pub use backfill::{
-    backfill_directory, backfill_directory_with_options, backfill_directory_with_project,
-    collect_memory_paths, parse_memory_path, BackfillFailure, BackfillOptions, BackfillStats,
+    BackfillFailure, BackfillOptions, BackfillStats, backfill_directory,
+    backfill_directory_with_options, backfill_directory_with_project, collect_memory_paths,
+    parse_memory_path,
 };
-pub use chunking::{chunk_text, Chunk, ChunkConfig};
+pub use chunking::{Chunk, ChunkConfig, chunk_text};
 #[allow(deprecated)]
 pub use compat::OKF_VERSION;
-pub use compat::{CollectionCompat, COMPAT_POINT_ID, HEADWATER_VERSION};
-pub use decay::{retrieval_strength, DecayConfig};
-pub use entity::{extract_entities, EntityIndex};
+pub use compat::{COMPAT_POINT_ID, CollectionCompat, HEADWATER_VERSION};
+pub use decay::{DecayConfig, retrieval_strength};
+pub use entity::{EntityIndex, extract_entities};
 pub use episode::EpisodeIndex;
-pub use event::{assemble_events, Event};
+pub use event::{Event, assemble_events};
 pub use eviction::{
-    append_eviction_log, evict, EvictionAction, EvictionLogEntry, EvictionPolicy, EvictionReport,
+    EvictionAction, EvictionLogEntry, EvictionPolicy, EvictionReport, append_eviction_log, evict,
 };
 pub use files::{
-    parse_record as files_parse_record, render_record as files_render_record, FilesBackend,
+    FilesBackend, parse_record as files_parse_record, render_record as files_render_record,
 };
 pub use graph::{
-    expand_hits_with_neighbors, Relation, DEFAULT_GRAPH_HOPS, GRAPH_EXPANSION_LIMIT,
-    GRAPH_SCAN_LIMIT, MAX_GRAPH_HOPS,
+    DEFAULT_GRAPH_HOPS, GRAPH_EXPANSION_LIMIT, GRAPH_SCAN_LIMIT, MAX_GRAPH_HOPS, Relation,
+    expand_hits_with_neighbors,
 };
 pub use harness_import::{
-    parse_harness_candidates, HarnessKind, HarnessMemoryCandidate, HarnessParseReport,
+    HarnessKind, HarnessMemoryCandidate, HarnessParseReport, parse_harness_candidates,
 };
 pub use identity::stable_memory_id;
 pub use lane_lock::{SessionLaneGuard, SessionLaneLock};
-pub use mmr::{mmr_diversify, mmr_diversify_when_large, MMR_DEFAULT_LAMBDA, MMR_MIN_CANDIDATES};
+pub use mmr::{MMR_DEFAULT_LAMBDA, MMR_MIN_CANDIDATES, mmr_diversify, mmr_diversify_when_large};
 #[cfg(feature = "pgvector")]
 pub use pgvector::{PgVectorBackend, PgVectorStore};
 #[cfg(feature = "qdrant")]
 pub use qdrant::{
-    preflight_qdrant, replicate_collection, replicate_collection_incremental, QdrantBackend,
-    QdrantEndpoints, QdrantPreflightReport, QdrantVectorStore, QdrantVectorStoreConfig,
-    ReplicateReport,
+    QdrantBackend, QdrantEndpoints, QdrantPreflightReport, QdrantVectorStore,
+    QdrantVectorStoreConfig, ReplicateReport, preflight_qdrant, replicate_collection,
+    replicate_collection_incremental,
 };
-pub use reconcile::{reconcile, ReconcileConfig, ReconcileDecision, DEFAULT_RECONCILE_THRESHOLD};
+pub use reconcile::{DEFAULT_RECONCILE_THRESHOLD, ReconcileConfig, ReconcileDecision, reconcile};
 #[cfg(feature = "vector")]
 pub use retrieval::FastembedReranker;
 pub use retrieval::{LocalLexicalReranker, Reranker};
 pub use rrf::reciprocal_rank_fusion;
 #[cfg(feature = "vector")]
 pub use semantic_cache::EmbedderVectorizer;
-pub use semantic_cache::{cosine_similarity, CachingMemoryBackend, QueryVectorizer, SemanticCache};
+pub use semantic_cache::{CachingMemoryBackend, QueryVectorizer, SemanticCache, cosine_similarity};
 pub use session::{
-    Session, SessionKey, SessionListFilter, SessionStore, SessionSummary,
-    DEFAULT_SESSION_COMPONENT, SESSION_RECORD_SOURCE, SESSION_RECORD_TAG,
+    DEFAULT_SESSION_COMPONENT, SESSION_RECORD_SOURCE, SESSION_RECORD_TAG, Session, SessionKey,
+    SessionListFilter, SessionStore, SessionSummary,
 };
 #[cfg(feature = "sqlite-vec")]
 pub use sqlite_vec::{SqliteVecBackend, SqliteVecVectorStore, SqliteVecVectorStoreConfig};
@@ -97,24 +98,24 @@ pub use temporal::{
 #[allow(deprecated)]
 pub use txn::sync_okf_directory;
 pub use txn::{
-    sync_headwater_directory, CommitLog, SyncReport, TransactionalMemory, TxnError, TxnSeq,
+    CommitLog, SyncReport, TransactionalMemory, TxnError, TxnSeq, sync_headwater_directory,
 };
 pub use types::{
+    MemoryError, MemoryId, MemoryQuery, MemoryRecord, MemoryResult, MemoryScope, MemoryState,
+    MemoryTier, ProcedureStep, RecallTelemetry, RetractReport, RrfOptions, SHARED_PROJECT,
+    SKILL_PROCEDURE_METADATA_KEY, SearchHit, SearchSource, StoreMemory, UNTAGGED_PROJECT_LABEL,
     annotate_session_distances, insert_skill_procedure_metadata, normalize_project,
-    skill_procedure_from_metadata, MemoryError, MemoryId, MemoryQuery, MemoryRecord, MemoryResult,
-    MemoryScope, MemoryState, MemoryTier, ProcedureStep, RecallTelemetry, RetractReport,
-    RrfOptions, SearchHit, SearchSource, StoreMemory, SHARED_PROJECT, SKILL_PROCEDURE_METADATA_KEY,
-    UNTAGGED_PROJECT_LABEL,
+    skill_procedure_from_metadata,
 };
 pub use upgrade::{
-    default_migration_collection, export_headwater_bundle, migrate_headwater_bundle,
-    migration_manifest_path, rechunk_oversized_sqlite, verify_headwater_bundle,
     HeadwaterExportReport, HeadwaterVerifyReport, MigrationPlan, MigrationReport, RechunkReport,
-    SnapshotReport, VectorCollectionAdmin,
+    SnapshotReport, VectorCollectionAdmin, default_migration_collection, export_headwater_bundle,
+    migrate_headwater_bundle, migration_manifest_path, rechunk_oversized_sqlite,
+    verify_headwater_bundle,
 };
 #[allow(deprecated)]
 pub use upgrade::{
-    export_okf_bundle, migrate_okf_bundle, verify_okf_bundle, OkfExportReport, OkfVerifyReport,
+    OkfExportReport, OkfVerifyReport, export_okf_bundle, migrate_okf_bundle, verify_okf_bundle,
 };
 #[cfg(feature = "vector")]
 pub use vector::{
@@ -124,8 +125,8 @@ pub use vector::{
 };
 #[cfg(feature = "vector")]
 pub use vector_memory::{
-    FastembedTextEmbedder, TextEmbedder, VectorMemoryBackend, VectorMemoryConfig,
-    PINNED_FASTEMBED_DIMENSIONS, PINNED_FASTEMBED_MODEL,
+    FastembedTextEmbedder, PINNED_FASTEMBED_DIMENSIONS, PINNED_FASTEMBED_MODEL, TextEmbedder,
+    VectorMemoryBackend, VectorMemoryConfig,
 };
 pub use working::{
     InMemoryWorkingMemory, WorkingMemory, WorkingMemoryMode, WorkingMemoryView, WorkingTurn,
@@ -133,12 +134,12 @@ pub use working::{
 
 pub mod consolidation;
 pub use consolidation::{
-    consolidation_pass, ConsolidationClaim, ConsolidationOptions, ConsolidationReport,
-    GovernanceFields,
+    ConsolidationClaim, ConsolidationOptions, ConsolidationReport, GovernanceFields,
+    consolidation_pass,
 };
 
 pub mod dream;
 pub use dream::{
-    dream, render_diary, write_dream_bundle, DreamDecision, DreamError, DreamOptions,
-    DreamQualifyRecord, DreamResult, DreamSnapshotEntry,
+    DreamDecision, DreamError, DreamOptions, DreamQualifyRecord, DreamResult, DreamSnapshotEntry,
+    dream, render_diary, write_dream_bundle,
 };

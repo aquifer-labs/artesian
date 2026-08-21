@@ -6,13 +6,13 @@ use std::{
 };
 
 use aquifer::{
-    expand_hits_with_neighbors, FilesBackend, MemoryBackend, MemoryId, MemoryQuery, MemoryRecord,
+    DEFAULT_GRAPH_HOPS, FilesBackend, MemoryBackend, MemoryId, MemoryQuery, MemoryRecord,
     MemoryResult, MemoryScope, MemoryState, MemoryTier, Relation, RrfOptions, SearchHit,
     SqliteVecVectorStore, StoreMemory, TextEmbedder, VectorMemoryBackend, VectorMemoryConfig,
-    DEFAULT_GRAPH_HOPS,
+    expand_hits_with_neighbors,
 };
 use artesian_test_support::TempDir;
-use futures_util::{future::BoxFuture, FutureExt};
+use futures_util::{FutureExt, future::BoxFuture};
 
 #[derive(Debug, Default)]
 struct MockMemoryBackend {
@@ -605,11 +605,13 @@ async fn assert_mark_used_and_retract<B: MemoryBackend>(backend: &B) {
         .expect("record should exist");
     assert_eq!(report.retracted.state, MemoryState::Retracted);
     assert_eq!(report.supersede.source.as_deref(), Some("artesian.retract"));
-    assert!(report
-        .supersede
-        .relations
-        .iter()
-        .any(|relation| relation.predicate == "superseded_by"));
+    assert!(
+        report
+            .supersede
+            .relations
+            .iter()
+            .any(|relation| relation.predicate == "superseded_by")
+    );
 
     let default_hits = backend
         .find(MemoryQuery::new("critical architecture").with_limit(10))
@@ -674,16 +676,20 @@ async fn assert_session_distance<B: MemoryBackend>(backend: &B) {
 async fn default_graph_methods_are_empty_for_non_indexing_backends() {
     let backend = MockMemoryBackend::default();
 
-    assert!(backend
-        .neighbors("node:any", 1)
-        .await
-        .expect("neighbors should succeed")
-        .is_empty());
-    assert!(backend
-        .by_entity("AnyEntity")
-        .await
-        .expect("by_entity should succeed")
-        .is_empty());
+    assert!(
+        backend
+            .neighbors("node:any", 1)
+            .await
+            .expect("neighbors should succeed")
+            .is_empty()
+    );
+    assert!(
+        backend
+            .by_entity("AnyEntity")
+            .await
+            .expect("by_entity should succeed")
+            .is_empty()
+    );
 }
 
 #[tokio::test]

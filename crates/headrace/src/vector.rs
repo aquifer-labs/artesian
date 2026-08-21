@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use aquifer::{MemoryBackend, MemoryQuery, MemoryTier, StoreMemory};
-use futures_util::{future::BoxFuture, FutureExt};
+use futures_util::{FutureExt, future::BoxFuture};
 
 use crate::{
     ClaimRequest, FilesTaskStore, NewTask, Task, TaskImportOutcome, TaskResult, TaskStore,

@@ -14,7 +14,7 @@ use artesian_core::{
     TokenAccounting,
 };
 use chrono::Utc;
-use futures_util::{future::BoxFuture, stream, FutureExt};
+use futures_util::{FutureExt, future::BoxFuture, stream};
 use headrace::{
     ClaimRequest, Task, TaskError, TaskStatus, TaskStore, TransitionTask, VerifierGate,
 };

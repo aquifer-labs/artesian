@@ -2,8 +2,8 @@
 
 use std::{
     sync::{
-        atomic::{AtomicUsize, Ordering},
         Arc,
+        atomic::{AtomicUsize, Ordering},
     },
     time::Duration,
 };
@@ -15,7 +15,7 @@ use artesian_core::{
 };
 use artesian_test_support::TempDir;
 use basin::{Orchestrator, OrchestratorConfig, OrchestratorError};
-use futures_util::{future::BoxFuture, stream, FutureExt};
+use futures_util::{FutureExt, future::BoxFuture, stream};
 use headrace::{
     FilesTaskStore, NewTask, Task, TaskResult, TaskStatus, TaskStore, Verifier, VerifierGate,
     VerifierOutcome,
@@ -158,11 +158,13 @@ async fn concurrency_limit_and_resource_quota_are_honored() {
     let report = orchestrator.run_once().await.expect("tick should run");
 
     assert_eq!(report.dispatched, 1);
-    assert!(orchestrator
-        .run_log()
-        .events
-        .iter()
-        .any(|event| event.event_type == EventType::Status));
+    assert!(
+        orchestrator
+            .run_log()
+            .events
+            .iter()
+            .any(|event| event.event_type == EventType::Status)
+    );
 }
 
 #[tokio::test]

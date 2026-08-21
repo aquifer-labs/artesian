@@ -12,12 +12,12 @@
 
 use std::sync::Arc;
 
-use futures_util::{future::BoxFuture, FutureExt};
+use futures_util::{FutureExt, future::BoxFuture};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    count_tokens, CommittedContextState, JudgeTokenCost, LlmClient, LlmRequest, QualifyAudit,
-    QualifyDecision, QualifyGate, QualifySignal, ReasonCode, RecallItem,
+    CommittedContextState, JudgeTokenCost, LlmClient, LlmRequest, QualifyAudit, QualifyDecision,
+    QualifyGate, QualifySignal, ReasonCode, RecallItem, count_tokens,
 };
 
 const JUDGE_SYSTEM: &str = "You are a memory-control judge for an AI agent. You score whether a \

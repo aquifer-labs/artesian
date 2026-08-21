@@ -2,7 +2,7 @@
 
 use std::{env, path::PathBuf, time::Duration};
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use artesian_core::Mode;
 use clap::Parser;
 use serde_json::json;

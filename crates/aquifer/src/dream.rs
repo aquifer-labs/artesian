@@ -45,8 +45,8 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    consolidation::{consolidation_pass, ConsolidationOptions},
     MemoryRecord, MemoryTier,
+    consolidation::{ConsolidationOptions, consolidation_pass},
 };
 
 // ── OCF on-disk constants ────────────────────────────────────────────────────

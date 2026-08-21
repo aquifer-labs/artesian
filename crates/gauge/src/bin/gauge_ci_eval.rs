@@ -16,8 +16,8 @@ fn main() {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     use gauge::{
-        compare_to_baseline, load_report, render_regression_markdown, run_regression_suite,
-        write_report, DEFAULT_K, DEFAULT_TOLERANCE,
+        DEFAULT_K, DEFAULT_TOLERANCE, compare_to_baseline, load_report, render_regression_markdown,
+        run_regression_suite, write_report,
     };
     use std::path::PathBuf;
 

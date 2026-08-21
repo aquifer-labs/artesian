@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::metrics::count_tokens;
 use crate::savings::{
-    record_savings_to_dir_with_metadata, record_savings_with_metadata, TokenSavingsMetadata,
+    TokenSavingsMetadata, record_savings_to_dir_with_metadata, record_savings_with_metadata,
 };
 use crate::{
     CcsSchema, CommittedContextState, CommittedEntry, Compressor, DefaultQualifyGate,

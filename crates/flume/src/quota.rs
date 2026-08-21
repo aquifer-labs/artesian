@@ -14,8 +14,8 @@ use std::{
 };
 
 use aquifer::{
-    MemoryBackend, MemoryScope, MemoryTier, Session, SessionAnchor, SessionKey, SessionSummary,
-    StoreMemory, SESSION_RECORD_SOURCE, SESSION_RECORD_TAG,
+    MemoryBackend, MemoryScope, MemoryTier, SESSION_RECORD_SOURCE, SESSION_RECORD_TAG, Session,
+    SessionAnchor, SessionKey, SessionSummary, StoreMemory,
 };
 use chrono::{DateTime, TimeZone, Utc};
 use headgate::{SnapshotEntry, WorkingContextBundle, WorkingContextSnapshot};
@@ -1119,9 +1119,11 @@ mod tests {
         .expect("fixture should parse");
         let statuses = materialize_agent_windows("codex", None, parsed);
 
-        assert!(statuses
-            .iter()
-            .all(|status| status.status == QuotaStatusKind::Known));
+        assert!(
+            statuses
+                .iter()
+                .all(|status| status.status == QuotaStatusKind::Known)
+        );
         assert!(statuses.iter().all(|status| status.pct == Some(0.0)));
         assert!(quota_threshold_events(&statuses, 1.0, 95.0).is_empty());
     }
@@ -1134,9 +1136,11 @@ mod tests {
         };
         let statuses = read_local_quota_with_options(&options);
         assert_eq!(statuses.len(), 4);
-        assert!(statuses
-            .iter()
-            .all(|status| status.status == QuotaStatusKind::Unknown));
+        assert!(
+            statuses
+                .iter()
+                .all(|status| status.status == QuotaStatusKind::Unknown)
+        );
     }
 
     #[test]

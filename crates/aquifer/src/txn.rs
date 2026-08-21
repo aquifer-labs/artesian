@@ -36,13 +36,13 @@
 //! races (two agents updating the "current plan" simultaneously).
 
 use std::sync::{
-    atomic::{AtomicU64, Ordering},
     Arc,
+    atomic::{AtomicU64, Ordering},
 };
 
 use crate::{
-    backfill::{collect_memory_paths, parse_memory_path},
     MemoryBackend, MemoryError, MemoryQuery, MemoryRecord, MemoryResult, SearchHit, StoreMemory,
+    backfill::{collect_memory_paths, parse_memory_path},
 };
 use futures_util::future::BoxFuture;
 

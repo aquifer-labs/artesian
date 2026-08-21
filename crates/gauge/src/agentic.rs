@@ -30,8 +30,8 @@ mod runner {
     use std::sync::Arc;
 
     use headgate::{
-        count_tokens, Headgate, HeadgateConfig, LlmClient, LlmRequest, RecallItem, RecallStore,
-        StaticRecallStore,
+        Headgate, HeadgateConfig, LlmClient, LlmRequest, RecallItem, RecallStore,
+        StaticRecallStore, count_tokens,
     };
     use serde::{Deserialize, Serialize};
 
@@ -201,7 +201,7 @@ Context:\n{committed}\n\nQuestion: {query}\n\nChoices:\n{joined}\n\nYour choice 
     mod tests {
         use super::*;
         use crate::agentic::{AgentTask, TaskSession};
-        use futures_util::{future::BoxFuture, FutureExt};
+        use futures_util::{FutureExt, future::BoxFuture};
         use headgate::HeadgateResult;
 
         struct PickFirstClient;
@@ -372,7 +372,7 @@ pub fn load_agent_tasks(json: &str) -> Result<Vec<AgentTask>, serde_json::Error>
 }
 
 #[cfg(feature = "llm")]
-pub use runner::{run_agent_task, run_agentic_eval, AgentTaskOutcome, AgenticEvalSummary};
+pub use runner::{AgentTaskOutcome, AgenticEvalSummary, run_agent_task, run_agentic_eval};
 
 #[cfg(test)]
 mod unit_tests {

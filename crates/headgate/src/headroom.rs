@@ -57,7 +57,7 @@
 //! back to the inner `Compressor` transparently. headroom is never in the failure path of the
 //! ACC control loop.
 
-use futures_util::{future::BoxFuture, FutureExt};
+use futures_util::{FutureExt, future::BoxFuture};
 
 use crate::{Compressor, HeadgateResult};
 

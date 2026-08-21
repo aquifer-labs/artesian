@@ -5,8 +5,9 @@ use std::path::Path;
 use std::sync::{Once, OnceLock};
 use std::time::Duration;
 
-use futures_util::{future::BoxFuture, FutureExt};
+use futures_util::{FutureExt, future::BoxFuture};
 use qdrant_client::{
+    Payload, Qdrant,
     qdrant::{
         Condition, CreateCollectionBuilder, CreateFieldIndexCollectionBuilder, DeletePointsBuilder,
         FieldType, Filter, GetPointsBuilder, HnswConfigDiffBuilder, PointId, PointStruct,
@@ -14,17 +15,16 @@ use qdrant_client::{
         ScalarQuantizationBuilder, ScoredPoint, ScrollPointsBuilder, UpsertPointsBuilder, Value,
         VectorParamsBuilder, VectorsOutput,
     },
-    Payload, Qdrant,
 };
 use serde_json::Value as JsonValue;
 use sha2::{Digest, Sha256};
 
 use crate::{
-    vector::payload_matches_filter, Distance, Filter as MemoryFilter, FilterCondition, FilterValue,
-    MemoryError, MemoryResult, PayloadIndex, RangeFilter, SnapshotReport, VectorCollection,
-    VectorCollectionAdmin, VectorMemoryBackend, VectorMemoryConfig, VectorPoint,
-    VectorQuantization, VectorSearch, VectorSearchHit, VectorSearchSource, VectorStore,
-    VectorStoreCapabilities,
+    Distance, Filter as MemoryFilter, FilterCondition, FilterValue, MemoryError, MemoryResult,
+    PayloadIndex, RangeFilter, SnapshotReport, VectorCollection, VectorCollectionAdmin,
+    VectorMemoryBackend, VectorMemoryConfig, VectorPoint, VectorQuantization, VectorSearch,
+    VectorSearchHit, VectorSearchSource, VectorStore, VectorStoreCapabilities,
+    vector::payload_matches_filter,
 };
 
 pub type QdrantBackend = VectorMemoryBackend<QdrantVectorStore>;
@@ -1051,7 +1051,7 @@ fn value_to_match(value: &FilterValue) -> Option<qdrant_client::qdrant::r#match:
 }
 
 fn qdrant_range_condition(range: &RangeFilter) -> Option<Condition> {
-    use qdrant_client::qdrant::{condition::ConditionOneOf, FieldCondition, Range};
+    use qdrant_client::qdrant::{FieldCondition, Range, condition::ConditionOneOf};
 
     Some(Condition {
         condition_one_of: Some(ConditionOneOf::Field(FieldCondition {
@@ -1396,7 +1396,7 @@ impl std::fmt::Display for QdrantEndpoints {
 #[cfg(test)]
 mod tests {
     use super::{
-        is_transient_connect_error, retry_transient, QdrantEndpoints, QdrantVectorStoreConfig,
+        QdrantEndpoints, QdrantVectorStoreConfig, is_transient_connect_error, retry_transient,
     };
     use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -1428,9 +1428,11 @@ mod tests {
         let error = QdrantVectorStoreConfig::new("http://qdrant.local:7000")
             .endpoints()
             .expect_err("custom port without REST URL should fail");
-        assert!(error
-            .to_string()
-            .contains("pass --qdrant-rest-url explicitly"));
+        assert!(
+            error
+                .to_string()
+                .contains("pass --qdrant-rest-url explicitly")
+        );
     }
 
     #[test]

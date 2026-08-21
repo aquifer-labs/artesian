@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-use futures_util::{future::BoxFuture, FutureExt};
+use futures_util::{FutureExt, future::BoxFuture};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -244,7 +244,7 @@ pub trait VectorStore: Send + Sync {
     ) -> BoxFuture<'_, MemoryResult<()>>;
 
     fn upsert(&self, collection: &str, points: Vec<VectorPoint>)
-        -> BoxFuture<'_, MemoryResult<()>>;
+    -> BoxFuture<'_, MemoryResult<()>>;
 
     /// Upsert points without waiting for the index to finish building. Returns immediately after
     /// the server accepts the batch. Call `flush_upsert` once after all batches are sent.

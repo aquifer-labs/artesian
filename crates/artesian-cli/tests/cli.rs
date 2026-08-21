@@ -130,9 +130,11 @@ fn cli_memory_mode_round_trip_and_spawn_alias_work() {
         .output()
         .expect("init should run");
     assert!(init.status.success(), "{}", stderr(&init));
-    assert!(std::fs::read_to_string(tempdir.join(".mcp.json"))
-        .expect("Claude MCP config should be written")
-        .contains("artesian-mcp"));
+    assert!(
+        std::fs::read_to_string(tempdir.join(".mcp.json"))
+            .expect("Claude MCP config should be written")
+            .contains("artesian-mcp")
+    );
     isolated.assert_registration_isolated(tempdir.path());
 
     let mut spawn_cmd = isolated.command(binary);
@@ -194,10 +196,12 @@ fn cli_memory_mode_round_trip_and_spawn_alias_work() {
         serde_json::from_str(&stdout(&answer)).expect("answer should be JSON");
     assert_eq!(answer_json["extractive"], true);
     assert_eq!(answer_json["sources"][0], "node:cli");
-    assert!(answer_json["answer"]
-        .as_str()
-        .expect("answer should be a string")
-        .contains("[node:cli]"));
+    assert!(
+        answer_json["answer"]
+            .as_str()
+            .expect("answer should be a string")
+            .contains("[node:cli]")
+    );
 
     let mut commit_cmd = isolated.command(binary);
     let commit = commit_cmd
@@ -237,9 +241,11 @@ fn cli_memory_mode_round_trip_and_spawn_alias_work() {
             >= 2
     );
     assert!(qualify_admit_json["agreement"].as_f64().is_some());
-    assert!(qualify_admit_json["chance_corrected_agreement"]
-        .as_f64()
-        .is_some());
+    assert!(
+        qualify_admit_json["chance_corrected_agreement"]
+            .as_f64()
+            .is_some()
+    );
     let confidence = qualify_admit_json["confidence"]
         .as_f64()
         .expect("confidence should be numeric");
@@ -259,10 +265,12 @@ fn cli_memory_mode_round_trip_and_spawn_alias_work() {
     let qualify_reject_json: serde_json::Value =
         serde_json::from_str(&stdout(&qualify_reject)).expect("qualify reject should be JSON");
     assert_eq!(qualify_reject_json["admitted"], false);
-    assert!(qualify_reject_json["reason"]
-        .as_str()
-        .expect("reason should be text")
-        .contains("redundant"));
+    assert!(
+        qualify_reject_json["reason"]
+            .as_str()
+            .expect("reason should be text")
+            .contains("redundant")
+    );
 
     let import_dir = tempdir.join("import");
     std::fs::create_dir_all(&import_dir).expect("import dir should be created");
@@ -586,10 +594,12 @@ fn cli_handoff_and_session_list_read_committed_session() {
     let packet: serde_json::Value =
         serde_json::from_str(&stdout(&handoff)).expect("handoff should print JSON");
     assert_eq!(packet["session"]["handed_off_from"], "codex");
-    assert!(packet["restored_working_state"]
-        .as_str()
-        .expect("state should be text")
-        .contains("cli handoff restores this state"));
+    assert!(
+        packet["restored_working_state"]
+            .as_str()
+            .expect("state should be text")
+            .contains("cli handoff restores this state")
+    );
 
     let list = Command::new(binary)
         .args(["session", "list", "--user", "user-a"])
