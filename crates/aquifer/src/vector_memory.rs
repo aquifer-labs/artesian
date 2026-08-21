@@ -7,27 +7,26 @@ use std::{
 
 use chrono::Utc;
 use fastembed::{EmbeddingModel, TextEmbedding, TextInitOptions};
-use futures_util::{future::BoxFuture, FutureExt};
+use futures_util::{FutureExt, future::BoxFuture};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    annotate_session_distances,
+    COMPAT_POINT_ID, CollectionCompat, Distance, Filter, FilterCondition, FilterValue,
+    MemoryBackend, MemoryError, MemoryId, MemoryQuery, MemoryRecord, MemoryResult, MemoryScope,
+    MemoryState, MemoryTier, PayloadIndex, Relation, RetractReport, RrfOptions, SearchHit,
+    SearchSource, SessionLaneLock, StoreMemory, VectorCollection, VectorPoint, VectorSearch,
+    VectorSearchHit, VectorSearchSource, VectorStore, annotate_session_distances,
     backend::BulkStoreReport,
-    chunking::{chunk_text, ChunkConfig},
+    chunking::{ChunkConfig, chunk_text},
     entity::EntityIndex,
     episode::EpisodeIndex,
     graph::{
-        by_entity_node_ids, extract_entity_relations, neighbor_node_ids, normalize_relations,
-        records_by_node_ids, GRAPH_SCAN_LIMIT,
+        GRAPH_SCAN_LIMIT, by_entity_node_ids, extract_entity_relations, neighbor_node_ids,
+        normalize_relations, records_by_node_ids,
     },
     identity::stable_memory_id,
     reciprocal_rank_fusion,
     temporal::{apply_knowledge_supersession, apply_recency_decay},
-    CollectionCompat, Distance, Filter, FilterCondition, FilterValue, MemoryBackend, MemoryError,
-    MemoryId, MemoryQuery, MemoryRecord, MemoryResult, MemoryScope, MemoryState, MemoryTier,
-    PayloadIndex, Relation, RetractReport, RrfOptions, SearchHit, SearchSource, SessionLaneLock,
-    StoreMemory, VectorCollection, VectorPoint, VectorSearch, VectorSearchHit, VectorSearchSource,
-    VectorStore, COMPAT_POINT_ID,
 };
 
 pub const PINNED_FASTEMBED_MODEL: &str = "intfloat/multilingual-e5-small";
@@ -184,9 +183,11 @@ fn spawn_idle_unloader(embedder: Arc<FastembedTextEmbedder>) {
     let sweep = EMBEDDER_SWEEP_INTERVAL.min(idle_window);
     if let Err(error) = std::thread::Builder::new()
         .name("artesian-embedder-unload".to_string())
-        .spawn(move || loop {
-            std::thread::sleep(sweep);
-            embedder.unload_if_idle(idle_window);
+        .spawn(move || {
+            loop {
+                std::thread::sleep(sweep);
+                embedder.unload_if_idle(idle_window);
+            }
         })
     {
         // Say so rather than silently running without the unloader the operator asked for.

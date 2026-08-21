@@ -13,9 +13,9 @@ pub use lane::{
     TeammatePresence,
 };
 pub use receipts::{
-    check_admission, task_boundary_from_instruction, BudgetEnvelope, Consumed, Distilled,
-    GateDecision, ReceiptWriter, ReceiptsConfig, ReturnReceipt, SpawnReceipt, StopReason,
-    ARTESIAN_RECEIPTS_FAIL_CLOSED_ENV, RECEIPT_TASK_BOUNDARY_CHARS,
+    ARTESIAN_RECEIPTS_FAIL_CLOSED_ENV, BudgetEnvelope, Consumed, Distilled, GateDecision,
+    RECEIPT_TASK_BOUNDARY_CHARS, ReceiptWriter, ReceiptsConfig, ReturnReceipt, SpawnReceipt,
+    StopReason, check_admission, task_boundary_from_instruction,
 };
 
 use std::{
@@ -33,9 +33,9 @@ use artesian_core::{
     EventEnvelope, EventSender, EventType, Role, SpawnRequest,
 };
 use artesian_process_agent::{
-    apply_native_subagent_runtime_hints, detect_native_subagent_runtime, validate_binding_model,
     GcOptions, NativeSubagentDetection, NativeSubagentRuntimeKind, ProcessAgent,
     ProcessAgentConfig, ProcessSupervisor, ReapReport, WorkerEvent,
+    apply_native_subagent_runtime_hints, detect_native_subagent_runtime, validate_binding_model,
 };
 pub use artesian_process_agent::{GcOptions as TeamGcOptions, ReapReport as TeamReapReport};
 use headgate::count_tokens;

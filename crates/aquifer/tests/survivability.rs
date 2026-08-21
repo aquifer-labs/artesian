@@ -7,13 +7,13 @@ use std::{
 };
 
 use aquifer::{
-    migrate_headwater_bundle, verify_headwater_bundle, Distance, MemoryBackend, MemoryError,
-    MemoryResult, MigrationPlan, SnapshotReport, SqliteVecVectorStore, TextEmbedder,
-    VectorCollection, VectorCollectionAdmin, VectorMemoryBackend, VectorMemoryConfig, VectorPoint,
-    VectorSearch, VectorSearchHit, VectorStore, VectorStoreCapabilities,
+    Distance, MemoryBackend, MemoryError, MemoryResult, MigrationPlan, SnapshotReport,
+    SqliteVecVectorStore, TextEmbedder, VectorCollection, VectorCollectionAdmin,
+    VectorMemoryBackend, VectorMemoryConfig, VectorPoint, VectorSearch, VectorSearchHit,
+    VectorStore, VectorStoreCapabilities, migrate_headwater_bundle, verify_headwater_bundle,
 };
 use artesian_test_support::TempDir;
-use futures_util::{future::BoxFuture, FutureExt};
+use futures_util::{FutureExt, future::BoxFuture};
 
 #[tokio::test]
 async fn old_schema_bundle_still_verifies() {

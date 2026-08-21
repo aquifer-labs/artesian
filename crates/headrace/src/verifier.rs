@@ -2,7 +2,7 @@
 
 use std::{path::PathBuf, sync::Arc};
 
-use futures_util::{future::BoxFuture, FutureExt};
+use futures_util::{FutureExt, future::BoxFuture};
 use tokio::process::Command;
 
 use crate::{Task, TaskError, TaskResult, TaskStatus, TaskStore, TransitionTask};

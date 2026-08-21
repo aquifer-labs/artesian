@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-use futures_util::{future::BoxFuture, FutureExt};
+use futures_util::{FutureExt, future::BoxFuture};
 
 use aquifer::{MemoryBackend, MemoryQuery};
 

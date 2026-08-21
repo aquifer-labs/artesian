@@ -4,7 +4,7 @@
 
 use std::sync::Arc;
 
-use futures_util::{future::BoxFuture, FutureExt};
+use futures_util::{FutureExt, future::BoxFuture};
 use serde::{Deserialize, Serialize};
 
 use crate::{CommittedContextState, QualifyAudit, QualifyDecision, QualifyGate, RecallItem};
@@ -146,7 +146,7 @@ impl QualifyGate for TieredQualifyGate {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use futures_util::{future::BoxFuture, FutureExt};
+    use futures_util::{FutureExt, future::BoxFuture};
 
     use crate::CcsSchema;
 

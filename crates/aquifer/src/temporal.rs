@@ -5,9 +5,9 @@ use std::collections::HashMap;
 use chrono::{DateTime, Utc};
 
 use crate::{
-    entity::{extract_entities, EntityIndex},
-    event::Event,
     MemoryRecord, SearchHit,
+    entity::{EntityIndex, extract_entities},
+    event::Event,
 };
 
 /// Apply exponential recency decay to retrieval scores.

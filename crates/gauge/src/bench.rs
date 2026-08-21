@@ -27,8 +27,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use headgate::{
-    count_tokens, DefaultQualifyGate, Headgate, HeadgateConfig, HeadgateResult, QualifyGate,
-    RecallItem, StaticRecallStore,
+    DefaultQualifyGate, Headgate, HeadgateConfig, HeadgateResult, QualifyGate, RecallItem,
+    StaticRecallStore, count_tokens,
 };
 use serde::{Deserialize, Serialize};
 
@@ -275,7 +275,7 @@ mod tests {
     #[cfg(feature = "llm")]
     #[tokio::test]
     async fn judge_gate_eliminates_the_admitted_fabrication() {
-        use futures_util::{future::BoxFuture, FutureExt};
+        use futures_util::{FutureExt, future::BoxFuture};
         use headgate::{HeadgateResult, JudgeQualifyGate, LlmClient, LlmRequest};
 
         // A scripted judge: flags content mentioning Mars/quantum as high-drift fabrication,

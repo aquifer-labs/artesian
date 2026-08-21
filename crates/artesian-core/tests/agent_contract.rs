@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-use futures_util::{future::BoxFuture, stream, FutureExt, StreamExt};
+use futures_util::{FutureExt, StreamExt, future::BoxFuture, stream};
 
 use artesian_core::{
     Agent, AgentCapabilities, AgentEvent, AgentEventStream, AgentMessage, AgentResponse,

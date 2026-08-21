@@ -13,7 +13,7 @@ use std::{collections::HashMap, time::Duration};
 
 use chrono::{DateTime, Utc};
 
-use crate::{entity::extract_entities, MemoryRecord};
+use crate::{MemoryRecord, entity::extract_entities};
 
 /// A coherent temporal group of related atomic memory records.
 ///

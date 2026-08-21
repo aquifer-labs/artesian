@@ -3,7 +3,7 @@
 use std::sync::OnceLock;
 
 use serde::{Deserialize, Serialize};
-use tiktoken_rs::{cl100k_base, CoreBPE};
+use tiktoken_rs::{CoreBPE, cl100k_base};
 
 fn tokenizer() -> Option<&'static CoreBPE> {
     static TOKENIZER: OnceLock<Option<CoreBPE>> = OnceLock::new();

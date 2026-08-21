@@ -6,15 +6,15 @@ use std::{
     time::Duration,
 };
 
-use futures_util::{future::BoxFuture, FutureExt};
-use rusqlite::{params, Connection, OptionalExtension};
+use futures_util::{FutureExt, future::BoxFuture};
+use rusqlite::{Connection, OptionalExtension, params};
 use serde_json::Value;
 
 use crate::{
-    vector::{is_safe_field_path, must_string_eq, payload_matches_filter},
     Distance, Filter, MemoryError, MemoryResult, PayloadIndex, VectorCollection,
     VectorMemoryBackend, VectorMemoryConfig, VectorPoint, VectorSearch, VectorSearchHit,
     VectorSearchSource, VectorStore, VectorStoreCapabilities,
+    vector::{is_safe_field_path, must_string_eq, payload_matches_filter},
 };
 
 pub type SqliteVecBackend = VectorMemoryBackend<SqliteVecVectorStore>;

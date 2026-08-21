@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use artesian_core::{
-    AccConfig, AccLlmConfig, AgentBinding, ArtesianConfig, Role, DEFAULT_RERANK_CANDIDATES,
+    AccConfig, AccLlmConfig, AgentBinding, ArtesianConfig, DEFAULT_RERANK_CANDIDATES, Role,
 };
 
 #[test]

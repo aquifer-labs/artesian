@@ -7,7 +7,7 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use chrono::{DateTime, SecondsFormat, Utc};
 use serde_json::Value;
 

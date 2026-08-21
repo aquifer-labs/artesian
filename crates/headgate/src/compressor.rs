@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
-use futures_util::{future::BoxFuture, FutureExt};
+use futures_util::{FutureExt, future::BoxFuture};
 
-use crate::{metrics::count_tokens, HeadgateResult};
+use crate::{HeadgateResult, metrics::count_tokens};
 
 /// Compresses committed content to fit the saturation budget — the "cognitive compressor".
 ///

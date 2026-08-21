@@ -22,7 +22,7 @@ use artesian_mcp::{
     ToolsFindRequest,
 };
 use artesian_test_support::TempDir;
-use flume::{AgentRoutingProfile, RoutingConfig, ROUTING_TRACE_TAG};
+use flume::{AgentRoutingProfile, ROUTING_TRACE_TAG, RoutingConfig};
 use rmcp::handler::server::wrapper::Parameters;
 use tokio_util::sync::CancellationToken;
 
@@ -355,10 +355,12 @@ async fn memory_qualify_returns_audited_admit_and_reject_decisions() {
         .0;
     assert!(!rejected.admitted, "{rejected:?}");
     assert!(rejected.reason.contains("redundant"));
-    assert!(rejected
-        .signals
-        .iter()
-        .any(|signal| signal.name == "novelty" && !signal.passed));
+    assert!(
+        rejected
+            .signals
+            .iter()
+            .any(|signal| signal.name == "novelty" && !signal.passed)
+    );
 }
 
 #[tokio::test]
@@ -529,10 +531,12 @@ async fn memory_session_default_key_round_trips_when_identity_is_unset() {
         .await
         .expect("default resume should succeed")
         .0;
-    assert!(resumed.packet["restored_working_state"]
-        .as_str()
-        .expect("state should be text")
-        .contains("default session task"));
+    assert!(
+        resumed.packet["restored_working_state"]
+            .as_str()
+            .expect("state should be text")
+            .contains("default session task")
+    );
 }
 
 #[tokio::test]
@@ -562,10 +566,12 @@ async fn tools_find_is_opt_in_and_reports_token_delta() {
 
     assert!(!response.tools.is_empty());
     assert!(response.prompt_tokens_delta > 0);
-    assert!(response
-        .tools
-        .iter()
-        .any(|tool| tool.name == "memory.anchor.get" || tool.name == "memory.find"));
+    assert!(
+        response
+            .tools
+            .iter()
+            .any(|tool| tool.name == "memory.anchor.get" || tool.name == "memory.find")
+    );
 }
 
 #[tokio::test]
@@ -640,11 +646,13 @@ async fn agents_list_surfaces_role_definitions() {
         .expect("agents.list should run")
         .0;
 
-    assert!(response
-        .catalog
-        .roles
-        .iter()
-        .any(|role| role.name == "security-reviewer" && role.kind == Role::Worker));
+    assert!(
+        response
+            .catalog
+            .roles
+            .iter()
+            .any(|role| role.name == "security-reviewer" && role.kind == Role::Worker)
+    );
 }
 
 #[tokio::test]
@@ -1273,10 +1281,12 @@ async fn team_run_blocks_returns_all_results_and_emits_progress() {
     assert_eq!(response.outcome, "completed");
     assert_eq!(response.await_outcome, "completed");
     assert_eq!(response.results.len(), 2);
-    assert!(response
-        .results
-        .iter()
-        .all(|result| result.status == "done"));
+    assert!(
+        response
+            .results
+            .iter()
+            .all(|result| result.status == "done")
+    );
     assert!(response.results.iter().all(|result| {
         result
             .output

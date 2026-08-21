@@ -18,16 +18,16 @@
 
 use std::sync::Arc;
 
-use futures_util::{future::BoxFuture, FutureExt};
+use futures_util::{FutureExt, future::BoxFuture};
 use pgvector::Vector;
 use serde_json::Value;
 use tokio_postgres::{Client, NoTls};
 
 use crate::{
-    vector::{is_safe_field_path, must_string_eq, payload_matches_filter},
     Distance, Filter, MemoryError, MemoryResult, PayloadIndex, VectorCollection,
     VectorMemoryBackend, VectorMemoryConfig, VectorPoint, VectorSearch, VectorSearchHit,
     VectorSearchSource, VectorStore, VectorStoreCapabilities,
+    vector::{is_safe_field_path, must_string_eq, payload_matches_filter},
 };
 
 pub type PgVectorBackend = VectorMemoryBackend<PgVectorStore>;

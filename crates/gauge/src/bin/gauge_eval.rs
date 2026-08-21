@@ -19,7 +19,7 @@ fn main() {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     use gauge::{
-        load_locomo, load_longmemeval, run_qa_eval, ExpandingRecall, LexicalRecall, RecallFactory,
+        ExpandingRecall, LexicalRecall, RecallFactory, load_locomo, load_longmemeval, run_qa_eval,
     };
     use headgate::{CommandLlmClient, HeadgateConfig, LlmClient};
     use std::sync::Arc;

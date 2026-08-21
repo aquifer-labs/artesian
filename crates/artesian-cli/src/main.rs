@@ -13,51 +13,52 @@ use std::{
     time::Duration,
 };
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use aquifer::{
-    append_eviction_log, consolidation_pass, default_migration_collection, entity_timeline, evict,
+    AnchorAnchorStore, CollectionCompat, ConsolidationOptions, DecayConfig, EvictionPolicy,
+    MemoryBackend, MemoryQuery, MemoryRecord, MemoryScope, MemoryState, MemoryTier, MigrationPlan,
+    ProcedureStep, SHARED_PROJECT, SearchHit, SessionAnchor, SessionKey, SessionListFilter,
+    SessionStore, StoreMemory, UNTAGGED_PROJECT_LABEL, VectorMemoryConfig, append_eviction_log,
+    consolidation_pass, default_migration_collection, entity_timeline, evict,
     export_headwater_bundle, insert_skill_procedure_metadata, normalize_project,
-    recover_after_compaction, verify_headwater_bundle, AnchorAnchorStore, CollectionCompat,
-    ConsolidationOptions, DecayConfig, EvictionPolicy, MemoryBackend, MemoryQuery, MemoryRecord,
-    MemoryScope, MemoryState, MemoryTier, MigrationPlan, ProcedureStep, SearchHit, SessionAnchor,
-    SessionKey, SessionListFilter, SessionStore, StoreMemory, VectorMemoryConfig, SHARED_PROJECT,
-    UNTAGGED_PROJECT_LABEL,
+    recover_after_compaction, verify_headwater_bundle,
 };
 use artesian_core::{
     Agent, AgentBinding, ArtesianConfig, MemoryBackendKind, MemoryConfig, Mode, Role, SpawnRequest,
 };
 use artesian_mcp::{
-    build_session_bundle_for_cli, checkpoint_anchor_for_cli, qualify_memory_candidate,
-    session_scoped_hits_for_cli, QualifyResponse, SessionCheckpointRequest,
+    QualifyResponse, SessionCheckpointRequest, build_session_bundle_for_cli,
+    checkpoint_anchor_for_cli, qualify_memory_candidate, session_scoped_hits_for_cli,
 };
 use artesian_process_agent::{
-    fallback_agent_catalog, refresh_agent_catalog, ProcessAgent, ProcessAgentConfig,
-    ProcessSupervisor,
+    ProcessAgent, ProcessAgentConfig, ProcessSupervisor, fallback_agent_catalog,
+    refresh_agent_catalog,
 };
 use clap::{Parser, Subcommand, ValueEnum};
 use flume::loop_core::{
+    LOOP_SKILL_TAG, LoopCommandFuture, LoopCommands, LoopRunOptions,
     assemble_goal_packet_with_project, loop_recall_for_project, loop_run_id, loop_run_log_dir,
-    loop_stop_file, run_loop_core, stable_content_hash, LoopCommandFuture, LoopCommands,
-    LoopRunOptions, LOOP_SKILL_TAG,
+    loop_stop_file, run_loop_core, stable_content_hash,
 };
-use flume::quota::{read_local_quota, QuotaLoopConfig, QuotaStatusKind};
+use flume::quota::{QuotaLoopConfig, QuotaStatusKind, read_local_quota};
 use flume::{
-    load_role_definitions, role_summaries, TeamCreate, TeamGcOptions, TeamMessage, TeamMessageKind,
-    TeamRuntime, TeamRuntimeConfig, TeamSpawn, TeamTaskAdd, TeamTaskClaim, TeamTaskComplete,
-    TeamWorkerEvent,
+    TeamCreate, TeamGcOptions, TeamMessage, TeamMessageKind, TeamRuntime, TeamRuntimeConfig,
+    TeamSpawn, TeamTaskAdd, TeamTaskClaim, TeamTaskComplete, TeamWorkerEvent,
+    load_role_definitions, role_summaries,
 };
 use headgate::{
-    count_tokens, load_savings_rollup, record_savings, Headgate, HeadgateConfig, LifecycleEntry,
-    MemoryRecallStore, RecallStore, SnapshotEntry, WorkingContextBundle, WorkingContextSnapshot,
+    Headgate, HeadgateConfig, LifecycleEntry, MemoryRecallStore, RecallStore, SnapshotEntry,
+    WorkingContextBundle, WorkingContextSnapshot, count_tokens, load_savings_rollup,
+    record_savings,
 };
 use headrace::{
     ClaimRequest, CommandVerifier, FilesTaskStore, NewTask, TaskKind, TaskStore, VectorTaskStore,
     Verifier, VerifierGate,
 };
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tokio::process::Command as TokioCommand;
-use toml_edit::{value, Array, DocumentMut, Item, Table};
+use toml_edit::{Array, DocumentMut, Item, Table, value};
 
 const DEFAULT_CONFIG: &str = "artesian.toml";
 const ROUTING_SNIPPET_MARKER: &str = "Memory & Context — via Artesian";
@@ -92,7 +93,7 @@ mod mcp_doctor;
 mod runs;
 mod runtime;
 mod update;
-use import::{import_directory, import_harness, HarnessImportOptions, ImportOptions};
+use import::{HarnessImportOptions, ImportOptions, import_directory, import_harness};
 use runtime::{
     build_orchestrator, ensure_memory_collection, load_config, open_memory_backend,
     open_memory_backend_with_relations, process_supervisor_from_config, shutdown_signal,
@@ -1880,8 +1881,8 @@ async fn run_replicate(
     batch: u32,
 ) -> Result<()> {
     use aquifer::{
-        replicate_collection, replicate_collection_incremental, QdrantVectorStore,
-        QdrantVectorStoreConfig,
+        QdrantVectorStore, QdrantVectorStoreConfig, replicate_collection,
+        replicate_collection_incremental,
     };
     let target_collection = to_collection.unwrap_or_else(|| collection.clone());
     let mut from_cfg = QdrantVectorStoreConfig::new(from_url);
@@ -2119,8 +2120,8 @@ async fn doctor(
                     } else {
                         println!("  qdrant:  UNREACHABLE — {error}");
                         println!(
-                                "           fix: check the URL + API key env, and that the server is up"
-                            );
+                            "           fix: check the URL + API key env, and that the server is up"
+                        );
                     }
                 }
             },
@@ -5065,9 +5066,11 @@ async fn migrate_headwater(
 async fn migrate_rechunk(config_path: PathBuf) -> Result<()> {
     let config = load_config(&config_path)?;
     if config.memory.backend != MemoryBackendKind::SqliteVec {
-        bail!("artesian migrate rechunk currently requires backend = sqlite-vec; for Qdrant use artesian migrate headwater-bundle");
+        bail!(
+            "artesian migrate rechunk currently requires backend = sqlite-vec; for Qdrant use artesian migrate headwater-bundle"
+        );
     }
-    use aquifer::{rechunk_oversized_sqlite, SqliteVecVectorStore, SqliteVecVectorStoreConfig};
+    use aquifer::{SqliteVecVectorStore, SqliteVecVectorStoreConfig, rechunk_oversized_sqlite};
     use std::path::PathBuf as SPath;
     let db_path =
         SPath::from(&config.memory.root).join(format!("{}.sqlite", config.memory.collection));
@@ -5324,7 +5327,7 @@ async fn migrate_qdrant(
     memory: &MemoryConfig,
     plan: MigrationPlan,
 ) -> Result<aquifer::MigrationReport> {
-    use aquifer::{migrate_headwater_bundle, FastembedTextEmbedder, QdrantVectorStore};
+    use aquifer::{FastembedTextEmbedder, QdrantVectorStore, migrate_headwater_bundle};
 
     let store = QdrantVectorStore::connect(qdrant_config(memory)?)?;
     Ok(migrate_headwater_bundle(&store, plan, Arc::new(FastembedTextEmbedder::new()?)).await?)
@@ -6302,16 +6305,20 @@ mod tests {
         let mut skill_query = MemoryQuery::new("cargo test").with_limit(10);
         skill_query.tags = vec![SKILL_TAG.to_string()];
         let skills = backend.find(skill_query).await.expect("find skills");
-        assert!(skills
-            .iter()
-            .any(|hit| hit.record.content.contains("verified approach")));
+        assert!(
+            skills
+                .iter()
+                .any(|hit| hit.record.content.contains("verified approach"))
+        );
 
         let mut spec_query = MemoryQuery::new("cargo test").with_limit(10);
         spec_query.tags = vec![SPEC_TAG.to_string()];
         let specs = backend.find(spec_query).await.expect("find specs");
-        assert!(specs
-            .iter()
-            .any(|hit| hit.record.content.contains("sharper spec")));
+        assert!(
+            specs
+                .iter()
+                .any(|hit| hit.record.content.contains("sharper spec"))
+        );
         let _ = fs::remove_dir_all(&tmp);
     }
 

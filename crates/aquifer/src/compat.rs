@@ -5,8 +5,8 @@ use std::sync::Once;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    Distance, MemoryError, MemoryResult, VectorMemoryConfig, PINNED_FASTEMBED_DIMENSIONS,
-    PINNED_FASTEMBED_MODEL,
+    Distance, MemoryError, MemoryResult, PINNED_FASTEMBED_DIMENSIONS, PINNED_FASTEMBED_MODEL,
+    VectorMemoryConfig,
 };
 
 pub const HEADWATER_VERSION: &str = "1";

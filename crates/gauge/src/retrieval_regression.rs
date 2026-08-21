@@ -15,9 +15,9 @@ use std::{
 };
 
 use aquifer::{
-    FilesBackend, MemoryBackend, MemoryQuery, MemoryResult, MemoryTier, SearchHit,
-    SqliteVecVectorStore, StoreMemory, TextEmbedder, VectorMemoryBackend, VectorMemoryConfig,
-    PINNED_FASTEMBED_DIMENSIONS,
+    FilesBackend, MemoryBackend, MemoryQuery, MemoryResult, MemoryTier,
+    PINNED_FASTEMBED_DIMENSIONS, SearchHit, SqliteVecVectorStore, StoreMemory, TextEmbedder,
+    VectorMemoryBackend, VectorMemoryConfig,
 };
 use serde::{Deserialize, Serialize};
 
@@ -808,18 +808,26 @@ mod tests {
         let report = run_files_leak_gate().await.expect("leak gate passes");
 
         assert!(report.passed);
-        assert!(report
-            .project_hits
-            .contains(&"node:partition-a".to_string()));
-        assert!(!report
-            .project_hits
-            .contains(&"node:partition-b".to_string()));
-        assert!(!report
-            .default_hits
-            .contains(&"node:partition-a".to_string()));
-        assert!(!report
-            .default_hits
-            .contains(&"node:partition-b".to_string()));
+        assert!(
+            report
+                .project_hits
+                .contains(&"node:partition-a".to_string())
+        );
+        assert!(
+            !report
+                .project_hits
+                .contains(&"node:partition-b".to_string())
+        );
+        assert!(
+            !report
+                .default_hits
+                .contains(&"node:partition-a".to_string())
+        );
+        assert!(
+            !report
+                .default_hits
+                .contains(&"node:partition-b".to_string())
+        );
     }
 
     #[tokio::test]

@@ -9,26 +9,26 @@ pub mod eval;
 #[cfg(feature = "ci-eval")]
 pub mod retrieval_regression;
 
-pub use agentic::{load_agent_tasks, AgentTask, ScaleLane, TaskSession};
+pub use agentic::{AgentTask, ScaleLane, TaskSession, load_agent_tasks};
 #[cfg(feature = "llm")]
-pub use agentic::{run_agent_task, run_agentic_eval, AgentTaskOutcome, AgenticEvalSummary};
+pub use agentic::{AgentTaskOutcome, AgenticEvalSummary, run_agent_task, run_agentic_eval};
 pub use bench::{
-    demo_case, render_markdown, run_bench, run_default_arm, BenchCase, BenchResult, FactLabel,
-    LabeledFact,
+    BenchCase, BenchResult, FactLabel, LabeledFact, demo_case, render_markdown, run_bench,
+    run_default_arm,
 };
 #[cfg(all(feature = "llm", feature = "vector"))]
 pub use eval::VectorRecall;
-pub use eval::{load_locomo, load_longmemeval, LoadReport, QaCase};
 #[cfg(feature = "llm")]
 pub use eval::{
-    run_case, run_qa_eval, CaseOutcome, EvalSummary, ExpandingRecall, ExpandingRecallStore,
-    LexicalRecall, RecallFactory,
+    CaseOutcome, EvalSummary, ExpandingRecall, ExpandingRecallStore, LexicalRecall, RecallFactory,
+    run_case, run_qa_eval,
 };
+pub use eval::{LoadReport, QaCase, load_locomo, load_longmemeval};
 #[cfg(feature = "ci-eval")]
 pub use retrieval_regression::{
-    compare_to_baseline, load_report, render_regression_markdown, run_regression_suite,
-    write_report, BackendMetrics, BaselineComparison, CaseMetrics, LeakGateReport,
-    RegressionReport, DEFAULT_K, DEFAULT_TOLERANCE,
+    BackendMetrics, BaselineComparison, CaseMetrics, DEFAULT_K, DEFAULT_TOLERANCE, LeakGateReport,
+    RegressionReport, compare_to_baseline, load_report, render_regression_markdown,
+    run_regression_suite, write_report,
 };
 
 use serde::{Deserialize, Serialize};

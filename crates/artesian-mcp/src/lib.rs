@@ -16,39 +16,40 @@ use std::{
 use std::env;
 
 use aquifer::{
-    insert_skill_procedure_metadata, normalize_project, skill_procedure_from_metadata,
     AnchorAnchorStore, FilesBackend, MemoryBackend, MemoryQuery, MemoryRecord, MemoryScope,
-    MemoryTier, ProcedureStep, Relation, SearchHit, SessionAnchor, SessionKey, SessionStore,
+    MemoryTier, ProcedureStep, Relation, SESSION_RECORD_TAG, SHARED_PROJECT,
+    SKILL_PROCEDURE_METADATA_KEY, SearchHit, SessionAnchor, SessionKey, SessionStore,
     SessionSummary, SqliteVecVectorStore, SqliteVecVectorStoreConfig, StoreMemory,
-    VectorMemoryBackend, VectorMemoryConfig, SESSION_RECORD_TAG, SHARED_PROJECT,
-    SKILL_PROCEDURE_METADATA_KEY, UNTAGGED_PROJECT_LABEL,
+    UNTAGGED_PROJECT_LABEL, VectorMemoryBackend, VectorMemoryConfig,
+    insert_skill_procedure_metadata, normalize_project, skill_procedure_from_metadata,
 };
 use artesian_core::{
     AccConfig, Agent, AgentBinding, AgentCatalog, AgentMessage, ArtesianConfig, MemoryBackendKind,
     MemoryConfig, Mode, Role, SpawnRequest,
 };
 use artesian_process_agent::{
-    fallback_agent_catalog, load_or_refresh_agent_catalog, validate_binding_model, ProcessAgent,
-    ProcessAgentConfig, ProcessSupervisor,
+    ProcessAgent, ProcessAgentConfig, ProcessSupervisor, fallback_agent_catalog,
+    load_or_refresh_agent_catalog, validate_binding_model,
 };
 use flume::{
-    classify_task_difficulty, covers_capabilities, load_role_definitions, loop_core,
-    normalize_capabilities, role_summaries, strip_mutating_tools, AgentRoutingProfile, Lane,
-    LaneBudget, LaneContract, RoutingConfig, RoutingTier, TeamCreate, TeamGcOptions, TeamLaneAdd,
-    TeamLaneAssignTask, TeamMessage, TeamMessageKind, TeamRuntime, TeamRuntimeConfig, TeamSpawn,
-    TeamTaskAdd, TeamTaskClaim, TeamTaskComplete, ROUTING_TRACE_TAG,
+    AgentRoutingProfile, Lane, LaneBudget, LaneContract, ROUTING_TRACE_TAG, RoutingConfig,
+    RoutingTier, TeamCreate, TeamGcOptions, TeamLaneAdd, TeamLaneAssignTask, TeamMessage,
+    TeamMessageKind, TeamRuntime, TeamRuntimeConfig, TeamSpawn, TeamTaskAdd, TeamTaskClaim,
+    TeamTaskComplete, classify_task_difficulty, covers_capabilities, load_role_definitions,
+    loop_core, normalize_capabilities, role_summaries, strip_mutating_tools,
 };
 use headgate::{
-    count_tokens, load_savings_rollup, record_savings, CcsSchema, CommittedContextState,
-    CommittedEntry, DefaultQualifyGate, Headgate, HeadgateConfig, JudgeCostSavings, LifecycleEntry,
-    MemoryRecallStore, OpSavings, QualifyAudit, QualifyDecision, QualifyGate, QualifySignal,
-    RecallItem, RecallStore, Resolution, SnapshotEntry, TokenSavingsRollup, WorkingContextBundle,
-    WorkingContextSnapshot,
+    CcsSchema, CommittedContextState, CommittedEntry, DefaultQualifyGate, Headgate, HeadgateConfig,
+    JudgeCostSavings, LifecycleEntry, MemoryRecallStore, OpSavings, QualifyAudit, QualifyDecision,
+    QualifyGate, QualifySignal, RecallItem, RecallStore, Resolution, SnapshotEntry,
+    TokenSavingsRollup, WorkingContextBundle, WorkingContextSnapshot, count_tokens,
+    load_savings_rollup, record_savings,
 };
 use headrace::{
     ClaimRequest, FilesTaskStore, NewTask, Task, TaskStatus, TaskStore, TransitionTask,
 };
 use rmcp::{
+    ErrorData, Peer, RoleServer, ServerHandler, ServiceExt,
     handler::server::{
         router::tool::ToolRouter,
         wrapper::{Json, Parameters},
@@ -56,7 +57,6 @@ use rmcp::{
     model::{Meta, ProgressNotificationParam, ProgressToken, ServerCapabilities, ServerInfo},
     schemars, tool, tool_handler, tool_router,
     transport::stdio,
-    ErrorData, Peer, RoleServer, ServerHandler, ServiceExt,
 };
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex as AsyncMutex;
@@ -5110,7 +5110,7 @@ pub async fn run_http_with_routing(
     bind: std::net::SocketAddr,
 ) -> anyhow::Result<()> {
     use rmcp::transport::streamable_http_server::{
-        session::local::LocalSessionManager, StreamableHttpService,
+        StreamableHttpService, session::local::LocalSessionManager,
     };
     let memory_config = config.memory.clone();
     let router_enabled = config.coordination.router_enabled;
@@ -5305,18 +5305,15 @@ fn tool_registry() -> &'static [RegisteredTool] {
         },
         RegisteredTool {
             name: "memory.anchor.set",
-            description:
-                "Write current task, plan pointer, decisions, and next step to headwater log.md.",
+            description: "Write current task, plan pointer, decisions, and next step to headwater log.md.",
         },
         RegisteredTool {
             name: "memory.session.checkpoint",
-            description:
-                "Checkpoint a resumable OCF session before yielding to another agent.",
+            description: "Checkpoint a resumable OCF session before yielding to another agent.",
         },
         RegisteredTool {
             name: "memory.session.resume",
-            description:
-                "Resume a committed OCF session by user_id/session_id/task_id without matching agent_id.",
+            description: "Resume a committed OCF session by user_id/session_id/task_id without matching agent_id.",
         },
         RegisteredTool {
             name: "agents.list",
@@ -6059,8 +6056,8 @@ fn first_line_or_default(input: &str) -> String {
 #[cfg(test)]
 mod tests {
     use std::sync::{
-        atomic::{AtomicBool, Ordering},
         Arc,
+        atomic::{AtomicBool, Ordering},
     };
 
     use aquifer::{MemoryResult, SearchHit};

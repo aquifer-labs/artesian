@@ -43,10 +43,12 @@ async fn session_lane_lock_serializes_and_times_out() {
 
     let blocked = lock.acquire("shared-collection", Some("session-a")).await;
     assert!(blocked.is_err());
-    assert!(blocked
-        .expect_err("lane should time out")
-        .to_string()
-        .contains("timed out acquiring session lane lock"));
+    assert!(
+        blocked
+            .expect_err("lane should time out")
+            .to_string()
+            .contains("timed out acquiring session lane lock")
+    );
 
     guard.release().expect("release should succeed");
     lock.acquire("shared-collection", Some("session-a"))
@@ -109,18 +111,22 @@ async fn sqlite_vec_multi_writer_integrity_and_tenant_isolation() {
     query.user_id = Some("user-0".to_string());
     let user_zero = backend.find(query).await.expect("find should succeed");
     assert_eq!(user_zero.len(), writer_count / 2);
-    assert!(user_zero
-        .iter()
-        .all(|hit| hit.record.user_id.as_deref() == Some("user-0")));
+    assert!(
+        user_zero
+            .iter()
+            .all(|hit| hit.record.user_id.as_deref() == Some("user-0"))
+    );
 
     let mut query = MemoryQuery::new("contention memory tenant").with_limit(writer_count);
     query.scope = Some(MemoryScope::Session);
     query.user_id = Some("user-1".to_string());
     let user_one = backend.find(query).await.expect("find should succeed");
     assert_eq!(user_one.len(), writer_count / 2);
-    assert!(user_one
-        .iter()
-        .all(|hit| hit.record.user_id.as_deref() == Some("user-1")));
+    assert!(
+        user_one
+            .iter()
+            .all(|hit| hit.record.user_id.as_deref() == Some("user-1"))
+    );
 }
 
 async fn assert_concurrent_scope_isolation(backend: Arc<dyn MemoryBackend>) {

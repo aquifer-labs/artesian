@@ -3,8 +3,8 @@
 use std::sync::Arc;
 
 use aquifer::{
-    backfill_directory, backfill_directory_with_project, FilesBackend, MemoryBackend, MemoryQuery,
-    MemoryResult, SqliteVecVectorStore, TextEmbedder, VectorMemoryBackend, VectorMemoryConfig,
+    FilesBackend, MemoryBackend, MemoryQuery, MemoryResult, SqliteVecVectorStore, TextEmbedder,
+    VectorMemoryBackend, VectorMemoryConfig, backfill_directory, backfill_directory_with_project,
 };
 use artesian_test_support::TempDir;
 
@@ -218,12 +218,14 @@ async fn backfill_chunks_markdown_by_heading() {
     assert_eq!(stats.scanned, 1);
     assert_eq!(stats.imported, 2);
     assert_eq!(hits.len(), 2);
-    assert!(hits
-        .iter()
-        .any(|hit| hit.record.metadata.get("heading") == Some(&"Alpha".to_string())));
-    assert!(hits
-        .iter()
-        .any(|hit| hit.record.metadata.get("heading") == Some(&"Beta".to_string())));
+    assert!(
+        hits.iter()
+            .any(|hit| hit.record.metadata.get("heading") == Some(&"Alpha".to_string()))
+    );
+    assert!(
+        hits.iter()
+            .any(|hit| hit.record.metadata.get("heading") == Some(&"Beta".to_string()))
+    );
 }
 
 const TEST_DIMENSIONS: usize = 8;

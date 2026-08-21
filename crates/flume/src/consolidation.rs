@@ -19,9 +19,8 @@ use std::{
 
 use aquifer::{MemoryBackend, SessionKey, SessionListFilter, SessionStore, SessionSummary};
 use headgate::{
-    count_tokens, CcsSchema, CommittedContextState, CommittedEntry, LifecycleEntry,
-    QualifyDecision, QualifyGate, RecallItem, SnapshotEntry, WorkingContextBundle,
-    WorkingContextSnapshot,
+    CcsSchema, CommittedContextState, CommittedEntry, LifecycleEntry, QualifyDecision, QualifyGate,
+    RecallItem, SnapshotEntry, WorkingContextBundle, WorkingContextSnapshot, count_tokens,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -798,10 +797,12 @@ async fn write_skill_ocf_session(
         token_count,
         entries,
     };
-    let lifecycle = vec![decision
-        .audit
-        .map(|audit| LifecycleEntry::commit_with_audit(edit.id.clone(), audit))
-        .unwrap_or_else(|| LifecycleEntry::commit(edit.id.clone()))];
+    let lifecycle = vec![
+        decision
+            .audit
+            .map(|audit| LifecycleEntry::commit_with_audit(edit.id.clone(), audit))
+            .unwrap_or_else(|| LifecycleEntry::commit(edit.id.clone())),
+    ];
     let bundle = WorkingContextBundle::new(snapshot, lifecycle);
     let key = SessionKey::new(
         Some("flume".to_string()),

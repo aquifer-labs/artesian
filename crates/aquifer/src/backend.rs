@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
-use futures_util::{future::BoxFuture, FutureExt};
+use futures_util::{FutureExt, future::BoxFuture};
 
 use crate::{
-    reciprocal_rank_fusion, MemoryQuery, MemoryRecord, MemoryResult, RetractReport, RrfOptions,
-    SearchHit, StoreMemory,
+    MemoryQuery, MemoryRecord, MemoryResult, RetractReport, RrfOptions, SearchHit, StoreMemory,
+    reciprocal_rank_fusion,
 };
 
 /// Aggregate counts returned by `MemoryBackend::bulk_store`.

@@ -52,9 +52,9 @@ mod savings;
 mod tier;
 
 pub use bundle::{
-    BundleError, BundleManifest, Decision, LifecycleEntry, LifecycleReason, OcfSession,
-    QualifyRecord, Resolution, SnapshotEntry, Status, WorkingContextBundle, WorkingContextSnapshot,
-    BUNDLE_FORMAT, BUNDLE_VERSION,
+    BUNDLE_FORMAT, BUNDLE_VERSION, BundleError, BundleManifest, Decision, LifecycleEntry,
+    LifecycleReason, OcfSession, QualifyRecord, Resolution, SnapshotEntry, Status,
+    WorkingContextBundle, WorkingContextSnapshot,
 };
 pub use ccs::{CcsSchema, CommittedContextState, CommittedEntry};
 pub use compressor::{Compressor, ExtractiveCompressor, NoopCompressor};
@@ -62,16 +62,16 @@ pub use controller::{Headgate, HeadgateConfig};
 pub use gate::{
     DefaultQualifyGate, QualifyAudit, QualifyDecision, QualifyGate, QualifySignal, ReasonCode,
 };
-pub use metrics::{count_tokens, GaugeMetrics};
+pub use metrics::{GaugeMetrics, count_tokens};
 pub use position::{
-    position_swap_debias, PairwiseChoice, PairwiseDecision, PairwiseJudge, PositionSwapAudit,
-    StaticPairwiseJudge, DEFAULT_POSITION_BIAS_THRESHOLD,
+    DEFAULT_POSITION_BIAS_THRESHOLD, PairwiseChoice, PairwiseDecision, PairwiseJudge,
+    PositionSwapAudit, StaticPairwiseJudge, position_swap_debias,
 };
 pub use recall::{MemoryRecallStore, RecallItem, RecallStore, StaticRecallStore};
 pub use savings::{
-    load_savings_rollup, record_savings, record_savings_with_metadata, stats_dir, JudgeCostSavings,
-    JudgeTokenCost, OpSavings, TokenSavingsEntry, TokenSavingsMetadata, TokenSavingsRollup,
-    ARTESIAN_STATS_DIR_ENV,
+    ARTESIAN_STATS_DIR_ENV, JudgeCostSavings, JudgeTokenCost, OpSavings, TokenSavingsEntry,
+    TokenSavingsMetadata, TokenSavingsRollup, load_savings_rollup, record_savings,
+    record_savings_with_metadata, stats_dir,
 };
 pub use tier::{JudgeTier, JudgeTierConfig, TieredQualifyGate};
 
@@ -87,8 +87,8 @@ pub use headroom::HeadroomCompressor;
 pub use judge::{JudgeQualifyGate, JudgeVerdict};
 #[cfg(feature = "llm")]
 pub use llm::{
-    llm_client_from_config, CommandLlmClient, LlmClient, LlmRequest, OpenAiCompatibleClient,
-    StaticLlmClient,
+    CommandLlmClient, LlmClient, LlmRequest, OpenAiCompatibleClient, StaticLlmClient,
+    llm_client_from_config,
 };
 
 use thiserror::Error;

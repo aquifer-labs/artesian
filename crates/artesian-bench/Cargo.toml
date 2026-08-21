@@ -3,7 +3,10 @@
 [package]
 name = "artesian-bench"
 version.workspace = true
-edition.workspace = true
+# Stays on edition 2021: these crates set process env vars, which edition 2024
+# makes unsafe, and the workspace forbids unsafe on purpose. Finish the move
+# once the env reads are injectable rather than global.
+edition = "2021"
 rust-version.workspace = true
 license.workspace = true
 

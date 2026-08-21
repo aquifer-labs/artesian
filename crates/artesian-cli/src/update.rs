@@ -14,7 +14,7 @@ use artesian_process_agent::ProcessSupervisor;
 #[cfg(unix)]
 use nix::{
     errno::Errno,
-    sys::signal::{kill, Signal},
+    sys::signal::{Signal, kill},
     unistd::Pid,
 };
 

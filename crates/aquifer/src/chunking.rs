@@ -219,9 +219,11 @@ mod tests {
     fn headings_are_attached() {
         let text = "# Caching\nTTL is 90 seconds.\n\n# Auth\nTokens expire in 15 minutes.";
         let chunks = chunk_text(text, &ChunkConfig::default());
-        assert!(chunks
-            .iter()
-            .any(|c| c.heading.as_deref() == Some("Caching")));
+        assert!(
+            chunks
+                .iter()
+                .any(|c| c.heading.as_deref() == Some("Caching"))
+        );
         assert!(chunks.iter().any(|c| c.heading.as_deref() == Some("Auth")));
     }
 }

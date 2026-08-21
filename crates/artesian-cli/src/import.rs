@@ -8,9 +8,9 @@ use std::{
 
 use anyhow::Result;
 use aquifer::{
-    collect_memory_paths, parse_harness_candidates, parse_memory_path, stable_memory_id,
     BackfillFailure, FilesBackend, HarnessKind, MemoryBackend, MemoryQuery, MemoryScope,
-    StoreMemory,
+    StoreMemory, collect_memory_paths, parse_harness_candidates, parse_memory_path,
+    stable_memory_id,
 };
 use headgate::{
     CcsSchema, CommittedContextState, CommittedEntry, DefaultQualifyGate, HeadgateConfig,

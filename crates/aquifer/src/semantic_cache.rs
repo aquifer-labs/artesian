@@ -16,7 +16,7 @@ use std::collections::VecDeque;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-use futures_util::{future::BoxFuture, FutureExt};
+use futures_util::{FutureExt, future::BoxFuture};
 
 use crate::{MemoryBackend, MemoryQuery, MemoryRecord, MemoryResult, SearchHit, StoreMemory};
 
@@ -254,8 +254,8 @@ impl<B: MemoryBackend, V: QueryVectorizer> MemoryBackend for CachingMemoryBacken
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
-    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     use crate::{MemoryId, MemoryTier, SearchSource};
 

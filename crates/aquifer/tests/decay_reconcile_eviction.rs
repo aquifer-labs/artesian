@@ -10,12 +10,12 @@
 use std::sync::Arc;
 
 use aquifer::{
-    decay::{retrieval_strength, DecayConfig},
-    eviction::{evict, EvictionAction, EvictionPolicy},
-    files_parse_record, files_render_record,
-    reconcile::{reconcile, ReconcileConfig, ReconcileDecision},
     FilesBackend, MemoryBackend, MemoryId, MemoryQuery, MemoryRecord, MemoryState, MemoryTier,
     StoreMemory,
+    decay::{DecayConfig, retrieval_strength},
+    eviction::{EvictionAction, EvictionPolicy, evict},
+    files_parse_record, files_render_record,
+    reconcile::{ReconcileConfig, ReconcileDecision, reconcile},
 };
 use artesian_test_support::TempDir;
 use chrono::{Duration, Utc};
@@ -410,10 +410,12 @@ fn eviction_hard_deletes_previously_archived() {
         report.archived, 0,
         "hard does not archive additional records"
     );
-    assert!(report
-        .log_entries
-        .iter()
-        .any(|e| e.record_id == "archived-old" && e.action == EvictionAction::Delete));
+    assert!(
+        report
+            .log_entries
+            .iter()
+            .any(|e| e.record_id == "archived-old" && e.action == EvictionAction::Delete)
+    );
 }
 
 /// Eviction with max_keep=1 archives all but the strongest record.
